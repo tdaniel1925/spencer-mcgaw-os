@@ -384,7 +384,7 @@ export default function ActivityPage() {
                         <div className="text-sm">
                           {format(activity.timestamp, "MMM d, h:mm a")}
                         </div>
-                        <div className="text-xs text-muted-foreground">
+                        <div className="text-xs text-muted-foreground" suppressHydrationWarning>
                           {formatDistanceToNow(activity.timestamp, {
                             addSuffix: true,
                           })}

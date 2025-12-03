@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -17,10 +17,21 @@ import {
   HelpCircle,
   ChevronDown,
   ChevronRight,
+  LogOut,
 } from "lucide-react";
 import { useState } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Progress } from "@/components/ui/progress";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useAuth } from "@/lib/supabase/auth-context";
 
 interface NavItem {
   title: string;
@@ -85,7 +96,24 @@ const mainNavItems: NavItem[] = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
+  const { user, signOut, loading } = useAuth();
+
+  const handleSignOut = async () => {
+    await signOut();
+    router.push("/login");
+    router.refresh();
+  };
+
+  const getUserInitials = () => {
+    if (!user?.full_name) return user?.email?.charAt(0).toUpperCase() || "U";
+    return user.full_name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase();
+  };
 
   const toggleExpand = (title: string) => {
     setExpandedItems((prev) =>
@@ -221,24 +249,56 @@ export function Sidebar() {
           <Progress value={66} className="h-1.5 bg-sidebar-accent" />
         </div>
 
-        {/* Help Card */}
-        <div className="bg-sidebar-accent rounded-xl p-4 relative overflow-hidden">
-          <div className="relative z-10">
-            <h4 className="font-semibold text-sidebar-accent-foreground text-sm mb-1">
-              Need Help?
-            </h4>
-            <p className="text-xs text-sidebar-accent-foreground/70 mb-3">
-              Contact support for assistance
-            </p>
-            <Link
-              href="/support"
-              className="inline-flex items-center gap-1 text-xs font-medium bg-sidebar-foreground/10 hover:bg-sidebar-foreground/20 text-sidebar-accent-foreground px-3 py-1.5 rounded-lg transition-colors"
-            >
-              <HelpCircle className="h-3 w-3" />
-              Contact Us
-            </Link>
-          </div>
-        </div>
+        {/* User Profile */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-sidebar-accent transition-colors">
+              <Avatar className="h-9 w-9">
+                <AvatarImage src="" />
+                <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground text-sm">
+                  {getUserInitials()}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex-1 text-left">
+                <p className="text-sm font-medium text-sidebar-foreground truncate">
+                  {user?.full_name || user?.email || "User"}
+                </p>
+                <p className="text-xs text-sidebar-foreground/70 capitalize">
+                  {user?.role || "Staff"}
+                </p>
+              </div>
+              <ChevronRight className="h-4 w-4 text-sidebar-foreground/50" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuLabel>
+              <div className="flex flex-col">
+                <span>{user?.full_name || "User"}</span>
+                <span className="text-xs font-normal text-muted-foreground">
+                  {user?.email}
+                </span>
+              </div>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link href="/settings">
+                <Settings className="mr-2 h-4 w-4" />
+                Settings
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/support">
+                <HelpCircle className="mr-2 h-4 w-4" />
+                Help & Support
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={handleSignOut} className="text-red-600">
+              <LogOut className="mr-2 h-4 w-4" />
+              Sign out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </aside>
   );

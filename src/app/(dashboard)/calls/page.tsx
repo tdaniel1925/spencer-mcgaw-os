@@ -400,7 +400,7 @@ export default function CallsPage() {
                         <div className="text-sm">
                           {format(call.createdAt, "h:mm a")}
                         </div>
-                        <div className="text-xs text-muted-foreground">
+                        <div className="text-xs text-muted-foreground" suppressHydrationWarning>
                           {formatDistanceToNow(call.createdAt, {
                             addSuffix: true,
                           })}

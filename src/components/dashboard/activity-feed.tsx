@@ -108,7 +108,7 @@ export function ActivityFeed({ activities, className }: ActivityFeedProps) {
                           </span>
                         </div>
                       )}
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-xs text-muted-foreground" suppressHydrationWarning>
                         {formatDistanceToNow(activity.timestamp, {
                           addSuffix: true,
                         })}
