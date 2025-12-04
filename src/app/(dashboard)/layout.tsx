@@ -4,6 +4,7 @@ import { AuditProvider } from "@/lib/audit/audit-context";
 import { EmailProvider } from "@/lib/email/email-context";
 import { CallProvider } from "@/lib/calls/call-context";
 import { NotificationProvider } from "@/lib/notifications";
+import { DashboardProvider } from "@/lib/dashboard";
 import { AIAssistant } from "@/components/ai-assistant/ai-assistant";
 
 export default function DashboardLayout({
@@ -28,17 +29,19 @@ export default function DashboardLayout({
       <AuditProvider>
         <EmailProvider>
           <CallProvider>
-            <NotificationProvider
-              initialCounts={initialNotificationCounts}
-              initialTaskProgress={initialTaskProgress}
-            >
-              <div className="min-h-screen bg-background">
-                <Sidebar />
-                {/* Responsive padding: no padding on mobile, pl-64 on desktop (lg+) */}
-                <div className="lg:pl-64 pt-14 lg:pt-0">{children}</div>
-                <AIAssistant />
-              </div>
-            </NotificationProvider>
+            <DashboardProvider>
+              <NotificationProvider
+                initialCounts={initialNotificationCounts}
+                initialTaskProgress={initialTaskProgress}
+              >
+                <div className="min-h-screen bg-background">
+                  <Sidebar />
+                  {/* Responsive padding: no padding on mobile, pl-64 on desktop (lg+) */}
+                  <div className="lg:pl-64 pt-14 lg:pt-0">{children}</div>
+                  <AIAssistant />
+                </div>
+              </NotificationProvider>
+            </DashboardProvider>
           </CallProvider>
         </EmailProvider>
       </AuditProvider>

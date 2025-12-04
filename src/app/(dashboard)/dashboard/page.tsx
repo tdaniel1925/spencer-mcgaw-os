@@ -8,9 +8,12 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { useEmail } from "@/lib/email";
 import { useCalls } from "@/lib/calls/call-context";
 import { useAuth } from "@/lib/supabase/auth-context";
+import { useDashboard } from "@/lib/dashboard";
+import { CalendarWidget, DashboardSettings } from "@/components/dashboard/widgets";
 import {
   Clock,
   CheckCircle,
@@ -19,18 +22,16 @@ import {
   Bot,
   TrendingUp,
   AlertCircle,
-  Play,
   ArrowRight,
   Zap,
   Timer,
-  DollarSign,
   BarChart3,
   Headphones,
-  MessageSquare,
   Sparkles,
   ExternalLink,
   ListTodo,
   Loader2,
+  Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -205,9 +206,19 @@ export default function DashboardPage() {
               {format(currentTime, "EEEE, MMMM d, yyyy")}
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-primary" />
-            <span className="text-sm font-medium">AI Assistant Active</span>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 text-sm">
+              <Sparkles className="h-4 w-4 text-primary" />
+              <span className="font-medium hidden sm:inline">AI Assistant Active</span>
+            </div>
+            <DashboardSettings
+              trigger={
+                <Button variant="outline" size="sm">
+                  <Settings className="h-4 w-4 mr-2" />
+                  Customize
+                </Button>
+              }
+            />
           </div>
         </div>
 
@@ -450,6 +461,11 @@ export default function DashboardPage() {
 
           {/* Right Column */}
           <div className="space-y-6">
+            {/* Calendar Widget */}
+            <TooltipProvider>
+              <CalendarWidget size="medium" />
+            </TooltipProvider>
+
             {/* Recent Calls */}
             <Card>
               <CardHeader className="pb-3">
@@ -464,10 +480,10 @@ export default function DashboardPage() {
                 </div>
               </CardHeader>
               <CardContent className="p-0">
-                <ScrollArea className="h-[280px]">
+                <ScrollArea className="h-[200px]">
                   <div className="p-4 space-y-3">
                     {calls.length > 0 ? (
-                      calls.slice(0, 5).map((call) => (
+                      calls.slice(0, 3).map((call) => (
                         <div
                           key={call.id}
                           className="p-3 border rounded-lg space-y-2 cursor-pointer hover:bg-muted/50"
@@ -496,13 +512,13 @@ export default function DashboardPage() {
                             </Badge>
                           </div>
                           {call.aiAnalysis?.summary && (
-                            <p className="text-sm text-muted-foreground line-clamp-2">{call.aiAnalysis.summary}</p>
+                            <p className="text-sm text-muted-foreground line-clamp-1">{call.aiAnalysis.summary}</p>
                           )}
                         </div>
                       ))
                     ) : (
-                      <div className="text-center py-8 text-muted-foreground">
-                        <Phone className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                      <div className="text-center py-6 text-muted-foreground">
+                        <Phone className="h-6 w-6 mx-auto mb-2 opacity-50" />
                         <p className="text-sm">No calls yet</p>
                       </div>
                     )}
@@ -533,38 +549,38 @@ export default function DashboardPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-2">
                   <Button
                     variant="outline"
-                    className="w-full justify-start"
+                    className="justify-start text-xs h-9"
                     onClick={() => router.push("/tasks")}
                   >
-                    <ListTodo className="h-4 w-4 mr-2" />
-                    Add New Task
+                    <ListTodo className="h-3.5 w-3.5 mr-1.5" />
+                    Add Task
                   </Button>
                   <Button
                     variant="outline"
-                    className="w-full justify-start"
+                    className="justify-start text-xs h-9"
                     onClick={() => router.push("/email")}
                   >
-                    <Mail className="h-4 w-4 mr-2" />
-                    Check Email Tasks
+                    <Mail className="h-3.5 w-3.5 mr-1.5" />
+                    Email
                   </Button>
                   <Button
                     variant="outline"
-                    className="w-full justify-start"
+                    className="justify-start text-xs h-9"
                     onClick={() => router.push("/clients")}
                   >
-                    <Bot className="h-4 w-4 mr-2" />
-                    View Clients
+                    <Bot className="h-3.5 w-3.5 mr-1.5" />
+                    Clients
                   </Button>
                   <Button
                     variant="outline"
-                    className="w-full justify-start"
-                    onClick={() => router.push("/analytics")}
+                    className="justify-start text-xs h-9"
+                    onClick={() => router.push("/calendar")}
                   >
-                    <BarChart3 className="h-4 w-4 mr-2" />
-                    View Analytics
+                    <BarChart3 className="h-3.5 w-3.5 mr-1.5" />
+                    Calendar
                   </Button>
                 </div>
               </CardContent>
