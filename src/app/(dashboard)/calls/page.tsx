@@ -90,6 +90,8 @@ import {
   Pencil,
   X,
   GripVertical,
+  ThumbsUp,
+  ThumbsDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow } from "date-fns";
@@ -158,6 +160,7 @@ function CallCard({
   onSelect,
   onClick,
   onQuickAction,
+  onActionFeedback,
   onDragStart,
   onDragEnd,
   isDragging,
@@ -167,6 +170,7 @@ function CallCard({
   onSelect: (selected: boolean) => void;
   onClick: () => void;
   onQuickAction: (action: string) => void;
+  onActionFeedback: (actionId: string, feedback: "approved" | "rejected") => void;
   onDragStart?: () => void;
   onDragEnd?: () => void;
   isDragging?: boolean;
@@ -261,6 +265,65 @@ function CallCard({
             )}
           </div>
 
+          {/* Actionable Items Quick Feedback */}
+          {call.aiAnalysis?.suggestedActions && call.aiAnalysis.suggestedActions.length > 0 && (
+            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+              {call.aiAnalysis.suggestedActions.slice(0, 1).map((action) => (
+                <div
+                  key={action.id}
+                  className="flex items-center gap-1 px-2 py-0.5 bg-primary/5 rounded-full border border-primary/20"
+                >
+                  <span className="text-[10px] text-primary font-medium truncate max-w-[80px]">
+                    {action.label}
+                  </span>
+                  <div className="flex items-center gap-0.5">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className={cn(
+                            "h-5 w-5",
+                            action.userFeedback === "approved"
+                              ? "text-green-600 bg-green-100 hover:bg-green-200"
+                              : "text-muted-foreground hover:text-green-600 hover:bg-green-50"
+                          )}
+                          onClick={() => onActionFeedback(action.id, "approved")}
+                        >
+                          <ThumbsUp className="h-3 w-3" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Relevant action</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className={cn(
+                            "h-5 w-5",
+                            action.userFeedback === "rejected"
+                              ? "text-red-600 bg-red-100 hover:bg-red-200"
+                              : "text-muted-foreground hover:text-red-600 hover:bg-red-50"
+                          )}
+                          onClick={() => onActionFeedback(action.id, "rejected")}
+                        >
+                          <ThumbsDown className="h-3 w-3" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Not relevant</TooltipContent>
+                    </Tooltip>
+                  </div>
+                </div>
+              ))}
+              {call.aiAnalysis.suggestedActions.length > 1 && (
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5">
+                  +{call.aiAnalysis.suggestedActions.length - 1}
+                </Badge>
+              )}
+            </div>
+          )}
+
           {/* Audio player button */}
           {call.recordingUrl && (
             <div onClick={(e) => e.stopPropagation()}>
@@ -352,11 +415,13 @@ function CallDetailModal({
   open,
   onClose,
   onAction,
+  onActionFeedback,
 }: {
   call: CallRecord | null;
   open: boolean;
   onClose: () => void;
   onAction: (action: string) => void;
+  onActionFeedback: (actionId: string, feedback: "approved" | "rejected") => void;
 }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [showTranscript, setShowTranscript] = useState(true);
@@ -475,26 +540,112 @@ function CallDetailModal({
               </Card>
             )}
 
-            {/* Suggested Actions */}
+            {/* Suggested Actions with Feedback */}
             {call.aiAnalysis?.suggestedActions &&
               call.aiAnalysis.suggestedActions.length > 0 && (
                 <Card>
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm">Suggested Actions</CardTitle>
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Bot className="h-4 w-4 text-primary" />
+                      AI Suggested Actions
+                      <span className="text-xs font-normal text-muted-foreground ml-auto">
+                        Rate to improve AI
+                      </span>
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-2">
                       {call.aiAnalysis.suggestedActions.map((action) => (
-                        <Button
+                        <div
                           key={action.id}
-                          variant="outline"
-                          size="sm"
-                          className="justify-start"
-                          onClick={() => onAction(action.type)}
+                          className={cn(
+                            "flex items-center gap-3 p-3 rounded-lg border transition-colors",
+                            action.userFeedback === "approved" && "bg-green-50 border-green-200",
+                            action.userFeedback === "rejected" && "bg-red-50 border-red-200 opacity-60",
+                            !action.userFeedback && "bg-muted/30"
+                          )}
                         >
-                          <CheckCircle className="h-4 w-4 mr-2" />
-                          {action.label}
-                        </Button>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-sm">{action.label}</span>
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  "text-[10px]",
+                                  action.priority === "high" && "border-orange-300 text-orange-600",
+                                  action.priority === "medium" && "border-amber-300 text-amber-600",
+                                  action.priority === "low" && "border-slate-300 text-slate-500"
+                                )}
+                              >
+                                {action.priority}
+                              </Badge>
+                              {action.userFeedback && (
+                                <Badge
+                                  variant="secondary"
+                                  className={cn(
+                                    "text-[10px]",
+                                    action.userFeedback === "approved" && "bg-green-100 text-green-700",
+                                    action.userFeedback === "rejected" && "bg-red-100 text-red-700"
+                                  )}
+                                >
+                                  {action.userFeedback === "approved" ? "Helpful" : "Not helpful"}
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {action.description}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <TooltipProvider delayDuration={0}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className={cn(
+                                      "h-8 w-8",
+                                      action.userFeedback === "approved"
+                                        ? "text-green-600 bg-green-100 hover:bg-green-200"
+                                        : "text-muted-foreground hover:text-green-600 hover:bg-green-50"
+                                    )}
+                                    onClick={() => onActionFeedback(action.id, "approved")}
+                                  >
+                                    <ThumbsUp className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>This is helpful</TooltipContent>
+                              </Tooltip>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className={cn(
+                                      "h-8 w-8",
+                                      action.userFeedback === "rejected"
+                                        ? "text-red-600 bg-red-100 hover:bg-red-200"
+                                        : "text-muted-foreground hover:text-red-600 hover:bg-red-50"
+                                    )}
+                                    onClick={() => onActionFeedback(action.id, "rejected")}
+                                  >
+                                    <ThumbsDown className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Not helpful</TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => onAction(action.type)}
+                            disabled={action.userFeedback === "rejected"}
+                          >
+                            <CheckCircle className="h-3.5 w-3.5 mr-1.5" />
+                            Do it
+                          </Button>
+                        </div>
                       ))}
                     </div>
                   </CardContent>
@@ -589,6 +740,7 @@ export default function CallsPage() {
     addCallNote,
     archiveCall,
     deleteCall,
+    updateActionFeedback,
   } = useCalls();
 
   const [selectedCalls, setSelectedCalls] = useState<Set<string>>(new Set());
@@ -1124,6 +1276,7 @@ export default function CallsPage() {
                       onSelect={(selected) => handleSelect(call.id, selected)}
                       onClick={() => setSelectedCall(call)}
                       onQuickAction={(action) => handleQuickAction(call.id, action)}
+                      onActionFeedback={(actionId, feedback) => updateActionFeedback(call.id, actionId, feedback)}
                       onDragStart={() => setDraggingCallId(call.id)}
                       onDragEnd={() => setDraggingCallId(null)}
                       isDragging={draggingCallId === call.id}
@@ -1159,6 +1312,11 @@ export default function CallsPage() {
               if (action === "complete" || action === "archive" || action === "delete") {
                 setSelectedCall(null);
               }
+            }
+          }}
+          onActionFeedback={(actionId, feedback) => {
+            if (selectedCall) {
+              updateActionFeedback(selectedCall.id, actionId, feedback);
             }
           }}
         />

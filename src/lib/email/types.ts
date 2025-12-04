@@ -79,6 +79,26 @@ export interface EmailAttachment {
   isInline: boolean;
 }
 
+// AI-generated actionable task from email
+export interface AIEmailTask {
+  id: string;
+  title: string; // e.g., "Send Tax Return", "Schedule Meeting", "Review Contract"
+  description?: string;
+  type: "action" | "calendar" | "document" | "response" | "review";
+  isCompleted: boolean;
+  dueDate?: Date;
+  // For calendar events
+  calendarEvent?: {
+    title: string;
+    startTime?: Date;
+    endTime?: Date;
+    location?: string;
+  };
+  // For document tasks
+  attachmentId?: string;
+  attachmentName?: string;
+}
+
 // AI Classification for emails
 export interface AIEmailClassification {
   category: EmailTaskCategory;
@@ -94,6 +114,10 @@ export interface AIEmailClassification {
   requiresResponse: boolean;
   responseUrgency?: "immediate" | "today" | "this_week" | "whenever";
   classifiedAt: Date;
+  // NEW: Actionable tasks extracted from email
+  actionTasks?: AIEmailTask[];
+  // Primary action shown on card (e.g., "Send Tax Return")
+  primaryAction?: string;
 }
 
 // Email task categories

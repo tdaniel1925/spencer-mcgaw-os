@@ -248,6 +248,9 @@ interface CallContextType {
   archiveCall: (callId: string) => void;
   deleteCall: (callId: string) => void;
 
+  // AI Action feedback
+  updateActionFeedback: (callId: string, actionId: string, feedback: "approved" | "rejected") => void;
+
   // Webhook processing
   processWebhook: (rawData: RawWebhookData) => CallRecord;
 
@@ -364,6 +367,30 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     setCalls(prev => prev.filter(c => c.id !== callId));
     setNotifications(prev => prev.filter(n => n.callId !== callId));
   }, []);
+
+  // Update AI action feedback (thumbs up/down)
+  const updateActionFeedback = useCallback(
+    (callId: string, actionId: string, feedback: "approved" | "rejected") => {
+      setCalls(prev =>
+        prev.map(c => {
+          if (c.id !== callId || !c.aiAnalysis?.suggestedActions) return c;
+          return {
+            ...c,
+            aiAnalysis: {
+              ...c.aiAnalysis,
+              suggestedActions: c.aiAnalysis.suggestedActions.map(action =>
+                action.id === actionId
+                  ? { ...action, userFeedback: feedback, feedbackAt: new Date() }
+                  : action
+              ),
+            },
+            updatedAt: new Date(),
+          };
+        })
+      );
+    },
+    []
+  );
 
   // Process incoming webhook
   const processWebhook = useCallback((rawData: RawWebhookData): CallRecord => {
@@ -490,6 +517,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       setFollowUp,
       archiveCall,
       deleteCall,
+      updateActionFeedback,
       processWebhook,
       notifications,
       unreadNotificationCount,
@@ -513,6 +541,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       setFollowUp,
       archiveCall,
       deleteCall,
+      updateActionFeedback,
       processWebhook,
       notifications,
       unreadNotificationCount,

@@ -65,12 +65,10 @@ import {
   CheckCircle,
   Check,
   Clock,
-  Eye,
   Plus,
   RefreshCw,
   ExternalLink,
   FileText,
-  ArrowRight,
   AlertTriangle,
   DollarSign,
   Calendar,
@@ -81,7 +79,6 @@ import {
   Filter,
   Archive,
   Trash2,
-  MoreHorizontal,
   CheckSquare,
   XSquare,
   ListTodo,
@@ -95,6 +92,11 @@ import {
   RotateCcw,
   Sparkles,
   User,
+  ChevronDown,
+  ChevronRight,
+  CalendarPlus,
+  FolderDown,
+  Square,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -102,7 +104,12 @@ import { format, formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { useEmail } from "@/lib/email";
 import { useAuth } from "@/lib/supabase/auth-context";
-import { EmailMessage, emailCategoryInfo } from "@/lib/email/types";
+import { EmailMessage, emailCategoryInfo, AIEmailTask } from "@/lib/email/types";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 
 // Kanban email card type
 interface KanbanEmailCard {
@@ -246,9 +253,21 @@ function SortableEmailCard({
             {email.matchedClientName || email.from.name || email.from.email}
           </h4>
           <p className="text-xs text-muted-foreground truncate">{email.subject}</p>
-          <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-            {classification?.summary || email.bodyPreview}
-          </p>
+          {/* Show primary action task or first task from list */}
+          {(classification?.primaryAction || classification?.actionTasks?.[0]) && (
+            <div className="flex items-center gap-1.5 mt-1.5 text-xs font-medium text-primary">
+              <ListTodo className="h-3 w-3 flex-shrink-0" />
+              <span className="truncate">
+                {classification?.primaryAction || classification?.actionTasks?.[0]?.title}
+              </span>
+            </div>
+          )}
+          {/* Fallback to summary if no tasks */}
+          {!classification?.primaryAction && !classification?.actionTasks?.length && (
+            <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+              {classification?.summary || email.bodyPreview}
+            </p>
+          )}
 
           <div className="flex items-center mt-2 pt-2 border-t gap-2">
             <div className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -460,6 +479,330 @@ function KanbanColumnComponent({
       </div>
     </div>
   );
+}
+
+// Email Modal Content Component - Task-focused layout
+function EmailModalContent({
+  email,
+  onToggleTask,
+  onAddToCalendar,
+  onSaveToHub,
+}: {
+  email: EmailMessage;
+  onToggleTask: (taskId: string) => void;
+  onAddToCalendar: (task: AIEmailTask) => void;
+  onSaveToHub: (attachmentId: string, name: string) => void;
+}) {
+  const [isEmailExpanded, setIsEmailExpanded] = useState(false);
+  const [completedTasks, setCompletedTasks] = useState<Set<string>>(new Set());
+  const classification = email.aiClassification;
+
+  // Generate mock tasks if none exist (for demo purposes)
+  const actionTasks: AIEmailTask[] = classification?.actionTasks || generateMockTasks(email);
+
+  const toggleTaskComplete = (taskId: string) => {
+    setCompletedTasks((prev) => {
+      const next = new Set(prev);
+      if (next.has(taskId)) {
+        next.delete(taskId);
+      } else {
+        next.add(taskId);
+      }
+      return next;
+    });
+    onToggleTask(taskId);
+  };
+
+  return (
+    <div className="flex-1 overflow-y-auto min-h-0">
+      <div className="space-y-4 pr-4 pb-4">
+        {/* From/Date header */}
+        <div className="flex items-center gap-3">
+          <Avatar className="h-10 w-10">
+            <AvatarFallback className="bg-primary text-primary-foreground">
+              {(email.from.name || email.from.email)
+                .split(" ")
+                .map((n) => n[0])
+                .join("")
+                .slice(0, 2)
+                .toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+          <div>
+            <p className="font-medium">{email.from.name || email.from.email}</p>
+            <p className="text-sm text-muted-foreground">{email.from.email}</p>
+          </div>
+          <p className="text-sm text-muted-foreground ml-auto" suppressHydrationWarning>
+            {format(email.receivedAt, "MMM d, yyyy 'at' h:mm a")}
+          </p>
+        </div>
+
+        {/* 1. ACTION TASKS CHECKLIST - Most prominent */}
+        {actionTasks.length > 0 && (
+          <div className="bg-primary/5 rounded-lg p-4 border border-primary/20">
+            <div className="flex items-center gap-2 mb-3">
+              <ListTodo className="h-4 w-4 text-primary" />
+              <span className="text-sm font-medium text-primary">Action Items</span>
+              <Badge variant="secondary" className="ml-auto text-xs">
+                {completedTasks.size}/{actionTasks.length}
+              </Badge>
+            </div>
+            <div className="space-y-2">
+              {actionTasks.map((task) => (
+                <div
+                  key={task.id}
+                  className={cn(
+                    "flex items-start gap-3 p-2 rounded-lg transition-colors",
+                    completedTasks.has(task.id) ? "bg-muted/50" : "bg-card hover:bg-muted/30"
+                  )}
+                >
+                  <button
+                    className="mt-0.5 flex-shrink-0"
+                    onClick={() => toggleTaskComplete(task.id)}
+                  >
+                    {completedTasks.has(task.id) ? (
+                      <CheckSquare className="h-4 w-4 text-primary" />
+                    ) : (
+                      <Square className="h-4 w-4 text-muted-foreground hover:text-primary" />
+                    )}
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    <p
+                      className={cn(
+                        "text-sm font-medium",
+                        completedTasks.has(task.id) && "line-through text-muted-foreground"
+                      )}
+                    >
+                      {task.title}
+                    </p>
+                    {task.description && (
+                      <p className="text-xs text-muted-foreground mt-0.5">{task.description}</p>
+                    )}
+                    {task.dueDate && (
+                      <p className="text-xs text-orange-600 mt-1 flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        Due: {format(task.dueDate, "MMM d, yyyy")}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    {/* Add to Calendar button for calendar tasks */}
+                    {task.type === "calendar" && task.calendarEvent && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                        onClick={() => onAddToCalendar(task)}
+                      >
+                        <CalendarPlus className="h-3.5 w-3.5 mr-1" />
+                        Add to Calendar
+                      </Button>
+                    )}
+                    {/* Save to Hub button for document tasks */}
+                    {task.type === "document" && task.attachmentId && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs text-green-600 hover:text-green-700 hover:bg-green-50"
+                        onClick={() => onSaveToHub(task.attachmentId!, task.attachmentName || "Document")}
+                      >
+                        <FolderDown className="h-3.5 w-3.5 mr-1" />
+                        Save to Hub
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 2. AI SUMMARY */}
+        {classification && (
+          <div className="bg-muted/30 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Bot className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium">Summary</span>
+              <Badge
+                variant="outline"
+                className={cn("ml-auto", priorityColors[classification.priority])}
+              >
+                {classification.priority}
+              </Badge>
+            </div>
+            <p className="text-sm text-muted-foreground">{classification.summary}</p>
+          </div>
+        )}
+
+        {/* 3. ATTACHMENTS with Save to Hub */}
+        {email.attachments && email.attachments.length > 0 && (
+          <div className="border rounded-lg p-4">
+            <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+              <Paperclip className="h-4 w-4" />
+              Attachments
+            </h4>
+            <div className="space-y-2">
+              {email.attachments.map((att) => (
+                <div
+                  key={att.id}
+                  className="flex items-center gap-3 p-2 bg-muted/50 rounded-lg"
+                >
+                  <FileText className="h-4 w-4 text-primary" />
+                  <span className="text-sm flex-1">{att.name}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {Math.round(att.size / 1024)} KB
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs text-green-600 hover:text-green-700 hover:bg-green-50"
+                    onClick={() => onSaveToHub(att.id, att.name)}
+                  >
+                    <FolderDown className="h-3.5 w-3.5 mr-1" />
+                    Save to Hub
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 4. COLLAPSIBLE FULL EMAIL */}
+        <Collapsible open={isEmailExpanded} onOpenChange={setIsEmailExpanded}>
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" className="w-full justify-between h-10 px-4 border rounded-lg">
+              <span className="flex items-center gap-2 text-sm">
+                <Mail className="h-4 w-4" />
+                Full Email
+              </span>
+              {isEmailExpanded ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )}
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="mt-2">
+            {email.bodyType === "html" ? (
+              <div className="border rounded-lg overflow-hidden bg-white">
+                <iframe
+                  srcDoc={email.body}
+                  className="w-full min-h-[300px] border-0"
+                  sandbox="allow-same-origin"
+                  title="Email content"
+                  onLoad={(e) => {
+                    const iframe = e.target as HTMLIFrameElement;
+                    if (iframe.contentDocument) {
+                      const height = iframe.contentDocument.body.scrollHeight;
+                      iframe.style.height = `${Math.min(height + 20, 500)}px`;
+                    }
+                  }}
+                />
+              </div>
+            ) : (
+              <div className="prose prose-sm max-w-none border rounded-lg p-4 bg-muted/20">
+                <pre className="whitespace-pre-wrap font-sans text-sm bg-transparent border-0 p-0">
+                  {email.body}
+                </pre>
+              </div>
+            )}
+          </CollapsibleContent>
+        </Collapsible>
+      </div>
+    </div>
+  );
+}
+
+// Generate mock tasks based on email content for demo
+function generateMockTasks(email: EmailMessage): AIEmailTask[] {
+  const tasks: AIEmailTask[] = [];
+  const classification = email.aiClassification;
+  const subject = email.subject.toLowerCase();
+
+  // Generate tasks based on email category and content
+  if (classification?.category === "document_request") {
+    tasks.push({
+      id: `task-${email.id}-1`,
+      title: "Review and send requested documents",
+      type: "action",
+      isCompleted: false,
+    });
+  }
+
+  if (classification?.category === "appointment" || subject.includes("meeting") || subject.includes("schedule")) {
+    tasks.push({
+      id: `task-${email.id}-cal`,
+      title: "Schedule meeting",
+      type: "calendar",
+      isCompleted: false,
+      calendarEvent: {
+        title: email.subject,
+        location: "TBD",
+      },
+    });
+  }
+
+  if (classification?.category === "tax_filing" || subject.includes("tax")) {
+    tasks.push({
+      id: `task-${email.id}-tax`,
+      title: "Process tax filing request",
+      type: "action",
+      isCompleted: false,
+    });
+  }
+
+  if (classification?.category === "payment" || subject.includes("invoice") || subject.includes("payment")) {
+    tasks.push({
+      id: `task-${email.id}-pay`,
+      title: "Process payment or invoice",
+      type: "action",
+      isCompleted: false,
+    });
+  }
+
+  if (classification?.requiresResponse) {
+    tasks.push({
+      id: `task-${email.id}-reply`,
+      title: "Reply to this email",
+      description: classification.responseUrgency === "immediate" ? "Urgent response needed" : undefined,
+      type: "response",
+      isCompleted: false,
+    });
+  }
+
+  // Add document tasks for attachments
+  if (email.attachments && email.attachments.length > 0) {
+    email.attachments.forEach((att, idx) => {
+      tasks.push({
+        id: `task-${email.id}-doc-${idx}`,
+        title: `Review attachment: ${att.name}`,
+        type: "document",
+        isCompleted: false,
+        attachmentId: att.id,
+        attachmentName: att.name,
+      });
+    });
+  }
+
+  // If no tasks generated, create a generic one based on category
+  if (tasks.length === 0 && classification) {
+    const actionMap: Record<string, string> = {
+      question: "Answer client question",
+      follow_up: "Follow up with client",
+      compliance: "Review compliance requirements",
+      information: "Review information",
+      urgent: "Handle urgent request",
+    };
+    const action = actionMap[classification.category] || "Review and respond";
+    tasks.push({
+      id: `task-${email.id}-generic`,
+      title: action,
+      type: "action",
+      isCompleted: false,
+    });
+  }
+
+  return tasks;
 }
 
 export default function EmailPage() {
@@ -1147,109 +1490,21 @@ export default function EmailPage() {
                 <DialogTitle>{selectedEmail?.subject}</DialogTitle>
               </DialogHeader>
               {selectedEmail && (
-                <div className="flex-1 overflow-y-auto min-h-0">
-                  <div className="space-y-4 pr-4 pb-4">
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-10 w-10">
-                        <AvatarFallback className="bg-primary text-primary-foreground">
-                          {(selectedEmail.from.name || selectedEmail.from.email)
-                            .split(" ")
-                            .map((n) => n[0])
-                            .join("")
-                            .slice(0, 2)
-                            .toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <p className="font-medium">
-                          {selectedEmail.from.name || selectedEmail.from.email}
-                        </p>
-                        <p className="text-sm text-muted-foreground">{selectedEmail.from.email}</p>
-                      </div>
-                      <p className="text-sm text-muted-foreground ml-auto" suppressHydrationWarning>
-                        {format(selectedEmail.receivedAt, "MMM d, yyyy 'at' h:mm a")}
-                      </p>
-                    </div>
-
-                    {selectedEmail.aiClassification && (
-                      <div className="bg-primary/5 rounded-lg p-4">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Bot className="h-4 w-4 text-primary" />
-                          <span className="text-sm font-medium text-primary">AI Analysis</span>
-                          <Badge
-                            className={cn(
-                              "ml-auto",
-                              priorityColors[selectedEmail.aiClassification.priority]
-                            )}
-                          >
-                            {selectedEmail.aiClassification.priority}
-                          </Badge>
-                        </div>
-                        <p className="text-sm">{selectedEmail.aiClassification.summary}</p>
-                        {selectedEmail.aiClassification.keyPoints.length > 0 && (
-                          <ul className="mt-2 space-y-1">
-                            {selectedEmail.aiClassification.keyPoints.map((point, idx) => (
-                              <li
-                                key={idx}
-                                className="text-sm text-muted-foreground flex items-center gap-2"
-                              >
-                                <ArrowRight className="h-3 w-3 text-primary" />
-                                {point}
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-                    )}
-
-                    {selectedEmail.bodyType === "html" ? (
-                      <div className="border rounded-lg overflow-hidden bg-white">
-                        <iframe
-                          srcDoc={selectedEmail.body}
-                          className="w-full min-h-[300px] border-0"
-                          sandbox="allow-same-origin"
-                          title="Email content"
-                          onLoad={(e) => {
-                            const iframe = e.target as HTMLIFrameElement;
-                            if (iframe.contentDocument) {
-                              const height = iframe.contentDocument.body.scrollHeight;
-                              iframe.style.height = `${Math.min(height + 20, 500)}px`;
-                            }
-                          }}
-                        />
-                      </div>
-                    ) : (
-                      <div className="prose prose-sm max-w-none">
-                        <pre className="whitespace-pre-wrap font-sans text-sm bg-transparent border-0 p-0">
-                          {selectedEmail.body}
-                        </pre>
-                      </div>
-                    )}
-
-                    {selectedEmail.attachments && selectedEmail.attachments.length > 0 && (
-                      <div className="border-t pt-4">
-                        <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
-                          <Paperclip className="h-4 w-4" />
-                          Attachments
-                        </h4>
-                        <div className="space-y-2">
-                          {selectedEmail.attachments.map((att) => (
-                            <div
-                              key={att.id}
-                              className="flex items-center gap-3 p-2 bg-muted/50 rounded-lg"
-                            >
-                              <FileText className="h-4 w-4 text-primary" />
-                              <span className="text-sm">{att.name}</span>
-                              <span className="text-xs text-muted-foreground">
-                                {Math.round(att.size / 1024)} KB
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <EmailModalContent
+                  email={selectedEmail}
+                  onToggleTask={(taskId) => {
+                    // Toggle task completion - would update state in real implementation
+                    toast.success("Task updated");
+                  }}
+                  onAddToCalendar={(task) => {
+                    // Would integrate with calendar API
+                    toast.success(`Adding "${task.calendarEvent?.title || task.title}" to calendar...`);
+                  }}
+                  onSaveToHub={(attachmentId, name) => {
+                    // Placeholder for future implementation
+                    toast.success(`Saving "${name}" to Hub folder...`);
+                  }}
+                />
               )}
               <DialogFooter className="flex-shrink-0 flex-wrap gap-2">
                 <div className="flex gap-2 mr-auto flex-wrap">
