@@ -82,9 +82,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           // Only update user if we got valid profile data
           if (profile && !error) {
+            // Override role for specific admin emails
+            const adminEmails = ["tdaniel@botmakers.ai"];
+            const userRole = adminEmails.includes(session.user.email || "")
+              ? "admin"
+              : (profile.role as UserRole) || "staff";
+
             setUser({
               ...session.user,
-              role: (profile.role as UserRole) || "admin",
+              role: userRole,
               full_name: profile.full_name,
               avatar_url: profile.avatar_url,
               department: profile.department,
@@ -118,9 +124,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           // Only update user if we got valid profile data
           if (profile && !error) {
+            // Override role for specific admin emails
+            const adminEmails = ["tdaniel@botmakers.ai"];
+            const userRole = adminEmails.includes(session.user.email || "")
+              ? "admin"
+              : (profile.role as UserRole) || "staff";
+
             setUser({
               ...session.user,
-              role: (profile.role as UserRole) || "admin",
+              role: userRole,
               full_name: profile.full_name,
               avatar_url: profile.avatar_url,
               department: profile.department,
