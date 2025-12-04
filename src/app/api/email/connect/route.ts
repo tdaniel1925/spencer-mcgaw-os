@@ -26,7 +26,12 @@ const SCOPES = [
 export async function GET(request: NextRequest) {
   // Support both naming conventions for Microsoft OAuth credentials
   const clientId = process.env.MICROSOFT_CLIENT_ID || process.env.MS_GRAPH_CLIENT_ID;
-  const redirectUri = process.env.MICROSOFT_REDIRECT_URI || `${request.nextUrl.origin}/api/email/callback`;
+
+  // Use explicit redirect URI from env, or construct from NEXT_PUBLIC_APP_URL, or fallback to request origin
+  const baseUrl = process.env.MS_GRAPH_REDIRECT_URI
+    ? null // If MS_GRAPH_REDIRECT_URI is set, use it directly
+    : (process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin);
+  const redirectUri = process.env.MS_GRAPH_REDIRECT_URI || `${baseUrl}/api/email/callback`;
 
   if (!clientId) {
     return NextResponse.json(
