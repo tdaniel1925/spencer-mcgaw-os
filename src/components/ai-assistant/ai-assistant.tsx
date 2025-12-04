@@ -231,8 +231,8 @@ const appKnowledge = {
   // Common questions and answers
   commonQuestions: [
     {
-      keywords: ["add", "create", "new", "client"],
-      answer: "To add a new client, go to the Clients page from the sidebar and click the 'Add Client' button in the top right. Fill in their name, email, and any other relevant information, then click Save.",
+      keywords: ["add", "create", "new", "client", "contact"],
+      answer: "To add a new client or contact, go to the Clients page from the sidebar and click the 'Add Client' button in the top right. Fill in their name, email, phone, and any other relevant information, then click Save.",
     },
     {
       keywords: ["connect", "email", "microsoft", "outlook"],
@@ -375,12 +375,19 @@ export function AIAssistant() {
     }
   }, [isOpen, messages.length, pathname]);
 
-  // Scroll to bottom when messages change
+  // Scroll to bottom when messages change or typing indicator appears
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      // ScrollArea uses Radix UI which has a viewport inside - find it
+      const viewport = scrollRef.current.querySelector('[data-slot="scroll-area-viewport"]');
+      if (viewport) {
+        // Use setTimeout to ensure DOM is updated before scrolling
+        setTimeout(() => {
+          viewport.scrollTop = viewport.scrollHeight;
+        }, 10);
+      }
     }
-  }, [messages]);
+  }, [messages, isTyping]);
 
   // Focus input when opened
   useEffect(() => {
