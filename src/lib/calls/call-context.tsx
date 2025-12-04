@@ -17,25 +17,10 @@ function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
 
-// Mock clients for matching
-const mockClients = [
-  { id: "CL001", name: "John Smith", phone: "+1 (555) 123-4567", email: "john.smith@email.com" },
-  { id: "CL002", name: "ABC Corporation", phone: "+1 (555) 234-5678", email: "contact@abccorp.com" },
-  { id: "CL003", name: "Sarah Johnson", phone: "+1 (555) 345-6789", email: "sarah.j@email.com" },
-  { id: "CL004", name: "Tech Solutions LLC", phone: "+1 (555) 456-7890", email: "info@techsolutions.com" },
-  { id: "CL005", name: "Mike Williams", phone: "+1 (555) 567-8901", email: "mike.w@consulting.com" },
-];
-
-// Normalize phone number for comparison
-function normalizePhone(phone: string): string {
-  return phone.replace(/\D/g, "").slice(-10);
-}
-
-// Match caller to existing client
-function matchClient(callerPhone: string): { id: string; name: string } | null {
-  const normalizedCaller = normalizePhone(callerPhone);
-  const client = mockClients.find(c => normalizePhone(c.phone) === normalizedCaller);
-  return client ? { id: client.id, name: client.name } : null;
+// Match caller to existing client (will integrate with real client database)
+function matchClient(_callerPhone: string): { id: string; name: string } | null {
+  // TODO: Integrate with real client database lookup
+  return null;
 }
 
 // AI analysis simulation (in production, this would call OpenAI/Claude)
@@ -247,65 +232,6 @@ function parseWebhookData(rawData: RawWebhookData): Partial<CallRecord> {
   };
 }
 
-// Generate mock calls
-function generateMockCalls(): CallRecord[] {
-  const mockTranscripts = [
-    {
-      phone: "+1 (555) 123-4567",
-      transcript: "Hi, this is John Smith calling. I need to check on the status of my tax return. I filed it about 3 weeks ago and haven't heard anything. Can someone give me a call back? My number is 555-123-4567. Thank you.",
-      duration: 45,
-    },
-    {
-      phone: "+1 (555) 999-8888",
-      transcript: "Hello, I'm looking for a new accountant for my small business. I was referred by a friend and wanted to learn more about your services. This is urgent as I need help with quarterly taxes coming up. Please call me back at 555-999-8888.",
-      duration: 62,
-    },
-    {
-      phone: "+1 (555) 234-5678",
-      transcript: "This is ABC Corporation. We need to schedule a meeting to discuss our year-end financials. We have some questions about depreciation and want to review before filing. Please send available times.",
-      duration: 38,
-    },
-    {
-      phone: "+1 (555) 777-6666",
-      transcript: "Hi, I received a bill for $2,500 but I thought my invoice was only $1,800. Can someone explain the difference? I'm a bit frustrated because this is the second time there's been a discrepancy. Call me back please.",
-      duration: 55,
-    },
-    {
-      phone: "+1 (555) 345-6789",
-      transcript: "Hey, it's Sarah. Just following up on our conversation from last week about the investment documents. Do you have those ready yet? No rush, just checking in. Thanks!",
-      duration: 28,
-    },
-  ];
-
-  return mockTranscripts.map((mock, index) => {
-    const id = generateId();
-    const aiAnalysis = generateAIAnalysis(mock.transcript, mock.phone);
-    const matchedClient = matchClient(mock.phone);
-    const hoursAgo = index * 3 + Math.floor(Math.random() * 2);
-
-    return {
-      id,
-      source: "phone_call" as const,
-      sourceProvider: "vapi",
-      callerPhone: mock.phone,
-      callerName: matchedClient?.name || undefined,
-      callStartedAt: new Date(Date.now() - 1000 * 60 * 60 * hoursAgo),
-      callEndedAt: new Date(Date.now() - 1000 * 60 * 60 * hoursAgo + mock.duration * 1000),
-      durationSeconds: mock.duration,
-      direction: "inbound" as const,
-      recordingUrl: `https://recordings.example.com/call-${id}.mp3`,
-      transcript: mock.transcript,
-      aiAnalysis,
-      matchedClientId: matchedClient?.id,
-      matchedClientName: matchedClient?.name,
-      addedToClientRecord: !!matchedClient,
-      status: index === 0 ? "new" : index === 1 ? "action_required" : "in_review",
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * hoursAgo),
-      updatedAt: new Date(Date.now() - 1000 * 60 * 60 * hoursAgo),
-    };
-  });
-}
-
 interface CallContextType {
   // Calls
   calls: CallRecord[];
@@ -346,28 +272,12 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   const [notifications, setNotifications] = useState<CallNotification[]>([]);
   const [actionRules, setActionRules] = useState<CallActionRule[]>([]);
 
-  // Initialize with mock data
+  // Initialize with empty state - real data comes from webhooks
   useEffect(() => {
-    const mockCalls = generateMockCalls();
-    setCalls(mockCalls);
-
-    // Create initial notifications for new calls
-    const initialNotifications: CallNotification[] = mockCalls
-      .filter(c => c.status === "new" || c.status === "action_required")
-      .map(call => ({
-        id: generateId(),
-        callId: call.id,
-        title: call.aiAnalysis?.category === "urgent_matter" ? "Urgent Call" : "New Call",
-        message: call.aiAnalysis?.summary || "New call received",
-        callerName: call.callerName,
-        callerPhone: call.callerPhone,
-        category: call.aiAnalysis?.category || "other",
-        urgency: call.aiAnalysis?.urgency || "medium",
-        createdAt: call.createdAt,
-        read: false,
-        dismissed: false,
-      }));
-    setNotifications(initialNotifications);
+    // TODO: Load calls from database on mount
+    // For now, start with empty state for webhook testing
+    setCalls([]);
+    setNotifications([]);
   }, []);
 
   // Get call by ID
