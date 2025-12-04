@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { calls, activityLogs } from "@/db/schema";
+import { calls, activityLogs, webhookLogs } from "@/db/schema";
 import { parseWebhookWithAI, isAIParsingAvailable } from "@/lib/ai";
 import type { ParsedWebhookData } from "@/lib/ai";
+import { eq } from "drizzle-orm";
 
 // Store processed webhook IDs to prevent replay (in production, use Redis or database)
 const processedWebhooks = new Set<string>();
@@ -20,6 +21,19 @@ const MAX_PROCESSED_WEBHOOKS = 10000;
  * - message.customer: Customer/caller information
  */
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+  let webhookLogId: string | null = null;
+
+  // Extract request metadata
+  const headers: Record<string, string> = {};
+  request.headers.forEach((value, key) => {
+    headers[key] = value;
+  });
+  const ipAddress = request.headers.get("x-forwarded-for") ||
+                    request.headers.get("x-real-ip") ||
+                    "unknown";
+  const userAgent = request.headers.get("user-agent") || "unknown";
+
   try {
     const rawBody = await request.text();
 
@@ -28,12 +42,40 @@ export async function POST(request: NextRequest) {
     try {
       data = JSON.parse(rawBody);
     } catch {
+      // Log failed webhook
+      await db.insert(webhookLogs).values({
+        endpoint: "/api/webhooks/vapi",
+        source: "vapi",
+        status: "failed",
+        httpMethod: "POST",
+        headers,
+        rawPayload: { raw: rawBody.substring(0, 10000) },
+        errorMessage: "Invalid JSON payload",
+        processingTimeMs: Date.now() - startTime,
+        ipAddress,
+        userAgent,
+      });
+
       console.error("[VAPI Webhook] Failed to parse JSON payload");
       return NextResponse.json(
         { error: "Invalid JSON payload" },
         { status: 400 }
       );
     }
+
+    // Create initial webhook log entry
+    const [webhookLog] = await db.insert(webhookLogs).values({
+      endpoint: "/api/webhooks/vapi",
+      source: "vapi",
+      status: "received",
+      httpMethod: "POST",
+      headers,
+      rawPayload: data,
+      ipAddress,
+      userAgent,
+    }).returning({ id: webhookLogs.id });
+
+    webhookLogId = webhookLog?.id || null;
 
     // Log incoming webhook for debugging
     console.log("[VAPI Webhook] Received payload:", JSON.stringify(data, null, 2));
@@ -51,6 +93,18 @@ export async function POST(request: NextRequest) {
     // Check for duplicate processing
     if (processedWebhooks.has(callId)) {
       console.log("[VAPI Webhook] Duplicate webhook ignored:", callId);
+
+      // Update webhook log
+      if (webhookLogId) {
+        await db.update(webhookLogs)
+          .set({
+            status: "stored",
+            processingTimeMs: Date.now() - startTime,
+            errorMessage: "Duplicate - already processed",
+          })
+          .where(eq(webhookLogs.id, webhookLogId));
+      }
+
       return NextResponse.json({
         success: true,
         message: "Webhook already processed",
@@ -67,12 +121,33 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Update status to parsing
+    if (webhookLogId) {
+      await db.update(webhookLogs)
+        .set({ status: "parsing" })
+        .where(eq(webhookLogs.id, webhookLogId));
+    }
+
     // Try AI parsing if available
     let parsedData: ParsedWebhookData | null = null;
-    if (isAIParsingAvailable()) {
+    const aiParsingAvailable = isAIParsingAvailable();
+
+    if (aiParsingAvailable) {
       console.log("[VAPI Webhook] AI parsing available, processing...");
       parsedData = await parseWebhookWithAI(data);
       console.log("[VAPI Webhook] AI parsed result:", JSON.stringify(parsedData, null, 2));
+    }
+
+    // Update status to parsed
+    if (webhookLogId) {
+      await db.update(webhookLogs)
+        .set({
+          status: "parsed",
+          aiParsingUsed: aiParsingAvailable,
+          aiConfidence: parsedData?.confidence ? Math.round(parsedData.confidence * 100) : null,
+          parsedData: parsedData as unknown as Record<string, unknown>,
+        })
+        .where(eq(webhookLogs.id, webhookLogId));
     }
 
     // Extract call data from VAPI payload
@@ -149,14 +224,25 @@ export async function POST(request: NextRequest) {
         vapiMessageType: messageType,
         sourceProvider: "vapi",
         analysis: parsedData?.analysis || null,
-        rawPayload: data,
         parsedAt: parsedData?.parsedAt || new Date().toISOString(),
         confidence: parsedData?.confidence || null,
         aiParsed: !!parsedData,
+        webhookLogId,
       },
     }).returning({ id: calls.id });
 
     const recordId = insertedCall?.id || null;
+
+    // Update webhook log with final status
+    if (webhookLogId) {
+      await db.update(webhookLogs)
+        .set({
+          status: "stored",
+          resultCallId: recordId,
+          processingTimeMs: Date.now() - startTime,
+        })
+        .where(eq(webhookLogs.id, webhookLogId));
+    }
 
     // Log activity
     await db.insert(activityLogs).values({
@@ -167,6 +253,7 @@ export async function POST(request: NextRequest) {
         vapiCallId: callId,
         category: parsedData?.analysis.category || null,
         urgency: parsedData?.analysis.urgency || null,
+        webhookLogId,
       },
     });
 
@@ -177,11 +264,26 @@ export async function POST(request: NextRequest) {
       message: "VAPI webhook processed successfully",
       recordId,
       callId,
+      webhookLogId,
       aiParsed: !!parsedData,
       summary,
+      processingTimeMs: Date.now() - startTime,
     });
   } catch (error) {
     console.error("[VAPI Webhook] Error processing webhook:", error);
+
+    // Update webhook log with error
+    if (webhookLogId) {
+      await db.update(webhookLogs)
+        .set({
+          status: "failed",
+          errorMessage: error instanceof Error ? error.message : "Unknown error",
+          errorStack: error instanceof Error ? error.stack : undefined,
+          processingTimeMs: Date.now() - startTime,
+        })
+        .where(eq(webhookLogs.id, webhookLogId));
+    }
+
     return NextResponse.json(
       { error: "Internal server error", details: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 }

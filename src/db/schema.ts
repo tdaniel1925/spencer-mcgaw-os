@@ -310,6 +310,42 @@ export const calendarEventsRelations = relations(calendarEvents, ({ one }) => ({
   }),
 }));
 
+// Webhook Logs table (for monitoring webhook activity)
+export const webhookStatusEnum = pgEnum("webhook_status", [
+  "received",
+  "parsing",
+  "parsed",
+  "stored",
+  "failed",
+]);
+
+export const webhookLogs = pgTable("webhook_logs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  endpoint: varchar("endpoint", { length: 100 }).notNull(),
+  source: varchar("source", { length: 100 }),
+  status: webhookStatusEnum("status").notNull().default("received"),
+  httpMethod: varchar("http_method", { length: 10 }).notNull().default("POST"),
+  headers: jsonb("headers").default({}),
+  rawPayload: jsonb("raw_payload").default({}),
+  parsedData: jsonb("parsed_data"),
+  aiParsingUsed: boolean("ai_parsing_used").default(false),
+  aiConfidence: integer("ai_confidence"),
+  errorMessage: text("error_message"),
+  errorStack: text("error_stack"),
+  processingTimeMs: integer("processing_time_ms"),
+  resultCallId: uuid("result_call_id").references(() => calls.id),
+  ipAddress: varchar("ip_address", { length: 45 }),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const webhookLogsRelations = relations(webhookLogs, ({ one }) => ({
+  resultCall: one(calls, {
+    fields: [webhookLogs.resultCallId],
+    references: [calls.id],
+  }),
+}));
+
 // Types
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -325,3 +361,5 @@ export type ActivityLog = typeof activityLogs.$inferSelect;
 export type NewActivityLog = typeof activityLogs.$inferInsert;
 export type CalendarEvent = typeof calendarEvents.$inferSelect;
 export type NewCalendarEvent = typeof calendarEvents.$inferInsert;
+export type WebhookLog = typeof webhookLogs.$inferSelect;
+export type NewWebhookLog = typeof webhookLogs.$inferInsert;

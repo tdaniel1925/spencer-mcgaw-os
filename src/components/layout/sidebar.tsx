@@ -23,6 +23,7 @@ import {
   UserPen,
   Menu,
   X,
+  Webhook,
 } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -131,6 +132,13 @@ const adminNavItems: NavItem[] = [
     href: "/admin/users",
     icon: UserCog,
     permission: "users:view",
+    adminOnly: true,
+  },
+  {
+    title: "Webhook Monitor",
+    href: "/admin/webhooks",
+    icon: Webhook,
+    permission: "system:view_audit_logs",
     adminOnly: true,
   },
   {

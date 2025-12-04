@@ -1194,9 +1194,9 @@ export default function CalendarPage() {
                   ))}
                 </div>
 
-                {/* Time Grid */}
-                <ScrollArea className="flex-1">
-                  <div className="grid grid-cols-8">
+                {/* Time Grid - scrollable to show all 24 hours */}
+                <ScrollArea className="flex-1 min-h-0">
+                  <div className="grid grid-cols-8" style={{ minHeight: "1536px" }}>
                     {/* All Day Row */}
                     <div className="p-2 text-xs text-muted-foreground border-b">
                       all-day

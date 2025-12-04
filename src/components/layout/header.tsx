@@ -218,49 +218,110 @@ export function Header({ title, breadcrumbItems, currentPageLabel }: HeaderProps
         </Popover>
 
         {/* General Notifications */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="relative"
-          aria-label={counts.general > 0 ? `${counts.general} notifications` : "No notifications"}
-        >
-          <Bell className="h-5 w-5" />
-          {counts.general > 0 && (
-            <Badge className="absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 flex items-center justify-center text-[10px] bg-accent text-accent-foreground" aria-hidden="true">
-              {counts.general}
-            </Badge>
-          )}
-        </Button>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="relative"
+              aria-label={counts.general > 0 ? `${counts.general} notifications` : "No notifications"}
+            >
+              <Bell className="h-5 w-5" />
+              {counts.general > 0 && (
+                <Badge className="absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 flex items-center justify-center text-[10px] bg-accent text-accent-foreground" aria-hidden="true">
+                  {counts.general}
+                </Badge>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-80 p-0">
+            <div className="flex items-center justify-between px-4 py-3 border-b">
+              <div className="flex items-center gap-2">
+                <Bell className="h-4 w-4 text-primary" />
+                <span className="font-medium text-sm">Notifications</span>
+              </div>
+            </div>
+            <div className="py-8 text-center text-muted-foreground">
+              <Bell className="h-8 w-8 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">No new notifications</p>
+              <p className="text-xs mt-1">System notifications will appear here</p>
+            </div>
+            <div className="border-t p-2">
+              <Button variant="ghost" size="sm" className="w-full" asChild>
+                <Link href="/activity">View all activity</Link>
+              </Button>
+            </div>
+          </PopoverContent>
+        </Popover>
 
         {/* Messages */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="relative"
-          aria-label={counts.messages > 0 ? `${counts.messages} messages` : "No messages"}
-        >
-          <Mail className="h-5 w-5" />
-          {counts.messages > 0 && (
-            <Badge className="absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 flex items-center justify-center text-[10px] bg-destructive text-white" aria-hidden="true">
-              {counts.messages}
-            </Badge>
-          )}
-        </Button>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="relative"
+              aria-label={counts.messages > 0 ? `${counts.messages} messages` : "No messages"}
+            >
+              <Mail className="h-5 w-5" />
+              {counts.messages > 0 && (
+                <Badge className="absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 flex items-center justify-center text-[10px] bg-destructive text-white" aria-hidden="true">
+                  {counts.messages}
+                </Badge>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-80 p-0">
+            <div className="flex items-center justify-between px-4 py-3 border-b">
+              <div className="flex items-center gap-2">
+                <Mail className="h-4 w-4 text-primary" />
+                <span className="font-medium text-sm">Messages</span>
+              </div>
+            </div>
+            <div className="py-8 text-center text-muted-foreground">
+              <Mail className="h-8 w-8 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">No new messages</p>
+              <p className="text-xs mt-1">Email notifications will appear here</p>
+            </div>
+            <div className="border-t p-2">
+              <Button variant="ghost" size="sm" className="w-full" asChild>
+                <Link href="/email">View all emails</Link>
+              </Button>
+            </div>
+          </PopoverContent>
+        </Popover>
 
         {/* Chat */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="relative"
-          aria-label={counts.chat > 0 ? `${counts.chat} chat messages` : "No chat messages"}
-        >
-          <MessageSquare className="h-5 w-5" />
-          {counts.chat > 0 && (
-            <Badge className="absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 flex items-center justify-center text-[10px] bg-primary text-primary-foreground" aria-hidden="true">
-              {counts.chat}
-            </Badge>
-          )}
-        </Button>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="relative"
+              aria-label={counts.chat > 0 ? `${counts.chat} chat messages` : "No chat messages"}
+            >
+              <MessageSquare className="h-5 w-5" />
+              {counts.chat > 0 && (
+                <Badge className="absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 flex items-center justify-center text-[10px] bg-primary text-primary-foreground" aria-hidden="true">
+                  {counts.chat}
+                </Badge>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-80 p-0">
+            <div className="flex items-center justify-between px-4 py-3 border-b">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="h-4 w-4 text-primary" />
+                <span className="font-medium text-sm">Chat</span>
+              </div>
+            </div>
+            <div className="py-8 text-center text-muted-foreground">
+              <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">No chat messages</p>
+              <p className="text-xs mt-1">Team chat messages will appear here</p>
+            </div>
+          </PopoverContent>
+        </Popover>
 
         {/* Profile Dropdown */}
         <DropdownMenu>
