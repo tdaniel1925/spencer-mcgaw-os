@@ -109,121 +109,11 @@ import { categoryInfo } from "@/lib/calendar/types";
 // View types
 type ViewType = "month" | "week" | "day" | "schedule";
 
-// Mock data for connected calendars
-const mockConnections = [
-  { id: "1", provider: "microsoft" as const, email: "user@company.com", syncEnabled: true },
-];
+// Empty connections array - real data comes from calendar integrations
+const calendarConnections: { id: string; provider: "microsoft" | "google"; email: string; syncEnabled: boolean }[] = [];
 
-// Mock events with external calendar data
-const mockEvents: CalendarEvent[] = [
-  {
-    id: "1",
-    provider: "local",
-    title: "Client Meeting - John Smith",
-    description: "Annual tax review meeting. Discuss Q4 estimates and year-end planning.",
-    location: "Conference Room A",
-    startTime: new Date(2025, 0, 3, 10, 0),
-    endTime: new Date(2025, 0, 3, 11, 30),
-    allDay: false,
-    isRecurring: false,
-    status: "confirmed",
-    visibility: "default",
-    attendees: [
-      { email: "john.smith@client.com", name: "John Smith", status: "accepted" },
-      { email: "sarah@company.com", name: "Sarah Johnson", status: "accepted" },
-    ],
-    reminders: [{ method: "popup", minutes: 15 }],
-    category: "client_meeting",
-    color: "bg-blue-500",
-    clientId: "client-1",
-    clientName: "John Smith",
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: "2",
-    provider: "microsoft",
-    externalId: "ms-event-123",
-    title: "Team Standup",
-    description: "Daily team sync",
-    startTime: new Date(2025, 0, 3, 9, 0),
-    endTime: new Date(2025, 0, 3, 9, 30),
-    allDay: false,
-    isRecurring: true,
-    recurrenceRule: { frequency: "daily", interval: 1 },
-    status: "confirmed",
-    visibility: "default",
-    attendees: [],
-    reminders: [{ method: "popup", minutes: 5 }],
-    category: "internal_meeting",
-    color: "bg-green-500",
-    meetingLink: "https://teams.microsoft.com/meet/123",
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: "3",
-    provider: "local",
-    title: "Tax Filing Deadline - Williams Corp",
-    description: "Corporate tax return due",
-    startTime: new Date(2025, 0, 5, 0, 0),
-    endTime: new Date(2025, 0, 5, 23, 59),
-    allDay: true,
-    isRecurring: false,
-    status: "confirmed",
-    visibility: "default",
-    attendees: [],
-    reminders: [
-      { method: "email", minutes: 1440 },
-      { method: "popup", minutes: 60 },
-    ],
-    category: "deadline",
-    color: "bg-red-500",
-    clientId: "client-2",
-    clientName: "Williams Corp",
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: "4",
-    provider: "local",
-    title: "Consultation Call - New Client",
-    description: "Initial consultation with prospective client",
-    startTime: new Date(2025, 0, 6, 14, 0),
-    endTime: new Date(2025, 0, 6, 15, 0),
-    allDay: false,
-    isRecurring: false,
-    status: "tentative",
-    visibility: "default",
-    attendees: [
-      { email: "prospect@company.com", name: "Prospect", status: "needsAction" },
-    ],
-    reminders: [{ method: "popup", minutes: 15 }],
-    category: "consultation",
-    color: "bg-cyan-500",
-    meetingLink: "https://zoom.us/j/123456",
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: "5",
-    provider: "local",
-    title: "Document Review - Q4 Statements",
-    description: "Review quarterly financial statements",
-    startTime: new Date(2025, 0, 7, 11, 0),
-    endTime: new Date(2025, 0, 7, 12, 30),
-    allDay: false,
-    isRecurring: false,
-    status: "confirmed",
-    visibility: "default",
-    attendees: [],
-    reminders: [{ method: "popup", minutes: 15 }],
-    category: "document_review",
-    color: "bg-orange-500",
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-];
+// Empty events array - real data comes from calendar integrations
+const initialEvents: CalendarEvent[] = [];
 
 // Category options for the form
 const categoryOptions: { value: EventCategory; label: string; color: string }[] = [
@@ -859,7 +749,7 @@ export default function CalendarPage() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
   const [view, setView] = useState<ViewType>("week");
-  const [events, setEvents] = useState<CalendarEvent[]>(mockEvents);
+  const [events, setEvents] = useState<CalendarEvent[]>(initialEvents);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [showEventDetail, setShowEventDetail] = useState(false);
   const [showCreateEvent, setShowCreateEvent] = useState(false);
@@ -1208,7 +1098,7 @@ export default function CalendarPage() {
                   <span>Local Calendar</span>
                   <Badge variant="outline" className="ml-auto text-xs">Active</Badge>
                 </div>
-                {mockConnections.map((conn) => (
+                {calendarConnections.map((conn) => (
                   <div key={conn.id} className="flex items-center gap-2 text-sm">
                     {providerIcons[conn.provider]}
                     <span className="truncate flex-1">{conn.email}</span>

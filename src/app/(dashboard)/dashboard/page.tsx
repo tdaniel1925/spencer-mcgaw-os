@@ -70,70 +70,11 @@ interface AICompletedAction {
   icon: React.ElementType;
 }
 
-// Mock Data
-const mockUrgentItems: UrgentItem[] = [
-  { id: "1", title: "IRS Notice - ABC Corp", client: "ABC Corporation", dueIn: "2 days", type: "irs_notice", action: "Review" },
-  { id: "2", title: "Client callback requested", client: "Sarah Johnson", dueIn: "Today", type: "callback", action: "Call" },
-  { id: "3", title: "Document approval needed", client: "Tech Solutions", dueIn: "Today", type: "approval", action: "Approve" },
-  { id: "4", title: "Extension deadline", client: "Miller Family", dueIn: "3 days", type: "deadline", action: "File" },
-];
-
-const mockPriorities: PriorityItem[] = [
-  { id: "1", title: "Review AI-processed documents", count: 5 },
-  { id: "2", title: "Follow up on waiting tasks", count: 3 },
-  { id: "3", title: "Approve AI-drafted emails", count: 2 },
-];
-
-const mockPhoneCalls: AIPhoneCall[] = [
-  {
-    id: "1",
-    callerName: "John Smith",
-    callerPhone: "(555) 123-4567",
-    time: new Date(Date.now() - 1000 * 60 * 27),
-    intent: "Schedule appointment for tax review",
-    actionTaken: "Created task: Schedule callback",
-    status: "needs_action",
-    duration: "2:34",
-  },
-  {
-    id: "2",
-    callerName: "Unknown Caller",
-    callerPhone: "(555) 987-6543",
-    time: new Date(Date.now() - 1000 * 60 * 75),
-    intent: "New client inquiry - business taxes",
-    actionTaken: "Added to leads, sent info packet",
-    status: "handled",
-    duration: "4:12",
-  },
-  {
-    id: "3",
-    callerName: "Sarah Johnson",
-    callerPhone: "(555) 456-7890",
-    time: new Date(Date.now() - 1000 * 60 * 100),
-    intent: "Refund status question",
-    actionTaken: "AI provided status update",
-    status: "handled",
-    duration: "1:45",
-  },
-  {
-    id: "4",
-    callerName: "Mike Chen",
-    callerPhone: "(555) 234-5678",
-    time: new Date(Date.now() - 1000 * 60 * 150),
-    intent: "Document submission confirmation",
-    actionTaken: "Confirmed receipt, no action needed",
-    status: "handled",
-    duration: "0:58",
-  },
-];
-
-const mockAIActions: AICompletedAction[] = [
-  { id: "1", action: "Emails categorized", count: 12, icon: Mail },
-  { id: "2", action: "Documents processed", count: 5, icon: FileText },
-  { id: "3", action: "Tasks auto-created", count: 3, icon: CheckCircle },
-  { id: "4", action: "Reminders sent", count: 8, icon: Clock },
-  { id: "5", action: "Follow-ups scheduled", count: 2, icon: Calendar },
-];
+// Empty arrays - real data comes from database/webhooks
+const urgentItems: UrgentItem[] = [];
+const priorities: PriorityItem[] = [];
+const phoneCalls: AIPhoneCall[] = [];
+const aiActions: AICompletedAction[] = [];
 
 const urgentTypeConfig = {
   irs_notice: { color: "bg-red-500", icon: AlertCircle },
@@ -275,10 +216,10 @@ export default function DashboardPage() {
                 <div>
                   <div className="flex items-center gap-2 mb-2">
                     <div className="w-2 h-2 rounded-full bg-red-500" />
-                    <span className="text-sm font-medium">URGENT ({mockUrgentItems.length})</span>
+                    <span className="text-sm font-medium">URGENT ({urgentItems.length})</span>
                   </div>
                   <div className="space-y-2">
-                    {mockUrgentItems.map((item) => {
+                    {urgentItems.map((item) => {
                       const config = urgentTypeConfig[item.type];
                       const Icon = config.icon;
                       return (
@@ -308,10 +249,10 @@ export default function DashboardPage() {
                 <div>
                   <div className="flex items-center gap-2 mb-2">
                     <div className="w-2 h-2 rounded-full bg-amber-500" />
-                    <span className="text-sm font-medium">TODAY&apos;S PRIORITIES ({mockPriorities.length})</span>
+                    <span className="text-sm font-medium">TODAY&apos;S PRIORITIES ({priorities.length})</span>
                   </div>
                   <div className="space-y-2">
-                    {mockPriorities.map((item) => (
+                    {priorities.map((item) => (
                       <div
                         key={item.id}
                         className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
@@ -393,14 +334,14 @@ export default function DashboardPage() {
                     AI Phone Calls
                   </CardTitle>
                   <Badge variant="secondary" className="text-xs">
-                    {mockPhoneCalls.length} today
+                    {phoneCalls.length} today
                   </Badge>
                 </div>
               </CardHeader>
               <CardContent className="p-0">
                 <ScrollArea className="h-[320px]">
                   <div className="p-4 space-y-3">
-                    {mockPhoneCalls.map((call) => (
+                    {phoneCalls.map((call) => (
                       <div key={call.id} className="p-3 border rounded-lg space-y-2">
                         <div className="flex items-start justify-between">
                           <div className="flex items-center gap-2">
@@ -453,7 +394,7 @@ export default function DashboardPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {mockAIActions.map((action) => {
+                  {aiActions.map((action) => {
                     const Icon = action.icon;
                     return (
                       <div key={action.id} className="flex items-center gap-3">

@@ -31,93 +31,24 @@ import { format } from "date-fns";
 import Link from "next/link";
 import { Pagination, usePagination } from "@/components/ui/pagination";
 
-// Mock data
-const mockClients = [
-  {
-    id: "CL001",
-    firstName: "John",
-    lastName: "Smith",
-    email: "john.smith@email.com",
-    phone: "555-0101",
-    companyName: "",
-    city: "Austin",
-    state: "TX",
-    serviceTypes: ["Tax Preparation", "Consulting"],
-    assignee: { name: "Hunter McGaw", avatar: "" },
-    isActive: true,
-    createdAt: new Date("2022-03-15"),
-  },
-  {
-    id: "CL002",
-    firstName: "ABC",
-    lastName: "Corp",
-    email: "contact@abccorp.com",
-    phone: "555-0102",
-    companyName: "ABC Corporation",
-    city: "Dallas",
-    state: "TX",
-    serviceTypes: ["Bookkeeping", "Payroll"],
-    assignee: { name: "Britney", avatar: "" },
-    isActive: true,
-    createdAt: new Date("2021-08-22"),
-  },
-  {
-    id: "CL003",
-    firstName: "Sarah",
-    lastName: "Johnson",
-    email: "sarah.j@email.com",
-    phone: "555-0103",
-    companyName: "",
-    city: "Houston",
-    state: "TX",
-    serviceTypes: ["Tax Preparation"],
-    assignee: { name: "Elizabeth", avatar: "" },
-    isActive: true,
-    createdAt: new Date("2023-01-10"),
-  },
-  {
-    id: "CL004",
-    firstName: "Tech",
-    lastName: "Solutions LLC",
-    email: "info@techsolutions.com",
-    phone: "555-0104",
-    companyName: "Tech Solutions LLC",
-    city: "San Antonio",
-    state: "TX",
-    serviceTypes: ["Bookkeeping", "Tax Preparation", "Consulting"],
-    assignee: { name: "Hunter McGaw", avatar: "" },
-    isActive: true,
-    createdAt: new Date("2022-11-05"),
-  },
-  {
-    id: "CL005",
-    firstName: "Mike",
-    lastName: "Williams",
-    email: "mike.w@consulting.com",
-    phone: "555-0105",
-    companyName: "Williams Consulting",
-    city: "Austin",
-    state: "TX",
-    serviceTypes: ["Tax Preparation"],
-    assignee: { name: "Hunter McGaw", avatar: "" },
-    isActive: false,
-    createdAt: new Date("2020-06-18"),
-  },
-  {
-    id: "CL006",
-    firstName: "XYZ",
-    lastName: "Inc",
-    email: "accounting@xyzinc.com",
-    phone: "555-0106",
-    companyName: "XYZ Incorporated",
-    city: "Fort Worth",
-    state: "TX",
-    serviceTypes: ["Payroll", "Bookkeeping"],
-    assignee: { name: "Britney", avatar: "" },
-    isActive: true,
-    createdAt: new Date("2023-04-20"),
-  },
-];
+// Client type definition
+interface Client {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  companyName: string;
+  city: string;
+  state: string;
+  serviceTypes: string[];
+  assignee: { name: string; avatar: string };
+  isActive: boolean;
+  createdAt: Date;
+}
+
+// Empty clients array - real data comes from database
+const clients: Client[] = [];
 
 export default function ClientsPage() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -125,7 +56,7 @@ export default function ClientsPage() {
 
   // Filter clients based on search query
   const filteredClients = useMemo(() => {
-    return mockClients.filter((client) => {
+    return clients.filter((client) => {
       const fullName = `${client.firstName} ${client.lastName}`.toLowerCase();
       const company = client.companyName?.toLowerCase() || "";
       const email = client.email.toLowerCase();
@@ -151,9 +82,9 @@ export default function ClientsPage() {
   });
 
   const clientCounts = useMemo(() => ({
-    total: mockClients.length,
-    active: mockClients.filter((c) => c.isActive).length,
-    new: mockClients.filter(
+    total: clients.length,
+    active: clients.filter((c) => c.isActive).length,
+    new: clients.filter(
       (c) => c.createdAt > new Date(Date.now() - 1000 * 60 * 60 * 24 * 30)
     ).length,
   }), []);

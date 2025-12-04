@@ -69,21 +69,18 @@ const mainNavItems: NavItem[] = [
     title: "Tasks",
     href: "/tasks",
     icon: ClipboardList,
-    badge: 12,
     permission: "tasks:view",
   },
   {
     title: "AI Email Tasks",
     href: "/email",
     icon: Mail,
-    badge: 4,
     permission: "email:view",
   },
   {
     title: "AI Phone Agent",
     href: "/calls",
     icon: Phone,
-    badge: 3,
     permission: "calls:view",
   },
   {

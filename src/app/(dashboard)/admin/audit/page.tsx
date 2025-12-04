@@ -79,7 +79,7 @@ import {
   AuditSeverity,
   AuditStatus,
 } from "@/lib/audit/types";
-import { getAllAuditLogs, seedAuditLogs } from "@/lib/audit/audit-context";
+import { getAllAuditLogs } from "@/lib/audit/audit-context";
 
 // Category icons
 const categoryIcons: Record<AuditCategory, React.ElementType> = {
@@ -156,9 +156,8 @@ export default function AuditTrailPage() {
   const [liveMode, setLiveMode] = useState(false);
   const pageSize = 25;
 
-  // Load audit logs
+  // Load audit logs - real data comes from user actions
   useEffect(() => {
-    seedAuditLogs();
     const allLogs = getAllAuditLogs();
     setLogs(allLogs);
     setLoading(false);

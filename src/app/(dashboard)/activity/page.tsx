@@ -43,97 +43,27 @@ import {
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow } from "date-fns";
 
-// Mock activity data
-const mockActivities = [
-  {
-    id: "1",
-    type: "call_received",
-    description: "Inbound call from John Smith regarding tax return status",
-    user: { name: "AI Phone Agent", avatar: "" },
-    client: { name: "John Smith" },
-    metadata: { duration: "3:45", callId: "CALL001" },
-    timestamp: new Date(Date.now() - 1000 * 60 * 15),
-  },
-  {
-    id: "2",
-    type: "document_received",
-    description: "Bank statements received via email from ABC Corp",
-    user: { name: "AI Email Agent", avatar: "" },
-    client: { name: "ABC Corp" },
-    metadata: { documentCount: 3, source: "email" },
-    timestamp: new Date(Date.now() - 1000 * 60 * 45),
-  },
-  {
-    id: "3",
-    type: "task_completed",
-    description: "Completed task: Send W-2 copy to Sarah Johnson",
-    user: { name: "Elizabeth", avatar: "" },
-    client: { name: "Sarah Johnson" },
-    metadata: { taskId: "TSK001" },
-    timestamp: new Date(Date.now() - 1000 * 60 * 90),
-  },
-  {
-    id: "4",
-    type: "email_received",
-    description: "New client inquiry received from Mike Williams",
-    user: { name: "AI Email Agent", avatar: "" },
-    client: { name: "Mike Williams" },
-    metadata: { subject: "Tax Preparation Services" },
-    timestamp: new Date(Date.now() - 1000 * 60 * 120),
-  },
-  {
-    id: "5",
-    type: "client_created",
-    description: "New client added to system: Williams Consulting LLC",
-    user: { name: "Hunter McGaw", avatar: "" },
-    client: { name: "Williams Consulting LLC" },
-    timestamp: new Date(Date.now() - 1000 * 60 * 180),
-  },
-  {
-    id: "6",
-    type: "call_made",
-    description: "Outbound call to Tech Solutions regarding IRS notice",
-    user: { name: "Hunter McGaw", avatar: "" },
-    client: { name: "Tech Solutions LLC" },
-    metadata: { duration: "12:30" },
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 3),
-  },
-  {
-    id: "7",
-    type: "email_sent",
-    description: "Sent 2023 tax return copy to client",
-    user: { name: "Elizabeth", avatar: "" },
-    client: { name: "John Smith" },
-    metadata: { attachments: 1 },
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 4),
-  },
-  {
-    id: "8",
-    type: "document_received",
-    description: "Payroll documents received via scan",
-    user: { name: "AI Email Agent", avatar: "" },
-    client: { name: "XYZ Inc" },
-    metadata: { documentCount: 5, source: "scan" },
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 5),
-  },
-  {
-    id: "9",
-    type: "task_created",
-    description: "New task created from phone call: Send tax return copy",
-    user: { name: "AI Phone Agent", avatar: "" },
-    client: { name: "John Smith" },
-    metadata: { priority: "high" },
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 6),
-  },
-  {
-    id: "10",
-    type: "note_added",
-    description: "Added note to client profile regarding payment preferences",
-    user: { name: "Britney", avatar: "" },
-    client: { name: "ABC Corp" },
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 8),
-  },
-];
+// Activity type definition
+interface ActivityMetadata {
+  duration?: string;
+  documentCount?: number;
+  source?: string;
+  priority?: string;
+  attachments?: number;
+}
+
+interface Activity {
+  id: string;
+  type: string;
+  description: string;
+  user: { name: string; avatar: string };
+  client?: { name: string };
+  metadata?: ActivityMetadata;
+  timestamp: Date;
+}
+
+// Empty activities array - real data comes from database
+const activities: Activity[] = [];
 
 const activityIcons: Record<string, { icon: any; bg: string; color: string }> = {
   call_received: { icon: PhoneIncoming, bg: "bg-green-100", color: "text-green-600" },
@@ -164,7 +94,7 @@ export default function ActivityPage() {
   const [userFilter, setUserFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
 
-  const filteredActivities = mockActivities.filter((activity) => {
+  const filteredActivities = activities.filter((activity) => {
     const matchesType = typeFilter === "all" || activity.type === typeFilter;
     const matchesUser =
       userFilter === "all" || activity.user.name === userFilter;
@@ -174,7 +104,7 @@ export default function ActivityPage() {
     return matchesType && matchesUser && matchesSearch;
   });
 
-  const uniqueUsers = [...new Set(mockActivities.map((a) => a.user.name))];
+  const uniqueUsers = [...new Set(activities.map((a) => a.user.name))];
 
   return (
     <>
@@ -400,7 +330,7 @@ export default function ActivityPage() {
             <div className="flex items-center justify-between px-6 py-4 border-t">
               <p className="text-sm text-muted-foreground">
                 Showing 1 to {filteredActivities.length} of{" "}
-                {mockActivities.length} entries
+                {activities.length} entries
               </p>
               <div className="flex items-center gap-2">
                 <Button variant="outline" size="sm" disabled>

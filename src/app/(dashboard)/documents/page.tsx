@@ -161,17 +161,8 @@ interface ProcessedDocument {
   processedAt: Date;
 }
 
-// Mock clients database
-const mockClients: Client[] = [
-  { id: "c1", name: "Tech Solutions LLC", email: "info@techsolutions.com", company: "Tech Solutions LLC" },
-  { id: "c2", name: "John Smith", email: "john.smith@email.com" },
-  { id: "c3", name: "Sarah Johnson", email: "sarah.j@company.com" },
-  { id: "c4", name: "ABC Corporation", email: "accounting@abccorp.com", company: "ABC Corporation" },
-  { id: "c5", name: "Mike Chen", email: "mike.chen@newbusiness.com" },
-  { id: "c6", name: "Williams Consulting", email: "info@williamsconsulting.com", company: "Williams Consulting LLC" },
-  { id: "c7", name: "XYZ Inc", email: "finance@xyzinc.com", company: "XYZ Inc" },
-  { id: "c8", name: "Miller Family", email: "miller.family@gmail.com" },
-];
+// Empty clients array - real data comes from database
+const docClients: Client[] = [];
 
 // Available action templates
 const actionTemplates: ActionTemplate[] = [
@@ -233,88 +224,10 @@ const defaultRules: DocumentRule[] = [
   },
 ];
 
-// Mock data
-const mockAnalyzedDocuments: AnalyzedDocument[] = [
-  {
-    id: "doc-1",
-    fileName: "March_Receipts.pdf",
-    fileType: "pdf",
-    fileSize: "2.4 MB",
-    clientId: "c1",
-    suggestedClientId: "c1",
-    uploadedAt: new Date(Date.now() - 1000 * 60 * 5),
-    status: "analyzed",
-    aiAnalysis: {
-      documentType: "Expense Receipts",
-      summary: "Collection of 12 business expense receipts from March 2024",
-      totalAmount: 2847.32,
-      dateRange: "March 1-28, 2024",
-      extractedItems: [
-        { id: "1", description: "Office Depot - Office Supplies", amount: 234.50, date: new Date(2024, 2, 5), category: "Office Supplies", selected: true },
-        { id: "2", description: "Delta Airlines - Flight to NYC", amount: 487.00, date: new Date(2024, 2, 10), category: "Travel", selected: true },
-        { id: "3", description: "Marriott Hotel - 2 nights NYC", amount: 892.00, date: new Date(2024, 2, 11), category: "Travel", selected: true },
-        { id: "4", description: "Uber - Airport transportation", amount: 45.32, date: new Date(2024, 2, 10), category: "Transportation", selected: true },
-        { id: "5", description: "Amazon AWS - Cloud services", amount: 156.00, date: new Date(2024, 2, 1), category: "Software", selected: true },
-      ],
-      suggestedActions: [
-        { id: "a1", templateId: "quickbooks-expense", label: "Add to QuickBooks as March 2024 Expenses", icon: DollarSign, selected: true },
-        { id: "a2", templateId: "file-client-folder", label: "File in: Clients/Tech Solutions/2024/Expenses", icon: FolderOpen, selected: true },
-        { id: "a3", templateId: "email-summary", label: "Email summary to client", icon: Mail, selected: false, details: "info@techsolutions.com" },
-        { id: "a4", templateId: "create-task", label: "Create task: Review unusual expense - $892 hotel", icon: AlertCircle, selected: false },
-        { id: "a5", templateId: "flag-review", label: "Flag for tax deduction review", icon: Flag, selected: false },
-      ],
-      confidence: 94,
-    },
-  },
-  {
-    id: "doc-2",
-    fileName: "W2_JohnSmith_2024.pdf",
-    fileType: "pdf",
-    fileSize: "156 KB",
-    clientId: "c2",
-    suggestedClientId: "c2",
-    uploadedAt: new Date(Date.now() - 1000 * 60 * 15),
-    status: "analyzed",
-    aiAnalysis: {
-      documentType: "W-2 Tax Form",
-      summary: "2024 W-2 form from ABC Corporation showing wages and tax withholdings",
-      totalAmount: 85420.00,
-      extractedItems: [
-        { id: "1", description: "Gross Wages (Box 1)", amount: 85420.00, category: "Income", selected: true },
-        { id: "2", description: "Federal Tax Withheld (Box 2)", amount: 12813.00, category: "Federal Tax", selected: true },
-        { id: "3", description: "Social Security Wages (Box 3)", amount: 85420.00, category: "SS Wages", selected: true },
-        { id: "4", description: "Medicare Wages (Box 5)", amount: 85420.00, category: "Medicare", selected: true },
-      ],
-      suggestedActions: [
-        { id: "a1", templateId: "file-tax-docs", label: "Add to 2024 tax return workpapers", icon: FileText, selected: true },
-        { id: "a2", templateId: "file-client-folder", label: "File in: Clients/John Smith/2024/Tax Documents", icon: FolderOpen, selected: true },
-        { id: "a3", templateId: "create-review-task", label: "Create task: Verify W-2 matches employer records", icon: CheckCircle, selected: true },
-        { id: "a4", templateId: "email-client", label: "Email confirmation to client", icon: Mail, selected: false },
-      ],
-      confidence: 98,
-    },
-  },
-];
-
-const mockProcessingQueue: AnalyzedDocument[] = [
-  {
-    id: "queue-1",
-    fileName: "BankStatement_April.pdf",
-    fileType: "pdf",
-    fileSize: "1.8 MB",
-    clientId: null,
-    suggestedClientId: "c4",
-    uploadedAt: new Date(Date.now() - 1000 * 60 * 1),
-    status: "analyzing",
-    progress: 67,
-  },
-];
-
-const mockRecentlyProcessed: ProcessedDocument[] = [
-  { id: "p1", fileName: "W2_JohnSmith.pdf", action: "Filed & Task Created", client: "John Smith", processedAt: new Date(Date.now() - 1000 * 60 * 2) },
-  { id: "p2", fileName: "BankStatement_Feb.pdf", action: "Reconciled in QuickBooks", client: "Tech Solutions", processedAt: new Date(Date.now() - 1000 * 60 * 15) },
-  { id: "p3", fileName: "1099_Contractor.pdf", action: "Added to return", client: "Sarah Johnson", processedAt: new Date(Date.now() - 1000 * 60 * 60) },
-];
+// Empty arrays - real data comes from document uploads
+const initialDocuments: AnalyzedDocument[] = [];
+const initialProcessingQueue: AnalyzedDocument[] = [];
+const initialRecentlyProcessed: ProcessedDocument[] = [];
 
 const fileTypeIcons = {
   pdf: FileText,
@@ -333,8 +246,8 @@ function ClientSelector({
   onSelect: (clientId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const selectedClient = mockClients.find((c) => c.id === selectedClientId);
-  const suggestedClient = mockClients.find((c) => c.id === suggestedClientId);
+  const selectedClient = docClients.find((c) => c.id === selectedClientId);
+  const suggestedClient = docClients.find((c) => c.id === suggestedClientId);
   const isAISuggested = selectedClientId === suggestedClientId;
 
   return (
@@ -396,7 +309,7 @@ function ClientSelector({
             )}
             <CommandSeparator />
             <CommandGroup heading="All Clients">
-              {mockClients
+              {docClients
                 .filter((c) => c.id !== suggestedClientId)
                 .map((client) => (
                   <CommandItem
@@ -562,9 +475,9 @@ function AddActionDropdown({
 
 export default function DocumentsPage() {
   const [mounted, setMounted] = useState(false);
-  const [documents, setDocuments] = useState<AnalyzedDocument[]>(mockAnalyzedDocuments);
-  const [processingQueue, setProcessingQueue] = useState<AnalyzedDocument[]>(mockProcessingQueue);
-  const [recentlyProcessed] = useState<ProcessedDocument[]>(mockRecentlyProcessed);
+  const [documents, setDocuments] = useState<AnalyzedDocument[]>(initialDocuments);
+  const [processingQueue, setProcessingQueue] = useState<AnalyzedDocument[]>(initialProcessingQueue);
+  const [recentlyProcessed] = useState<ProcessedDocument[]>(initialRecentlyProcessed);
   const [isDragging, setIsDragging] = useState(false);
   const [isExecuting, setIsExecuting] = useState<string | null>(null);
   const [rulesDialogOpen, setRulesDialogOpen] = useState(false);
@@ -836,7 +749,7 @@ export default function DocumentsPage() {
 
           {/* Analyzed Documents */}
           {documents.map((doc) => {
-            const client = mockClients.find((c) => c.id === doc.clientId);
+            const client = docClients.find((c) => c.id === doc.clientId);
             return (
               <Card key={doc.id} className="overflow-hidden">
                 {/* Document Header */}

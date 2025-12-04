@@ -59,81 +59,22 @@ import {
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 
-// Mock data
-const mockTasks = [
-  {
-    id: "TSK001",
-    title: "Send 2023 tax return copy to client",
-    description: "Client requested a copy of their 2023 tax return",
-    client: { id: "1", name: "John Smith", avatar: "" },
-    assignee: { id: "1", name: "Elizabeth", avatar: "" },
-    status: "pending" as const,
-    priority: "high" as const,
-    source: "phone_call" as const,
-    dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24),
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2),
-  },
-  {
-    id: "TSK002",
-    title: "Review monthly bookkeeping package for ABC Corp",
-    description: "Monthly bookkeeping review and reconciliation",
-    client: { id: "2", name: "ABC Corp", avatar: "" },
-    assignee: { id: "2", name: "Britney", avatar: "" },
-    status: "in_progress" as const,
-    priority: "medium" as const,
-    source: "email" as const,
-    dueDate: new Date(Date.now() + 1000 * 60 * 60 * 48),
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24),
-  },
-  {
-    id: "TSK003",
-    title: "Process urgent payroll documents",
-    description: "Time-sensitive payroll processing required",
-    client: { id: "3", name: "XYZ Inc", avatar: "" },
-    assignee: { id: "2", name: "Britney", avatar: "" },
-    status: "pending" as const,
-    priority: "urgent" as const,
-    source: "document_intake" as const,
-    dueDate: new Date(Date.now() + 1000 * 60 * 60 * 8),
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 4),
-  },
-  {
-    id: "TSK004",
-    title: "Schedule consultation with new prospect",
-    description: "New client inquiry - needs initial consultation",
-    client: { id: "4", name: "Williams Consulting", avatar: "" },
-    assignee: { id: "3", name: "Hunter McGaw", avatar: "" },
-    status: "pending" as const,
-    priority: "medium" as const,
-    source: "manual" as const,
-    dueDate: undefined,
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 6),
-  },
-  {
-    id: "TSK005",
-    title: "Respond to IRS notice for Tech Solutions",
-    description: "IRS inquiry needs immediate attention",
-    client: { id: "5", name: "Tech Solutions LLC", avatar: "" },
-    assignee: { id: "3", name: "Hunter McGaw", avatar: "" },
-    status: "in_progress" as const,
-    priority: "urgent" as const,
-    source: "email" as const,
-    dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 3),
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 48),
-  },
-  {
-    id: "TSK006",
-    title: "Send W-9 form to vendor",
-    description: "Client needs W-9 sent to their vendor",
-    client: { id: "6", name: "Sarah Johnson", avatar: "" },
-    assignee: { id: "1", name: "Elizabeth", avatar: "" },
-    status: "completed" as const,
-    priority: "low" as const,
-    source: "phone_call" as const,
-    dueDate: new Date(Date.now() - 1000 * 60 * 60 * 2),
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24),
-  },
-];
+// Task type definition
+interface Task {
+  id: string;
+  title: string;
+  description: string;
+  client: { id: string; name: string; avatar: string };
+  assignee: { id: string; name: string; avatar: string };
+  status: "pending" | "in_progress" | "completed" | "cancelled";
+  priority: "low" | "medium" | "high" | "urgent";
+  source: "phone_call" | "email" | "document_intake" | "manual";
+  dueDate?: Date;
+  createdAt: Date;
+}
+
+// Empty tasks array - real data comes from database
+const tasks: Task[] = [];
 
 const statusConfig = {
   pending: {
@@ -178,7 +119,7 @@ export default function TasksPage() {
     setMounted(true);
   }, []);
 
-  const filteredTasks = mockTasks.filter((task) => {
+  const filteredTasks = tasks.filter((task) => {
     const matchesStatus =
       statusFilter === "all" || task.status === statusFilter;
     const matchesPriority =
@@ -190,10 +131,10 @@ export default function TasksPage() {
   });
 
   const taskCounts = {
-    total: mockTasks.length,
-    pending: mockTasks.filter((t) => t.status === "pending").length,
-    inProgress: mockTasks.filter((t) => t.status === "in_progress").length,
-    completed: mockTasks.filter((t) => t.status === "completed").length,
+    total: tasks.length,
+    pending: tasks.filter((t) => t.status === "pending").length,
+    inProgress: tasks.filter((t) => t.status === "in_progress").length,
+    completed: tasks.filter((t) => t.status === "completed").length,
   };
 
   return (
@@ -495,7 +436,7 @@ export default function TasksPage() {
             {/* Pagination */}
             <div className="flex items-center justify-between px-6 py-4 border-t">
               <p className="text-sm text-muted-foreground">
-                Showing 1 to {filteredTasks.length} of {mockTasks.length} entries
+                Showing 1 to {filteredTasks.length} of {tasks.length} entries
               </p>
               <div className="flex items-center gap-2">
                 <Button variant="outline" size="sm" disabled>
