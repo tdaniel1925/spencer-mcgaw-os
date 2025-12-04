@@ -11,24 +11,19 @@ export async function GET() {
     }, { status: 500 });
   }
 
-  // Convert direct connection to pooler connection for serverless
-  // db.xxx.supabase.co:5432 -> aws-0-us-east-1.pooler.supabase.com:6543
-  // The project ref is the long string between db. and .supabase.co
-  // e.g., db.cyygkhwujcrbhzgjqipj.supabase.co -> cyygkhwujcrbhzgjqipj
-  if (dbUrl.includes("db.") && dbUrl.includes(".supabase.co")) {
-    // Extract project ref from the direct connection URL
-    const projectRefMatch = dbUrl.match(/@db\.([a-z0-9]+)\.supabase\.co/);
-    const projectRef = projectRefMatch?.[1];
-    if (projectRef) {
-      // Extract password - it's between : and @ in postgresql://postgres:PASSWORD@...
-      const passwordMatch = dbUrl.match(/postgres:([^@]+)@/);
-      const password = passwordMatch?.[1];
-      if (password) {
-        // Construct pooler URL
-        // Format: postgresql://postgres.PROJECT_REF:PASSWORD@aws-0-us-east-1.pooler.supabase.com:6543/postgres
-        dbUrl = `postgresql://postgres.${projectRef}:${password}@aws-0-us-east-1.pooler.supabase.com:6543/postgres?pgbouncer=true`;
-      }
-    }
+  // For Vercel serverless, we need to use the Supabase pooler connection
+  // The DATABASE_URL should be updated in Vercel to use the pooler URL from Supabase dashboard
+  // Format: postgresql://postgres.PROJECT_REF:PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres
+
+  // Return diagnostic info if using direct connection (which doesn't work in serverless)
+  if (dbUrl.includes("db.") && dbUrl.includes(".supabase.co:5432")) {
+    return NextResponse.json({
+      success: false,
+      error: "Using direct database connection which is not accessible from Vercel serverless",
+      fix: "Update DATABASE_URL in Vercel to use the pooler connection string from Supabase Dashboard > Settings > Database > Connection Pooling",
+      currentFormat: "postgresql://postgres:PASSWORD@db.XXX.supabase.co:5432/postgres",
+      requiredFormat: "postgresql://postgres.XXX:PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres",
+    }, { status: 500 });
   }
 
   // Create a fresh connection for this request
