@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Header } from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Card } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -64,7 +64,6 @@ import {
   Paperclip,
   CheckCircle,
   Clock,
-  User,
   Eye,
   Plus,
   RefreshCw,
@@ -81,7 +80,6 @@ import {
   Filter,
   Archive,
   Trash2,
-  UserPlus,
   MoreHorizontal,
   CheckSquare,
   XSquare,
@@ -95,6 +93,7 @@ import {
   X,
   RotateCcw,
   Sparkles,
+  User,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -102,28 +101,14 @@ import { format, formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { useEmail } from "@/lib/email";
 import { useAuth } from "@/lib/supabase/auth-context";
-import {
-  EmailMessage,
-  EmailTask,
-  emailCategoryInfo,
-} from "@/lib/email/types";
+import { EmailMessage, emailCategoryInfo } from "@/lib/email/types";
 
-// Types for kanban board
-type TaskStatus = string; // Now dynamic - can be any column id
-
-// Known statuses that map to the backend
-type KnownStatus = "pending" | "in_progress" | "waiting" | "completed" | "snoozed";
-const KNOWN_STATUSES: KnownStatus[] = ["pending", "in_progress", "waiting", "completed", "snoozed"];
-
-// Helper to check if status is a known backend status
-function isKnownStatus(status: string): status is KnownStatus {
-  return KNOWN_STATUSES.includes(status as KnownStatus);
-}
-
-interface KanbanTask {
+// Kanban email card type
+interface KanbanEmailCard {
   id: string;
-  emailTask: EmailTask;
-  status: TaskStatus;
+  email: EmailMessage;
+  columnId: string;
+  isRejected: boolean;
   selected: boolean;
 }
 
@@ -134,15 +119,15 @@ interface KanbanColumn {
   order: number;
 }
 
-// Default columns if none configured
+// Default columns
 const DEFAULT_COLUMNS: KanbanColumn[] = [
-  { id: "pending", title: "New", color: "bg-blue-500", order: 0 },
-  { id: "waiting", title: "Waiting on Client", color: "bg-amber-500", order: 1 },
-  { id: "in_progress", title: "In Progress", color: "bg-violet-500", order: 2 },
+  { id: "new", title: "New", color: "bg-blue-500", order: 0 },
+  { id: "in_progress", title: "In Progress", color: "bg-violet-500", order: 1 },
+  { id: "waiting", title: "Waiting on Client", color: "bg-amber-500", order: 2 },
   { id: "completed", title: "Completed", color: "bg-emerald-500", order: 3 },
 ];
 
-// Available colors for columns
+// Column colors
 const COLUMN_COLORS = [
   { id: "bg-blue-500", label: "Blue" },
   { id: "bg-violet-500", label: "Purple" },
@@ -156,7 +141,7 @@ const COLUMN_COLORS = [
   { id: "bg-indigo-500", label: "Indigo" },
 ];
 
-// Icon mapping for categories
+// Category icons
 const categoryIcons: Record<string, React.ReactNode> = {
   document_request: <FileText className="h-3.5 w-3.5" />,
   question: <HelpCircle className="h-3.5 w-3.5" />,
@@ -179,38 +164,28 @@ const priorityColors: Record<string, string> = {
   low: "bg-slate-100 text-slate-600 border-slate-200",
 };
 
-// Sortable Task Card Component - entire card is draggable
-function SortableTaskCard({
-  task,
-  cardWidth,
+// Sortable Email Card
+function SortableEmailCard({
+  card,
   onClick,
   onSelect,
   onQuickAction,
 }: {
-  task: KanbanTask;
-  cardWidth: number;
+  card: KanbanEmailCard;
   onClick: () => void;
   onSelect: (selected: boolean) => void;
   onQuickAction: (action: string) => void;
 }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: task.id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: card.id });
 
   const style = {
     transform: CSS.Transform.toString(transform),
     transition: transition || "transform 200ms ease",
     opacity: isDragging ? 0.5 : 1,
-    width: cardWidth,
-    maxWidth: cardWidth,
   };
 
-  const email = task.emailTask.email;
+  const email = card.email;
   const classification = email.aiClassification;
   const priority = classification?.priority || "medium";
 
@@ -219,31 +194,31 @@ function SortableTaskCard({
       ref={setNodeRef}
       style={style}
       className={cn(
-        "bg-card border rounded-lg p-3 cursor-grab active:cursor-grabbing hover:shadow-md transition-all overflow-hidden box-border",
+        "bg-card border rounded-lg p-3 cursor-grab active:cursor-grabbing hover:shadow-md transition-all",
         isDragging && "shadow-xl ring-2 ring-primary/50",
-        task.selected && "ring-2 ring-primary bg-primary/5"
+        card.selected && "ring-2 ring-primary bg-primary/5",
+        card.isRejected && "opacity-75"
       )}
       {...attributes}
       {...listeners}
     >
-      <div className="flex items-start gap-2 overflow-hidden">
-        {/* Checkbox for selection */}
+      <div className="flex items-start gap-2">
         <div
           className="mt-0.5 flex-shrink-0"
           onClick={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
         >
           <Checkbox
-            checked={task.selected}
+            checked={card.selected}
             onCheckedChange={(checked) => onSelect(checked === true)}
             className="h-4 w-4"
           />
         </div>
-        <div className="flex-1 min-w-0 overflow-hidden" onClick={onClick}>
+        <div className="flex-1 min-w-0" onClick={onClick}>
           <div className="flex items-center gap-1.5 mb-1 flex-wrap">
             <Badge
               variant="outline"
-              className={cn("text-[10px] px-1.5 py-0 flex-shrink-0", priorityColors[priority])}
+              className={cn("text-[10px] px-1.5 py-0", priorityColors[priority])}
             >
               {priority}
             </Badge>
@@ -251,29 +226,37 @@ function SortableTaskCard({
               <Badge
                 variant="outline"
                 className={cn(
-                  "text-[10px] px-1.5 py-0 flex-shrink-0",
+                  "text-[10px] px-1.5 py-0",
                   emailCategoryInfo[classification.category]?.color
                 )}
               >
                 {categoryIcons[classification.category]}
               </Badge>
             )}
+            {card.isRejected && (
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-muted">
+                <Ban className="h-3 w-3 mr-0.5" />
+                Filtered
+              </Badge>
+            )}
           </div>
-          <h4 className="font-medium text-sm truncate max-w-full">
+
+          <h4 className="font-medium text-sm truncate">
             {email.matchedClientName || email.from.name || email.from.email}
           </h4>
-          <p className="text-xs text-muted-foreground truncate max-w-full">
-            {email.subject}
-          </p>
+          <p className="text-xs text-muted-foreground truncate">{email.subject}</p>
           <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
             {classification?.summary || email.bodyPreview}
           </p>
+
           <div className="flex items-center justify-between mt-2 pt-2 border-t gap-2">
-            <div className="flex items-center gap-1 text-xs text-muted-foreground min-w-0">
-              <User className="h-3 w-3 flex-shrink-0" />
-              <span className="truncate">{task.emailTask.assignedToName || "Unassigned"}</span>
-            </div>
-            <div className="flex items-center gap-1 text-xs text-muted-foreground flex-shrink-0">
+            {email.hasAttachments && (
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Paperclip className="h-3 w-3" />
+                <span>{email.attachments?.length || 1}</span>
+              </div>
+            )}
+            <div className="flex items-center gap-1 text-xs text-muted-foreground ml-auto">
               <Clock className="h-3 w-3" />
               <span suppressHydrationWarning>
                 {formatDistanceToNow(email.receivedAt, { addSuffix: true })}
@@ -281,7 +264,7 @@ function SortableTaskCard({
             </div>
           </div>
         </div>
-        {/* Quick actions dropdown */}
+
         <div
           className="flex-shrink-0"
           onClick={(e) => e.stopPropagation()}
@@ -298,14 +281,21 @@ function SortableTaskCard({
                 <Eye className="h-4 w-4 mr-2" />
                 View Details
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onQuickAction("assign")}>
-                <UserPlus className="h-4 w-4 mr-2" />
-                Assign To...
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onQuickAction("add_to_tasks")}>
+              <DropdownMenuItem onClick={() => onQuickAction("create_task")}>
                 <ListTodo className="h-4 w-4 mr-2" />
-                Add to Tasks
+                Create Task
               </DropdownMenuItem>
+              {card.isRejected ? (
+                <DropdownMenuItem onClick={() => onQuickAction("mark_relevant")}>
+                  <ThumbsUp className="h-4 w-4 mr-2" />
+                  Mark as Relevant
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem onClick={() => onQuickAction("mark_rejected")}>
+                  <ThumbsDown className="h-4 w-4 mr-2" />
+                  Mark as Not Relevant
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => onQuickAction("archive")}>
                 <Archive className="h-4 w-4 mr-2" />
@@ -326,391 +316,147 @@ function SortableTaskCard({
   );
 }
 
-// Task Card for Drag Overlay
-function TaskCardOverlay({ task }: { task: KanbanTask }) {
-  const email = task.emailTask.email;
+// Drag Overlay Card
+function EmailCardOverlay({ card }: { card: KanbanEmailCard }) {
+  const email = card.email;
   const priority = email.aiClassification?.priority || "medium";
 
   return (
-    <div className="bg-card border rounded-lg p-3 shadow-2xl w-[180px] rotate-3 ring-2 ring-primary">
-      <div className="flex items-start gap-2">
-        <div className="flex-1 min-w-0">
-          <Badge
-            variant="outline"
-            className={cn("text-[10px] px-1.5 py-0 mb-1", priorityColors[priority])}
-          >
-            {priority}
-          </Badge>
-          <h4 className="font-medium text-sm truncate">
-            {email.matchedClientName || email.from.name}
-          </h4>
-          <p className="text-xs text-muted-foreground truncate">
-            {email.subject}
-          </p>
-        </div>
-      </div>
+    <div className="bg-card border rounded-lg p-3 shadow-2xl w-[220px] rotate-3 ring-2 ring-primary">
+      <Badge
+        variant="outline"
+        className={cn("text-[10px] px-1.5 py-0 mb-1", priorityColors[priority])}
+      >
+        {priority}
+      </Badge>
+      <h4 className="font-medium text-sm truncate">
+        {email.matchedClientName || email.from.name}
+      </h4>
+      <p className="text-xs text-muted-foreground truncate">{email.subject}</p>
     </div>
   );
 }
 
-// Droppable Kanban Column Component
-function KanbanColumn({
+// Kanban Column
+function KanbanColumnComponent({
   column,
-  tasks,
-  onTaskClick,
-  onTaskSelect,
+  cards,
+  isFirstColumn,
+  showRejectedTab,
+  rejectedCount,
+  qualifiedCount,
+  onTabChange,
+  onCardClick,
+  onCardSelect,
   onQuickAction,
+  onSelectAll,
+  onDeselectAll,
+  selectedCount,
 }: {
   column: KanbanColumn;
-  tasks: KanbanTask[];
-  onTaskClick: (task: KanbanTask) => void;
-  onTaskSelect: (taskId: string, selected: boolean) => void;
-  onQuickAction: (taskId: string, action: string) => void;
+  cards: KanbanEmailCard[];
+  isFirstColumn: boolean;
+  showRejectedTab: boolean;
+  rejectedCount: number;
+  qualifiedCount: number;
+  onTabChange: (showRejected: boolean) => void;
+  onCardClick: (card: KanbanEmailCard) => void;
+  onCardSelect: (cardId: string, selected: boolean) => void;
+  onQuickAction: (cardId: string, action: string) => void;
+  onSelectAll: () => void;
+  onDeselectAll: () => void;
+  selectedCount: number;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
-
-  // Calculate available width for cards (column width minus padding)
-  const cardWidth = 234; // 250px column - 16px padding
 
   return (
     <div
       ref={setNodeRef}
       className={cn(
-        "flex flex-col w-[250px] flex-shrink-0 rounded-lg transition-colors",
+        "flex flex-col w-[300px] flex-shrink-0 rounded-lg transition-colors bg-muted/30",
         isOver && "bg-primary/10"
       )}
-      style={{ minWidth: 250, maxWidth: 250 }}
     >
-      <div className="flex items-center gap-2 mb-3 px-1">
-        <div className={cn("w-2 h-2 rounded-full", column.color)} />
-        <h3 className="font-medium text-sm">{column.title}</h3>
-        <Badge variant="secondary" className="ml-auto text-xs">
-          {tasks.length}
-        </Badge>
+      <div className="p-3 border-b bg-card rounded-t-lg">
+        <div className="flex items-center gap-2 mb-2">
+          <div className={cn("w-2 h-2 rounded-full", column.color)} />
+          <h3 className="font-medium text-sm">{column.title}</h3>
+          <Badge variant="secondary" className="ml-auto text-xs">
+            {cards.length}
+          </Badge>
+        </div>
+
+        {isFirstColumn && (
+          <div className="flex items-center gap-1">
+            <Button
+              variant={!showRejectedTab ? "default" : "ghost"}
+              size="sm"
+              className={cn("h-7 text-xs flex-1", !showRejectedTab && "bg-primary")}
+              onClick={() => onTabChange(false)}
+            >
+              <Inbox className="h-3.5 w-3.5 mr-1" />
+              Qualified
+              <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
+                {qualifiedCount}
+              </Badge>
+            </Button>
+            <Button
+              variant={showRejectedTab ? "default" : "ghost"}
+              size="sm"
+              className={cn("h-7 text-xs flex-1", showRejectedTab && "bg-muted-foreground")}
+              onClick={() => onTabChange(true)}
+            >
+              <Ban className="h-3.5 w-3.5 mr-1" />
+              Rejected
+              <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
+                {rejectedCount}
+              </Badge>
+            </Button>
+          </div>
+        )}
+
+        {cards.length > 0 && (
+          <div className="flex items-center gap-1 mt-2">
+            <Button variant="ghost" size="sm" className="h-6 text-xs px-2" onClick={onSelectAll}>
+              <CheckSquare className="h-3 w-3 mr-1" />
+              All
+            </Button>
+            {selectedCount > 0 && (
+              <Button variant="ghost" size="sm" className="h-6 text-xs px-2" onClick={onDeselectAll}>
+                <XSquare className="h-3 w-3 mr-1" />
+                Clear ({selectedCount})
+              </Button>
+            )}
+          </div>
+        )}
       </div>
-      <div className="flex-1 overflow-y-auto overflow-x-hidden">
-        <SortableContext
-          items={tasks.map((t) => t.id)}
-          strategy={verticalListSortingStrategy}
-        >
-          <div className="space-y-2 pb-4 min-h-[100px] px-1">
-            {tasks.map((task) => (
-              <SortableTaskCard
-                key={task.id}
-                task={task}
-                cardWidth={cardWidth}
-                onClick={() => onTaskClick(task)}
-                onSelect={(selected) => onTaskSelect(task.id, selected)}
-                onQuickAction={(action) => onQuickAction(task.id, action)}
+
+      <div className="flex-1 overflow-y-auto p-2">
+        <SortableContext items={cards.map((c) => c.id)} strategy={verticalListSortingStrategy}>
+          <div className="space-y-2 min-h-[100px]">
+            {cards.map((card) => (
+              <SortableEmailCard
+                key={card.id}
+                card={card}
+                onClick={() => onCardClick(card)}
+                onSelect={(selected) => onCardSelect(card.id, selected)}
+                onQuickAction={(action) => onQuickAction(card.id, action)}
               />
             ))}
-            {tasks.length === 0 && (
+            {cards.length === 0 && (
               <div
                 className={cn(
                   "text-center py-8 text-muted-foreground text-xs border-2 border-dashed rounded-lg transition-colors",
                   isOver && "border-primary bg-primary/5"
                 )}
               >
-                Drop tasks here
+                {isFirstColumn && showRejectedTab ? "No rejected emails" : "Drop emails here"}
               </div>
             )}
           </div>
         </SortableContext>
       </div>
     </div>
-  );
-}
-
-// Email Timeline Card
-function EmailTimelineCard({
-  email,
-  onCreateTask,
-  onViewEmail,
-  hasTask,
-  onReject,
-  showRejectButton = true,
-  isSelected = false,
-  onSelect,
-}: {
-  email: EmailMessage;
-  onCreateTask: () => void;
-  onViewEmail: () => void;
-  hasTask: boolean;
-  onReject?: () => void;
-  showRejectButton?: boolean;
-  isSelected?: boolean;
-  onSelect?: (selected: boolean) => void;
-}) {
-  const classification = email.aiClassification;
-  const category = classification?.category || "other";
-  const categoryInfo = emailCategoryInfo[category];
-
-  return (
-    <Card
-      className={cn(
-        "p-4 transition-all hover:shadow-md",
-        !email.isRead && "border-l-4 border-l-primary",
-        isSelected && "ring-2 ring-primary bg-primary/5"
-      )}
-    >
-      {/* Header */}
-      <div className="flex items-start gap-3 mb-3">
-        {onSelect && (
-          <div className="flex-shrink-0 pt-2">
-            <Checkbox
-              checked={isSelected}
-              onCheckedChange={(checked) => onSelect(checked === true)}
-              className="h-4 w-4"
-              onClick={(e) => e.stopPropagation()}
-            />
-          </div>
-        )}
-        <Avatar className="h-10 w-10 flex-shrink-0">
-          <AvatarFallback
-            className={cn(
-              !email.isRead ? "bg-primary text-primary-foreground" : "bg-muted"
-            )}
-          >
-            {(email.from.name || email.from.email)
-              .split(" ")
-              .map((n) => n[0])
-              .join("")
-              .slice(0, 2)
-              .toUpperCase()}
-          </AvatarFallback>
-        </Avatar>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between gap-2">
-            <span
-              className={cn(
-                "font-medium text-sm",
-                !email.isRead && "font-semibold"
-              )}
-            >
-              {email.from.name || email.from.email}
-            </span>
-            <span
-              className="text-xs text-muted-foreground"
-              suppressHydrationWarning
-            >
-              {formatDistanceToNow(email.receivedAt, { addSuffix: true })}
-            </span>
-          </div>
-          <p className="text-xs text-muted-foreground">{email.from.email}</p>
-          {email.matchedClientName && (
-            <Badge variant="outline" className="text-[10px] mt-1">
-              <User className="h-3 w-3 mr-1" />
-              {email.matchedClientName}
-            </Badge>
-          )}
-        </div>
-      </div>
-
-      {/* Account indicator */}
-      <div className="flex items-center gap-1 mb-2 text-xs text-muted-foreground">
-        <Inbox className="h-3 w-3" />
-        <span>{email.accountEmail}</span>
-      </div>
-
-      {/* Subject */}
-      <h4 className={cn("font-medium mb-2", !email.isRead && "font-semibold")}>
-        {email.subject}
-      </h4>
-
-      {/* AI Analysis Box */}
-      {classification && (
-        <div className="bg-primary/5 rounded-lg p-3 mb-3">
-          <div className="flex items-center gap-2 mb-2">
-            <Bot className="h-4 w-4 text-primary" />
-            <span className="text-xs font-medium text-primary">AI Analysis</span>
-            <Badge
-              variant="outline"
-              className={cn("text-[10px] px-1.5 py-0 ml-auto", categoryInfo?.color)}
-            >
-              {categoryIcons[category]}
-              <span className="ml-1">{categoryInfo?.label}</span>
-            </Badge>
-          </div>
-          <p className="text-sm text-muted-foreground">{classification.summary}</p>
-          {classification.keyPoints && classification.keyPoints.length > 0 && (
-            <div className="mt-2 pt-2 border-t border-primary/10">
-              <p className="text-xs font-medium mb-1">Key Points:</p>
-              <ul className="space-y-0.5">
-                {classification.keyPoints.slice(0, 3).map((point, idx) => (
-                  <li
-                    key={idx}
-                    className="text-xs text-muted-foreground flex items-center gap-1.5"
-                  >
-                    <ArrowRight className="h-3 w-3 text-primary" />
-                    {point}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {classification.suggestedAction && (
-            <div className="mt-2 pt-2 border-t border-primary/10">
-              <p className="text-xs">
-                <span className="font-medium">Suggested: </span>
-                <span className="text-muted-foreground capitalize">
-                  {classification.suggestedAction.replace(/_/g, " ")}
-                </span>
-              </p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Attachments */}
-      {email.hasAttachments && email.attachments && email.attachments.length > 0 && (
-        <div className="flex items-center gap-2 mb-3 text-xs text-muted-foreground">
-          <Paperclip className="h-3.5 w-3.5" />
-          <span>
-            {email.attachments.length} attachment
-            {email.attachments.length > 1 ? "s" : ""}
-          </span>
-        </div>
-      )}
-
-      {/* Actions */}
-      <div className="flex items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          className="flex-1"
-          onClick={onViewEmail}
-        >
-          <Eye className="h-4 w-4 mr-1.5" />
-          View Email
-        </Button>
-        {!hasTask && (
-          <Button size="sm" className="flex-1 bg-primary" onClick={onCreateTask}>
-            <Plus className="h-4 w-4 mr-1.5" />
-            Create Task
-          </Button>
-        )}
-        {hasTask && (
-          <Button variant="secondary" size="sm" className="flex-1" disabled>
-            <CheckCircle className="h-4 w-4 mr-1.5" />
-            Task Created
-          </Button>
-        )}
-        {showRejectButton && onReject && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                onClick={onReject}
-              >
-                <ThumbsDown className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Not relevant - move to rejected</TooltipContent>
-          </Tooltip>
-        )}
-      </div>
-    </Card>
-  );
-}
-
-// Rejected Email Card - simplified version with approve action
-function RejectedEmailCard({
-  email,
-  onViewEmail,
-  onApprove,
-  isSelected = false,
-  onSelect,
-}: {
-  email: EmailMessage;
-  onViewEmail: () => void;
-  onApprove: () => void;
-  isSelected?: boolean;
-  onSelect?: (selected: boolean) => void;
-}) {
-  const classification = email.aiClassification;
-  const category = classification?.category || "spam";
-
-  return (
-    <Card className={cn(
-      "p-4 transition-all hover:shadow-md border-l-4 border-l-muted-foreground/30",
-      isSelected && "ring-2 ring-primary bg-primary/5"
-    )}>
-      {/* Header */}
-      <div className="flex items-start gap-3 mb-3">
-        {onSelect && (
-          <div className="flex-shrink-0 pt-2">
-            <Checkbox
-              checked={isSelected}
-              onCheckedChange={(checked) => onSelect(checked === true)}
-              className="h-4 w-4"
-              onClick={(e) => e.stopPropagation()}
-            />
-          </div>
-        )}
-        <Avatar className="h-10 w-10 flex-shrink-0">
-          <AvatarFallback className="bg-muted">
-            {(email.from.name || email.from.email)
-              .split(" ")
-              .map((n) => n[0])
-              .join("")
-              .slice(0, 2)
-              .toUpperCase()}
-          </AvatarFallback>
-        </Avatar>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between gap-2">
-            <span className="font-medium text-sm text-muted-foreground">
-              {email.from.name || email.from.email}
-            </span>
-            <span className="text-xs text-muted-foreground" suppressHydrationWarning>
-              {formatDistanceToNow(email.receivedAt, { addSuffix: true })}
-            </span>
-          </div>
-          <p className="text-xs text-muted-foreground">{email.from.email}</p>
-        </div>
-      </div>
-
-      {/* Subject */}
-      <h4 className="font-medium mb-2 text-muted-foreground">{email.subject}</h4>
-
-      {/* Rejection Reason */}
-      <div className="bg-muted/50 rounded-lg p-3 mb-3">
-        <div className="flex items-center gap-2 mb-1">
-          <Ban className="h-4 w-4 text-muted-foreground" />
-          <span className="text-xs font-medium text-muted-foreground">Filtered Out</span>
-          <Badge variant="outline" className="text-[10px] ml-auto bg-muted">
-            {category === "spam" ? "Spam" : category === "information" ? "Marketing/Newsletter" : emailCategoryInfo[category]?.label || "Not Relevant"}
-          </Badge>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          {classification?.summary || "This email was automatically filtered as not business-relevant."}
-        </p>
-      </div>
-
-      {/* Actions */}
-      <div className="flex items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          className="flex-1"
-          onClick={onViewEmail}
-        >
-          <Eye className="h-4 w-4 mr-1.5" />
-          View
-        </Button>
-        <Button
-          size="sm"
-          className="flex-1"
-          variant="secondary"
-          onClick={onApprove}
-        >
-          <ThumbsUp className="h-4 w-4 mr-1.5" />
-          Mark Relevant
-        </Button>
-      </div>
-    </Card>
   );
 }
 
@@ -721,11 +467,9 @@ export default function EmailPage() {
     accounts,
     emails,
     rejectedEmails,
-    emailTasks,
     getUnreadCount,
     getRejectedCount,
     syncAllAccounts,
-    updateTaskStatus,
     isSyncing,
     markAsRelevant,
     markAsRejected,
@@ -733,588 +477,403 @@ export default function EmailPage() {
     addSenderRule,
     markMultipleAsRelevant,
     markMultipleAsRejected,
+    createTaskFromEmail,
   } = useEmail();
 
-  // Kanban column configuration state
   const [columns, setColumns] = useState<KanbanColumn[]>(DEFAULT_COLUMNS);
+  const [kanbanCards, setKanbanCards] = useState<KanbanEmailCard[]>([]);
+  const [activeCard, setActiveCard] = useState<KanbanEmailCard | null>(null);
+  const [showRejectedTab, setShowRejectedTab] = useState(false);
+  const [selectedEmail, setSelectedEmail] = useState<EmailMessage | null>(null);
   const [showColumnSettings, setShowColumnSettings] = useState(false);
   const [editingColumns, setEditingColumns] = useState<KanbanColumn[]>([]);
   const [isSavingColumns, setIsSavingColumns] = useState(false);
-
-  // Sent email training state
   const [isTraining, setIsTraining] = useState(false);
-
-  // Train filter from sent emails
-  const handleTrainFromSent = useCallback(async () => {
-    setIsTraining(true);
-    try {
-      const res = await fetch("/api/email/train-from-sent", { method: "POST" });
-      if (res.ok) {
-        const data = await res.json();
-        toast.success(`Training complete!`, {
-          description: `Whitelisted ${data.stats.newDomainsWhitelisted} new domains from ${data.stats.totalRecipientsFound} sent email recipients`,
-          duration: 8000,
-        });
-      } else {
-        const data = await res.json();
-        toast.error(data.error || "Training failed");
-      }
-    } catch (error) {
-      console.error("Training error:", error);
-      toast.error("Failed to train from sent emails");
-    }
-    setIsTraining(false);
-  }, []);
-
-  // Load column configuration on mount
-  useEffect(() => {
-    const loadColumns = async () => {
-      try {
-        const res = await fetch("/api/email/kanban-columns");
-        if (res.ok) {
-          const data = await res.json();
-          if (data.columns && data.columns.length > 0) {
-            // Sort by order
-            const sortedColumns = [...data.columns].sort((a, b) => a.order - b.order);
-            setColumns(sortedColumns);
-          }
-        }
-      } catch (error) {
-        console.error("Failed to load column configuration:", error);
-      }
-    };
-    loadColumns();
-  }, []);
-
-  // Save column configuration
-  const saveColumns = useCallback(async (newColumns: KanbanColumn[]) => {
-    setIsSavingColumns(true);
-    try {
-      // Ensure columns have correct order values
-      const columnsWithOrder = newColumns.map((col, idx) => ({
-        ...col,
-        order: idx,
-      }));
-
-      const res = await fetch("/api/email/kanban-columns", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ columns: columnsWithOrder }),
-      });
-      if (res.ok) {
-        // Sort columns by order
-        const sortedColumns = [...columnsWithOrder].sort((a, b) => a.order - b.order);
-
-        // Get the IDs of new columns
-        const newColumnIds = new Set(sortedColumns.map((c) => c.id));
-        const firstColumnId = sortedColumns[0]?.id;
-
-        // Reassign any tasks in deleted columns to the first column
-        if (firstColumnId) {
-          setKanbanTasks((prev) =>
-            prev.map((task) => {
-              if (!newColumnIds.has(task.status)) {
-                // Task is in a deleted column, move to first column
-                return { ...task, status: firstColumnId };
-              }
-              return task;
-            })
-          );
-        }
-
-        setColumns(sortedColumns);
-        setEditingColumns(sortedColumns);
-        toast.success("Column settings saved");
-        setShowColumnSettings(false);
-      } else {
-        const data = await res.json();
-        toast.error(data.error || "Failed to save columns");
-      }
-    } catch (error) {
-      console.error("Failed to save columns:", error);
-      toast.error("Failed to save columns");
-    }
-    setIsSavingColumns(false);
-  }, []);
-
-  // Reset to default columns
-  const resetColumns = useCallback(async () => {
-    setIsSavingColumns(true);
-    try {
-      const res = await fetch("/api/email/kanban-columns", { method: "DELETE" });
-      if (res.ok) {
-        const data = await res.json();
-        // Sort columns by order
-        const sortedColumns = [...data.columns].sort((a: KanbanColumn, b: KanbanColumn) => a.order - b.order);
-        setColumns(sortedColumns);
-        setEditingColumns(sortedColumns);
-        toast.success("Columns reset to defaults");
-      }
-    } catch (error) {
-      console.error("Failed to reset columns:", error);
-      toast.error("Failed to reset columns");
-    }
-    setIsSavingColumns(false);
-  }, []);
-
-  // Open settings modal
-  const openColumnSettings = useCallback(() => {
-    setEditingColumns([...columns]);
-    setShowColumnSettings(true);
-  }, [columns]);
-
-  // Add new column
-  const addColumn = useCallback(() => {
-    const newId = `col_${Date.now()}`;
-    const newColumn: KanbanColumn = {
-      id: newId,
-      title: "New Column",
-      color: "bg-slate-500",
-      order: editingColumns.length,
-    };
-    setEditingColumns([...editingColumns, newColumn]);
-  }, [editingColumns]);
-
-  // Remove column
-  const removeColumn = useCallback((columnId: string) => {
-    setEditingColumns((prev) =>
-      prev.filter((c) => c.id !== columnId).map((c, idx) => ({ ...c, order: idx }))
-    );
-  }, []);
-
-  // Update column
-  const updateColumn = useCallback((columnId: string, updates: Partial<KanbanColumn>) => {
-    setEditingColumns((prev) =>
-      prev.map((c) => (c.id === columnId ? { ...c, ...updates } : c))
-    );
-  }, []);
-
-  // Move column up/down
-  const moveColumn = useCallback((columnId: string, direction: "up" | "down") => {
-    setEditingColumns((prev) => {
-      const idx = prev.findIndex((c) => c.id === columnId);
-      if (idx === -1) return prev;
-      if (direction === "up" && idx === 0) return prev;
-      if (direction === "down" && idx === prev.length - 1) return prev;
-
-      const newColumns = [...prev];
-      const targetIdx = direction === "up" ? idx - 1 : idx + 1;
-      [newColumns[idx], newColumns[targetIdx]] = [newColumns[targetIdx], newColumns[idx]];
-      return newColumns.map((c, i) => ({ ...c, order: i }));
-    });
-  }, []);
-
-  // Bulk email selection state
-  const [selectedEmailIds, setSelectedEmailIds] = useState<Set<string>>(new Set());
-
-  // Handle marking email as relevant with toast
-  const handleMarkRelevant = useCallback((emailId: string, email: EmailMessage) => {
-    markAsRelevant(emailId);
-    toast.success("Email moved to inbox", {
-      description: `"${email.subject?.slice(0, 40)}${email.subject && email.subject.length > 40 ? "..." : ""}"`,
-      action: {
-        label: "Undo",
-        onClick: () => undoLastAction(),
-      },
-      duration: 5000,
-    });
-  }, [markAsRelevant, undoLastAction]);
-
-  // Handle marking email as rejected with toast
-  const handleMarkRejected = useCallback((emailId: string, email: EmailMessage) => {
-    markAsRejected(emailId);
-    toast.success("Email moved to filtered", {
-      description: `"${email.subject?.slice(0, 40)}${email.subject && email.subject.length > 40 ? "..." : ""}"`,
-      action: {
-        label: "Undo",
-        onClick: () => undoLastAction(),
-      },
-      duration: 5000,
-    });
-  }, [markAsRejected, undoLastAction]);
-
-  // Handle adding sender to whitelist
-  const handleWhitelistSender = useCallback(async (email: EmailMessage) => {
-    const domain = email.from.email.split("@")[1];
-    await addSenderRule({
-      ruleType: "domain",
-      matchType: "exact",
-      matchValue: domain,
-      action: "whitelist",
-      reason: `Whitelisted from email: ${email.subject}`,
-      isActive: true,
-    });
-    toast.success(`Whitelisted @${domain}`, {
-      description: "Future emails from this domain will always be relevant",
-    });
-  }, [addSenderRule]);
-
-  // Handle adding sender to blacklist
-  const handleBlacklistSender = useCallback(async (email: EmailMessage) => {
-    const domain = email.from.email.split("@")[1];
-    await addSenderRule({
-      ruleType: "domain",
-      matchType: "exact",
-      matchValue: domain,
-      action: "blacklist",
-      reason: `Blacklisted from email: ${email.subject}`,
-      isActive: true,
-    });
-    toast.success(`Blacklisted @${domain}`, {
-      description: "Future emails from this domain will always be filtered",
-    });
-  }, [addSenderRule]);
-
-  // Email selection handlers
-  const handleEmailSelect = useCallback((emailId: string, selected: boolean) => {
-    setSelectedEmailIds((prev) => {
-      const next = new Set(prev);
-      if (selected) {
-        next.add(emailId);
-      } else {
-        next.delete(emailId);
-      }
-      return next;
-    });
-  }, []);
-
-  // This will be defined later, using a ref pattern to avoid circular deps
-  const handleSelectAllEmails = useCallback((emailsToSelect: EmailMessage[]) => {
-    setSelectedEmailIds(new Set(emailsToSelect.map((e) => e.id)));
-  }, []);
-
-  const handleDeselectAllEmails = useCallback(() => {
-    setSelectedEmailIds(new Set());
-  }, []);
-
-  // Bulk actions for emails
-  const handleBulkMarkRelevant = useCallback(() => {
-    const ids = Array.from(selectedEmailIds);
-    markMultipleAsRelevant(ids);
-    toast.success(`${ids.length} email${ids.length !== 1 ? "s" : ""} moved to inbox`, {
-      description: "Training feedback saved",
-    });
-    setSelectedEmailIds(new Set());
-  }, [selectedEmailIds, markMultipleAsRelevant]);
-
-  const handleBulkMarkRejected = useCallback(() => {
-    const ids = Array.from(selectedEmailIds);
-    markMultipleAsRejected(ids);
-    toast.success(`${ids.length} email${ids.length !== 1 ? "s" : ""} moved to filtered`, {
-      description: "Training feedback saved",
-    });
-    setSelectedEmailIds(new Set());
-  }, [selectedEmailIds, markMultipleAsRejected]);
-
-  const selectedEmailCount = selectedEmailIds.size;
-
-  const [kanbanTasks, setKanbanTasks] = useState<KanbanTask[]>([]);
-  const [activeTask, setActiveTask] = useState<KanbanTask | null>(null);
-  const [selectedEmail, setSelectedEmail] = useState<EmailMessage | null>(null);
-  const [selectedTask, setSelectedTask] = useState<KanbanTask | null>(null);
-  const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [accountFilter, setAccountFilter] = useState<string>("all");
-  const [feedTab, setFeedTab] = useState<"relevant" | "rejected">("relevant");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
 
-  // Infinite scroll state for email feed
-  const EMAILS_PER_PAGE = 10;
-  const [visibleEmailCount, setVisibleEmailCount] = useState(EMAILS_PER_PAGE);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const loadMoreRef = useRef<HTMLDivElement>(null);
-  const emailScrollContainerRef = useRef<HTMLDivElement>(null);
-
-  // Confirmation dialog for bulk actions
   const { confirmBulkAction, state: bulkState, setOpen: setBulkOpen } = useBulkActionConfirmation();
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // Convert emailTasks to kanban tasks
+  // Load columns
   useEffect(() => {
-    const tasks = emailTasks.map((et) => ({
-      id: et.id,
-      emailTask: et,
-      status: (et.status === "snoozed" ? "waiting" : et.status) as TaskStatus,
-      selected: false,
-    }));
-    setKanbanTasks(tasks);
-  }, [emailTasks]);
-
-  // Sensors with lower activation distance for smoother dragging
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
-
-  // Filter emails based on category, account, and feed tab
-  const filteredEmails = useMemo(() => {
-    // Use the appropriate email list based on the tab
-    let result = feedTab === "relevant" ? emails : rejectedEmails;
-
-    if (accountFilter !== "all") {
-      result = result.filter((e) => e.accountId === accountFilter);
-    }
-
-    if (categoryFilter !== "all") {
-      result = result.filter(
-        (e) => e.aiClassification?.category === categoryFilter
-      );
-    }
-
-    // Sort by receivedAt descending
-    return [...result].sort(
-      (a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime()
-    );
-  }, [emails, rejectedEmails, categoryFilter, accountFilter, feedTab]);
-
-  // Visible emails for infinite scroll (slice of filtered emails)
-  const visibleEmails = useMemo(() => {
-    return filteredEmails.slice(0, visibleEmailCount);
-  }, [filteredEmails, visibleEmailCount]);
-
-  const hasMoreEmails = visibleEmailCount < filteredEmails.length;
-
-  // Reset visible count and clear selections when filters change
-  useEffect(() => {
-    setVisibleEmailCount(EMAILS_PER_PAGE);
-    setSelectedEmailIds(new Set());
-  }, [categoryFilter, accountFilter, feedTab]);
-
-  // Load more emails function
-  const loadMoreEmails = useCallback(() => {
-    if (isLoadingMore || !hasMoreEmails) return;
-
-    setIsLoadingMore(true);
-    // Simulate network delay for smooth UX
-    setTimeout(() => {
-      setVisibleEmailCount((prev) => prev + EMAILS_PER_PAGE);
-      setIsLoadingMore(false);
-    }, 300);
-  }, [isLoadingMore, hasMoreEmails]);
-
-  // Intersection Observer for infinite scroll
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && hasMoreEmails && !isLoadingMore) {
-          loadMoreEmails();
+    const loadColumns = async () => {
+      try {
+        const res = await fetch("/api/email/kanban-columns");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.columns?.length > 0) {
+            setColumns([...data.columns].sort((a: KanbanColumn, b: KanbanColumn) => a.order - b.order));
+          }
         }
-      },
-      { threshold: 0.1, rootMargin: "100px" }
-    );
-
-    const currentRef = loadMoreRef.current;
-    if (currentRef) {
-      observer.observe(currentRef);
-    }
-
-    return () => {
-      if (currentRef) {
-        observer.unobserve(currentRef);
+      } catch (error) {
+        console.error("Failed to load columns:", error);
       }
     };
-  }, [hasMoreEmails, isLoadingMore, loadMoreEmails]);
+    loadColumns();
+  }, []);
 
-  // Get task IDs for quick lookup
-  const taskEmailIds = useMemo(() => {
-    return new Set(emailTasks.map((t) => t.emailId));
-  }, [emailTasks]);
+  // Convert emails to kanban cards
+  useEffect(() => {
+    const qualified = emails.map((email) => ({
+      id: `email-${email.id}`,
+      email,
+      columnId: "new",
+      isRejected: false,
+      selected: false,
+    }));
 
-  const tasksByStatus = useMemo(() => {
-    // Initialize with all column IDs from dynamic columns
-    const grouped: Record<TaskStatus, KanbanTask[]> = {};
-    columns.forEach((col) => {
-      grouped[col.id] = [];
-    });
+    const rejected = rejectedEmails.map((email) => ({
+      id: `rejected-${email.id}`,
+      email,
+      columnId: "new",
+      isRejected: true,
+      selected: false,
+    }));
 
-    kanbanTasks.forEach((task) => {
-      if (grouped[task.status]) {
-        grouped[task.status].push(task);
-      } else {
-        // If task has unknown status, put in first column
-        if (columns.length > 0) {
-          grouped[columns[0].id].push(task);
+    setKanbanCards([...qualified, ...rejected]);
+  }, [emails, rejectedEmails]);
+
+  const filteredCards = useMemo(() => {
+    let result = kanbanCards;
+    if (accountFilter !== "all") {
+      result = result.filter((c) => c.email.accountId === accountFilter);
+    }
+    if (categoryFilter !== "all") {
+      result = result.filter((c) => c.email.aiClassification?.category === categoryFilter);
+    }
+    return result;
+  }, [kanbanCards, accountFilter, categoryFilter]);
+
+  const cardsByColumn = useMemo(() => {
+    const grouped: Record<string, KanbanEmailCard[]> = {};
+    columns.forEach((col) => (grouped[col.id] = []));
+
+    filteredCards.forEach((card) => {
+      const firstColId = columns[0]?.id;
+      if (card.columnId === "new" || card.columnId === firstColId) {
+        if (card.isRejected === showRejectedTab && grouped[firstColId]) {
+          grouped[firstColId].push(card);
         }
+      } else if (grouped[card.columnId]) {
+        grouped[card.columnId].push(card);
       }
     });
-    return grouped;
-  }, [kanbanTasks, columns]);
 
-  // Selected tasks count
-  const selectedCount = useMemo(
-    () => kanbanTasks.filter((t) => t.selected).length,
-    [kanbanTasks]
+    return grouped;
+  }, [filteredCards, columns, showRejectedTab]);
+
+  const qualifiedCount = useMemo(() => {
+    const firstColId = columns[0]?.id;
+    return filteredCards.filter((c) => !c.isRejected && (c.columnId === "new" || c.columnId === firstColId)).length;
+  }, [filteredCards, columns]);
+
+  const rejectedCount = useMemo(() => {
+    const firstColId = columns[0]?.id;
+    return filteredCards.filter((c) => c.isRejected && (c.columnId === "new" || c.columnId === firstColId)).length;
+  }, [filteredCards, columns]);
+
+  const getSelectedCountForColumn = useCallback(
+    (columnId: string) => (cardsByColumn[columnId] || []).filter((c) => c.selected).length,
+    [cardsByColumn]
+  );
+
+  const totalSelected = useMemo(() => kanbanCards.filter((c) => c.selected).length, [kanbanCards]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
   const handleDragStart = (event: DragStartEvent) => {
-    const task = kanbanTasks.find((t) => t.id === event.active.id);
-    if (task) setActiveTask(task);
+    const card = kanbanCards.find((c) => c.id === event.active.id);
+    if (card) setActiveCard(card);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
-    setActiveTask(null);
-
+    setActiveCard(null);
     if (!over) return;
 
-    const activeTaskData = kanbanTasks.find((t) => t.id === active.id);
-    if (!activeTaskData) return;
+    const activeCardData = kanbanCards.find((c) => c.id === active.id);
+    if (!activeCardData) return;
 
-    // Helper to update backend status (only for known statuses)
-    const updateBackendStatus = (taskId: string, newStatus: string) => {
-      // Map "waiting" to "snoozed" for backend
-      const backendStatus = newStatus === "waiting" ? "snoozed" : newStatus;
-      if (isKnownStatus(backendStatus)) {
-        updateTaskStatus(taskId, backendStatus);
-      }
-      // For custom columns, we only update local state (handled by setKanbanTasks)
-    };
-
-    // Check if dropping over a column
     const targetColumn = columns.find((c) => c.id === over.id);
-    if (targetColumn && activeTaskData.status !== targetColumn.id) {
-      setKanbanTasks((prev) =>
-        prev.map((t) =>
-          t.id === active.id ? { ...t, status: targetColumn.id } : t
-        )
+    if (targetColumn && activeCardData.columnId !== targetColumn.id) {
+      setKanbanCards((prev) =>
+        prev.map((c) => (c.id === active.id ? { ...c, columnId: targetColumn.id } : c))
       );
-      updateBackendStatus(activeTaskData.id, targetColumn.id);
       return;
     }
 
-    // Check if dropping over another task
-    const overTask = kanbanTasks.find((t) => t.id === over.id);
-    if (overTask) {
-      if (activeTaskData.status !== overTask.status) {
-        // Move to different column
-        setKanbanTasks((prev) =>
-          prev.map((t) =>
-            t.id === active.id ? { ...t, status: overTask.status } : t
-          )
+    const overCard = kanbanCards.find((c) => c.id === over.id);
+    if (overCard) {
+      if (activeCardData.columnId !== overCard.columnId) {
+        setKanbanCards((prev) =>
+          prev.map((c) => (c.id === active.id ? { ...c, columnId: overCard.columnId } : c))
         );
-        updateBackendStatus(activeTaskData.id, overTask.status);
       } else if (active.id !== over.id) {
-        // Reorder within same column
-        const oldIndex = kanbanTasks.findIndex((t) => t.id === active.id);
-        const newIndex = kanbanTasks.findIndex((t) => t.id === over.id);
-        setKanbanTasks(arrayMove(kanbanTasks, oldIndex, newIndex));
+        const oldIndex = kanbanCards.findIndex((c) => c.id === active.id);
+        const newIndex = kanbanCards.findIndex((c) => c.id === over.id);
+        setKanbanCards(arrayMove(kanbanCards, oldIndex, newIndex));
       }
     }
   };
 
-  const handleRefresh = useCallback(async () => {
-    await syncAllAccounts();
-  }, [syncAllAccounts]);
-
-  // Task selection handlers
-  const handleTaskSelect = useCallback((taskId: string, selected: boolean) => {
-    setKanbanTasks((prev) =>
-      prev.map((t) => (t.id === taskId ? { ...t, selected } : t))
-    );
+  const handleCardSelect = useCallback((cardId: string, selected: boolean) => {
+    setKanbanCards((prev) => prev.map((c) => (c.id === cardId ? { ...c, selected } : c)));
   }, []);
 
-  const handleSelectAll = useCallback(() => {
-    setKanbanTasks((prev) => prev.map((t) => ({ ...t, selected: true })));
-  }, []);
+  const handleSelectAllInColumn = useCallback(
+    (columnId: string) => {
+      const cardIds = new Set((cardsByColumn[columnId] || []).map((c) => c.id));
+      setKanbanCards((prev) => prev.map((c) => (cardIds.has(c.id) ? { ...c, selected: true } : c)));
+    },
+    [cardsByColumn]
+  );
+
+  const handleDeselectAllInColumn = useCallback(
+    (columnId: string) => {
+      const cardIds = new Set((cardsByColumn[columnId] || []).map((c) => c.id));
+      setKanbanCards((prev) => prev.map((c) => (cardIds.has(c.id) ? { ...c, selected: false } : c)));
+    },
+    [cardsByColumn]
+  );
 
   const handleDeselectAll = useCallback(() => {
-    setKanbanTasks((prev) => prev.map((t) => ({ ...t, selected: false })));
+    setKanbanCards((prev) => prev.map((c) => ({ ...c, selected: false })));
   }, []);
 
-  // Quick action handler
   const handleQuickAction = useCallback(
-    (taskId: string, action: string) => {
-      const task = kanbanTasks.find((t) => t.id === taskId);
-      if (!task) return;
+    async (cardId: string, action: string) => {
+      const card = kanbanCards.find((c) => c.id === cardId);
+      if (!card) return;
 
       switch (action) {
         case "view":
-          setSelectedTask(task);
+          setSelectedEmail(card.email);
+          break;
+        case "create_task":
+          const result = await createTaskFromEmail(card.email.id);
+          if (result.success) {
+            toast.success("Task created");
+          } else {
+            toast.error(result.error || "Failed to create task");
+          }
+          break;
+        case "mark_relevant":
+          markAsRelevant(card.email.id);
+          toast.success("Marked as relevant", {
+            action: { label: "Undo", onClick: () => undoLastAction() },
+          });
+          break;
+        case "mark_rejected":
+          markAsRejected(card.email.id);
+          toast.success("Marked as not relevant", {
+            action: { label: "Undo", onClick: () => undoLastAction() },
+          });
           break;
         case "archive":
-          setKanbanTasks((prev) =>
-            prev.map((t) =>
-              t.id === taskId ? { ...t, status: "completed" as TaskStatus } : t
-            )
+          setKanbanCards((prev) =>
+            prev.map((c) => (c.id === cardId ? { ...c, columnId: "completed" } : c))
           );
-          updateTaskStatus(taskId, "completed");
           break;
         case "delete":
-          setKanbanTasks((prev) => prev.filter((t) => t.id !== taskId));
-          break;
-        case "assign":
-          // Would open assign dialog
-          break;
-        case "add_to_tasks":
-          // Would add to main tasks
+          setKanbanCards((prev) => prev.filter((c) => c.id !== cardId));
           break;
       }
     },
-    [kanbanTasks, updateTaskStatus]
+    [kanbanCards, createTaskFromEmail, markAsRelevant, markAsRejected, undoLastAction]
   );
 
-  // Bulk action handler with confirmation for destructive actions
   const handleBulkAction = useCallback(
     async (action: string) => {
-      const selectedTaskIds = kanbanTasks.filter((t) => t.selected).map((t) => t.id);
-      const count = selectedTaskIds.length;
+      const selectedCards = kanbanCards.filter((c) => c.selected);
+      const count = selectedCards.length;
+      if (count === 0) return;
 
-      // Actions requiring confirmation
       if (action === "delete" || action === "archive") {
         await confirmBulkAction({
           action: action as "delete" | "archive",
           itemCount: count,
-          itemName: "email task",
+          itemName: "email",
           onConfirm: () => {
             if (action === "archive") {
-              setKanbanTasks((prev) =>
-                prev.map((t) =>
-                  t.selected ? { ...t, status: "completed" as TaskStatus, selected: false } : t
-                )
+              setKanbanCards((prev) =>
+                prev.map((c) => (c.selected ? { ...c, columnId: "completed", selected: false } : c))
               );
-              selectedTaskIds.forEach((id) => updateTaskStatus(id, "completed"));
-            } else if (action === "delete") {
-              setKanbanTasks((prev) => prev.filter((t) => !t.selected));
+            } else {
+              setKanbanCards((prev) => prev.filter((c) => !c.selected));
             }
           },
         });
         return;
       }
 
-      // Non-destructive actions execute immediately
       switch (action) {
-        case "mark_in_progress":
-          setKanbanTasks((prev) =>
-            prev.map((t) =>
-              t.selected ? { ...t, status: "in_progress" as TaskStatus, selected: false } : t
-            )
-          );
-          selectedTaskIds.forEach((id) => updateTaskStatus(id, "in_progress"));
+        case "mark_relevant":
+          markMultipleAsRelevant(selectedCards.map((c) => c.email.id));
+          toast.success(`${count} emails marked as relevant`);
+          handleDeselectAll();
           break;
-        case "mark_waiting":
-          setKanbanTasks((prev) =>
-            prev.map((t) =>
-              t.selected ? { ...t, status: "waiting" as TaskStatus, selected: false } : t
-            )
+        case "mark_rejected":
+          markMultipleAsRejected(selectedCards.map((c) => c.email.id));
+          toast.success(`${count} emails marked as not relevant`);
+          handleDeselectAll();
+          break;
+        case "move_in_progress":
+          setKanbanCards((prev) =>
+            prev.map((c) => (c.selected ? { ...c, columnId: "in_progress", selected: false } : c))
           );
-          selectedTaskIds.forEach((id) => updateTaskStatus(id, "snoozed"));
+          break;
+        case "move_waiting":
+          setKanbanCards((prev) =>
+            prev.map((c) => (c.selected ? { ...c, columnId: "waiting", selected: false } : c))
+          );
           break;
       }
     },
-    [kanbanTasks, updateTaskStatus, confirmBulkAction]
+    [kanbanCards, confirmBulkAction, markMultipleAsRelevant, markMultipleAsRejected, handleDeselectAll]
   );
 
-  // Check if there are any connected accounts
+  // Column settings handlers
+  const openColumnSettings = useCallback(() => {
+    setEditingColumns([...columns]);
+    setShowColumnSettings(true);
+  }, [columns]);
+
+  const saveColumns = useCallback(async (newColumns: KanbanColumn[]) => {
+    setIsSavingColumns(true);
+    try {
+      const columnsWithOrder = newColumns.map((col, idx) => ({ ...col, order: idx }));
+      const res = await fetch("/api/email/kanban-columns", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ columns: columnsWithOrder }),
+      });
+      if (res.ok) {
+        setColumns([...columnsWithOrder].sort((a, b) => a.order - b.order));
+        setEditingColumns(columnsWithOrder);
+        toast.success("Column settings saved");
+        setShowColumnSettings(false);
+      } else {
+        toast.error("Failed to save columns");
+      }
+    } catch {
+      toast.error("Failed to save columns");
+    }
+    setIsSavingColumns(false);
+  }, []);
+
+  const resetColumns = useCallback(async () => {
+    setIsSavingColumns(true);
+    try {
+      const res = await fetch("/api/email/kanban-columns", { method: "DELETE" });
+      if (res.ok) {
+        const data = await res.json();
+        const sorted = [...data.columns].sort((a: KanbanColumn, b: KanbanColumn) => a.order - b.order);
+        setColumns(sorted);
+        setEditingColumns(sorted);
+        toast.success("Columns reset to defaults");
+      }
+    } catch {
+      toast.error("Failed to reset columns");
+    }
+    setIsSavingColumns(false);
+  }, []);
+
+  const addColumn = useCallback(() => {
+    setEditingColumns((prev) => [
+      ...prev,
+      { id: `col_${Date.now()}`, title: "New Column", color: "bg-slate-500", order: prev.length },
+    ]);
+  }, []);
+
+  const removeColumn = useCallback((columnId: string) => {
+    setEditingColumns((prev) =>
+      prev.filter((c) => c.id !== columnId).map((c, idx) => ({ ...c, order: idx }))
+    );
+  }, []);
+
+  const updateColumn = useCallback((columnId: string, updates: Partial<KanbanColumn>) => {
+    setEditingColumns((prev) => prev.map((c) => (c.id === columnId ? { ...c, ...updates } : c)));
+  }, []);
+
+  const moveColumn = useCallback((columnId: string, direction: "up" | "down") => {
+    setEditingColumns((prev) => {
+      const idx = prev.findIndex((c) => c.id === columnId);
+      if (idx === -1) return prev;
+      if (direction === "up" && idx === 0) return prev;
+      if (direction === "down" && idx === prev.length - 1) return prev;
+      const newCols = [...prev];
+      const targetIdx = direction === "up" ? idx - 1 : idx + 1;
+      [newCols[idx], newCols[targetIdx]] = [newCols[targetIdx], newCols[idx]];
+      return newCols.map((c, i) => ({ ...c, order: i }));
+    });
+  }, []);
+
+  const handleTrainFromSent = useCallback(async () => {
+    setIsTraining(true);
+    try {
+      const res = await fetch("/api/email/train-from-sent", { method: "POST" });
+      if (res.ok) {
+        const data = await res.json();
+        toast.success(`Whitelisted ${data.stats.newDomainsWhitelisted} new domains`);
+      } else {
+        toast.error("Training failed");
+      }
+    } catch {
+      toast.error("Failed to train");
+    }
+    setIsTraining(false);
+  }, []);
+
+  const handleWhitelistSender = useCallback(
+    async (email: EmailMessage) => {
+      const domain = email.from.email.split("@")[1];
+      await addSenderRule({
+        ruleType: "domain",
+        matchType: "exact",
+        matchValue: domain,
+        action: "whitelist",
+        reason: `Whitelisted from email`,
+        isActive: true,
+      });
+      toast.success(`Whitelisted @${domain}`);
+    },
+    [addSenderRule]
+  );
+
+  const handleBlacklistSender = useCallback(
+    async (email: EmailMessage) => {
+      const domain = email.from.email.split("@")[1];
+      await addSenderRule({
+        ruleType: "domain",
+        matchType: "exact",
+        matchValue: domain,
+        action: "blacklist",
+        reason: `Blacklisted from email`,
+        isActive: true,
+      });
+      toast.success(`Blacklisted @${domain}`);
+    },
+    [addSenderRule]
+  );
+
+  const handleRefresh = useCallback(async () => {
+    await syncAllAccounts();
+  }, [syncAllAccounts]);
+
   const hasConnectedAccounts = accounts.length > 0;
   const hasConnectedAndActive = accounts.some((a) => a.isConnected);
 
   if (!hasConnectedAccounts || !hasConnectedAndActive) {
     return (
       <>
-        <Header title="AI Email Tasks" />
+        <Header title="Email Kanban" />
         <main className="flex-1 flex items-center justify-center p-6">
           <Card className="max-w-md w-full p-8">
             <div className="text-center space-y-4">
@@ -1323,8 +882,8 @@ export default function EmailPage() {
               </div>
               <h2 className="text-xl font-semibold">Connect Your Email</h2>
               <p className="text-muted-foreground text-sm">
-                Connect your Microsoft 365 or Outlook account in System Settings
-                to enable AI-powered email processing.
+                Connect your Microsoft 365 or Outlook account in System Settings to enable
+                AI-powered email processing.
               </p>
               <Button className="bg-primary mt-2" asChild>
                 <a href="/admin/system">
@@ -1341,20 +900,19 @@ export default function EmailPage() {
 
   return (
     <TooltipProvider delayDuration={0}>
-      <Header title="AI Email Tasks" />
+      <Header title="Email Kanban" />
       <main className="flex flex-col h-[calc(100vh-64px)] overflow-hidden">
         {/* Top Bar */}
         <div className="h-14 border-b bg-card flex items-center px-4 gap-3 flex-shrink-0">
           <div className="flex items-center gap-2">
             <Bot className="h-5 w-5 text-primary" />
-            <span className="font-medium">AI Email Tasks</span>
+            <span className="font-medium">Email Kanban</span>
           </div>
 
-          {/* Filters */}
           <div className="flex items-center gap-2 ml-4">
-            <Filter className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+            <Filter className="h-4 w-4 text-muted-foreground" />
             <Select value={accountFilter} onValueChange={setAccountFilter}>
-              <SelectTrigger className="w-[180px] h-8 text-xs" aria-label="Filter by email account">
+              <SelectTrigger className="w-[180px] h-8 text-xs">
                 <SelectValue placeholder="All accounts" />
               </SelectTrigger>
               <SelectContent>
@@ -1367,7 +925,7 @@ export default function EmailPage() {
               </SelectContent>
             </Select>
             <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger className="w-[150px] h-8 text-xs" aria-label="Filter by email category">
+              <SelectTrigger className="w-[150px] h-8 text-xs">
                 <SelectValue placeholder="All categories" />
               </SelectTrigger>
               <SelectContent>
@@ -1383,10 +941,9 @@ export default function EmailPage() {
 
           <div className="flex-1" />
 
-          {/* Bulk Actions - shown when items are selected */}
-          {selectedCount > 0 && (
+          {totalSelected > 0 && (
             <div className="flex items-center gap-2 mr-4 px-3 py-1 bg-primary/10 rounded-lg">
-              <span className="text-sm font-medium">{selectedCount} selected</span>
+              <span className="text-sm font-medium">{totalSelected} selected</span>
               <div className="flex items-center gap-1">
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -1394,13 +951,12 @@ export default function EmailPage() {
                       variant="ghost"
                       size="icon"
                       className="h-7 w-7"
-                      aria-label="Mark selected tasks as in progress"
-                      onClick={() => handleBulkAction("mark_in_progress")}
+                      onClick={() => handleBulkAction("move_in_progress")}
                     >
                       <CheckCircle className="h-4 w-4" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Mark In Progress</TooltipContent>
+                  <TooltipContent>Move to In Progress</TooltipContent>
                 </Tooltip>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -1408,7 +964,32 @@ export default function EmailPage() {
                       variant="ghost"
                       size="icon"
                       className="h-7 w-7"
-                      aria-label="Archive selected tasks"
+                      onClick={() => handleBulkAction("mark_relevant")}
+                    >
+                      <ThumbsUp className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Mark as Relevant</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => handleBulkAction("mark_rejected")}
+                    >
+                      <ThumbsDown className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Mark as Not Relevant</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
                       onClick={() => handleBulkAction("archive")}
                     >
                       <Archive className="h-4 w-4" />
@@ -1422,7 +1003,6 @@ export default function EmailPage() {
                       variant="ghost"
                       size="icon"
                       className="h-7 w-7 text-destructive"
-                      aria-label="Delete selected tasks"
                       onClick={() => handleBulkAction("delete")}
                     >
                       <Trash2 className="h-4 w-4" />
@@ -1430,12 +1010,7 @@ export default function EmailPage() {
                   </TooltipTrigger>
                   <TooltipContent>Delete</TooltipContent>
                 </Tooltip>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 ml-1"
-                  onClick={handleDeselectAll}
-                >
+                <Button variant="ghost" size="sm" className="h-7 ml-1" onClick={handleDeselectAll}>
                   <XSquare className="h-4 w-4 mr-1" />
                   Clear
                 </Button>
@@ -1443,33 +1018,17 @@ export default function EmailPage() {
             </div>
           )}
 
-          {/* Stats */}
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Badge variant="secondary" className="gap-1">
               <Inbox className="h-3 w-3" />
-              {accounts.length} account{accounts.length !== 1 ? "s" : ""}
+              {getUnreadCount()} unread
             </Badge>
-            <span>{getUnreadCount()} unread</span>
-            <span className="text-border">|</span>
-            <span>{emailTasks.length} tasks</span>
+            <Badge variant="outline" className="gap-1">
+              <Ban className="h-3 w-3" />
+              {getRejectedCount()} filtered
+            </Badge>
           </div>
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                aria-label="Select all tasks"
-                onClick={handleSelectAll}
-              >
-                <CheckSquare className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Select All</TooltipContent>
-          </Tooltip>
-
-          {/* Train from sent emails - admin only */}
           {isAdmin && (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -1485,14 +1044,21 @@ export default function EmailPage() {
                   ) : (
                     <Sparkles className="h-4 w-4" />
                   )}
-                  <span className="hidden sm:inline">
-                    {isTraining ? "Training..." : "Train Filter"}
-                  </span>
+                  Train
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>
-                Whitelist domains from your sent emails
-              </TooltipContent>
+              <TooltipContent>Train filter from sent emails</TooltipContent>
+            </Tooltip>
+          )}
+
+          {isAdmin && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={openColumnSettings}>
+                  <Settings className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Customize columns</TooltipContent>
             </Tooltip>
           )}
 
@@ -1502,271 +1068,53 @@ export default function EmailPage() {
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8"
-                aria-label={isSyncing ? "Syncing emails" : "Refresh emails"}
                 onClick={handleRefresh}
                 disabled={isSyncing}
               >
-                <RefreshCw
-                  className={cn("h-4 w-4", isSyncing && "animate-spin")}
-                />
+                <RefreshCw className={cn("h-4 w-4", isSyncing && "animate-spin")} />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>
-              {isSyncing ? "Syncing..." : "Refresh emails"}
-            </TooltipContent>
+            <TooltipContent>{isSyncing ? "Syncing..." : "Refresh emails"}</TooltipContent>
           </Tooltip>
         </div>
 
-        {/* Main Content - Split View */}
-        <div className="flex-1 flex overflow-hidden">
-          {/* Left: Email Timeline */}
-          <div className="w-[420px] flex-shrink-0 border-r flex flex-col bg-muted/30">
-            <div className="p-3 border-b bg-card">
-              {/* Feed Tabs */}
-              <div className="flex items-center gap-1 mb-2">
-                <Button
-                  variant={feedTab === "relevant" ? "default" : "ghost"}
-                  size="sm"
-                  className={cn(
-                    "h-7 text-xs",
-                    feedTab === "relevant" && "bg-primary"
-                  )}
-                  onClick={() => setFeedTab("relevant")}
-                >
-                  <Inbox className="h-3.5 w-3.5 mr-1.5" />
-                  Inbox
-                  <Badge variant="secondary" className="ml-1.5 h-5 px-1.5 text-[10px]">
-                    {emails.length}
-                  </Badge>
-                </Button>
-                <Button
-                  variant={feedTab === "rejected" ? "default" : "ghost"}
-                  size="sm"
-                  className={cn(
-                    "h-7 text-xs",
-                    feedTab === "rejected" && "bg-muted-foreground"
-                  )}
-                  onClick={() => setFeedTab("rejected")}
-                >
-                  <Ban className="h-3.5 w-3.5 mr-1.5" />
-                  Filtered
-                  <Badge variant="secondary" className="ml-1.5 h-5 px-1.5 text-[10px]">
-                    {getRejectedCount()}
-                  </Badge>
-                </Button>
-                <div className="ml-auto">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => handleSelectAllEmails(filteredEmails)}
-                      >
-                        <CheckSquare className="h-3.5 w-3.5" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Select all</TooltipContent>
-                  </Tooltip>
-                </div>
-              </div>
-
-              {/* Bulk Selection Toolbar */}
-              {selectedEmailCount > 0 ? (
-                <div className="flex items-center gap-2 py-1 px-2 bg-primary/10 rounded-lg">
-                  <span className="text-xs font-medium">{selectedEmailCount} selected</span>
-                  <div className="flex items-center gap-1 ml-auto">
-                    {feedTab === "rejected" ? (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-xs"
-                            onClick={handleBulkMarkRelevant}
-                          >
-                            <ThumbsUp className="h-3.5 w-3.5 mr-1" />
-                            Mark Relevant
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Move selected to inbox</TooltipContent>
-                      </Tooltip>
-                    ) : (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-xs"
-                            onClick={handleBulkMarkRejected}
-                          >
-                            <ThumbsDown className="h-3.5 w-3.5 mr-1" />
-                            Filter Out
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Move selected to filtered</TooltipContent>
-                      </Tooltip>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 text-xs"
-                      onClick={handleDeselectAllEmails}
-                    >
-                      <XSquare className="h-3.5 w-3.5 mr-1" />
-                      Clear
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  {feedTab === "relevant"
-                    ? `Business-relevant emails from ${accounts.length} account${accounts.length !== 1 ? "s" : ""}`
-                    : "Spam, marketing, newsletters & non-relevant emails"}
-                </p>
-              )}
+        {/* Kanban Board */}
+        <div className="flex-1 overflow-auto p-4 bg-background">
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+          >
+            <div className="inline-flex gap-4 h-full min-w-max pb-4">
+              {columns.map((column, idx) => (
+                <KanbanColumnComponent
+                  key={column.id}
+                  column={column}
+                  cards={cardsByColumn[column.id] || []}
+                  isFirstColumn={idx === 0}
+                  showRejectedTab={showRejectedTab}
+                  rejectedCount={rejectedCount}
+                  qualifiedCount={qualifiedCount}
+                  onTabChange={setShowRejectedTab}
+                  onCardClick={(card) => setSelectedEmail(card.email)}
+                  onCardSelect={handleCardSelect}
+                  onQuickAction={handleQuickAction}
+                  onSelectAll={() => handleSelectAllInColumn(column.id)}
+                  onDeselectAll={() => handleDeselectAllInColumn(column.id)}
+                  selectedCount={getSelectedCountForColumn(column.id)}
+                />
+              ))}
             </div>
-            <div
-              ref={emailScrollContainerRef}
-              className="flex-1 overflow-y-auto"
-            >
-              <div className="p-3 space-y-3">
-                {mounted && filteredEmails.length === 0 && (
-                  <div className="text-center py-12 text-muted-foreground">
-                    {feedTab === "relevant" ? (
-                      <>
-                        <Mail className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                        <p>No emails match your filters</p>
-                      </>
-                    ) : (
-                      <>
-                        <Ban className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                        <p>No filtered emails</p>
-                        <p className="text-xs mt-1">All your emails are business-relevant!</p>
-                      </>
-                    )}
-                  </div>
-                )}
-                {mounted && feedTab === "relevant" &&
-                  visibleEmails.map((email) => (
-                    <EmailTimelineCard
-                      key={email.id}
-                      email={email}
-                      hasTask={taskEmailIds.has(email.id)}
-                      onCreateTask={() => {
-                        // Task is auto-created by the context for emails that need response
-                      }}
-                      onViewEmail={() => setSelectedEmail(email)}
-                      onReject={() => handleMarkRejected(email.id, email)}
-                      showRejectButton={true}
-                      isSelected={selectedEmailIds.has(email.id)}
-                      onSelect={(selected) => handleEmailSelect(email.id, selected)}
-                    />
-                  ))}
-                {mounted && feedTab === "rejected" &&
-                  visibleEmails.map((email) => (
-                    <RejectedEmailCard
-                      key={email.id}
-                      email={email}
-                      onViewEmail={() => setSelectedEmail(email)}
-                      onApprove={() => handleMarkRelevant(email.id, email)}
-                      isSelected={selectedEmailIds.has(email.id)}
-                      onSelect={(selected) => handleEmailSelect(email.id, selected)}
-                    />
-                  ))}
-
-                {/* Infinite scroll trigger */}
-                {mounted && hasMoreEmails && (
-                  <div
-                    ref={loadMoreRef}
-                    className="flex items-center justify-center py-4"
-                  >
-                    {isLoadingMore ? (
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        <span className="text-sm">Loading more emails...</span>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">
-                        Scroll for more ({filteredEmails.length - visibleEmailCount} remaining)
-                      </span>
-                    )}
-                  </div>
-                )}
-
-                {/* End of list indicator */}
-                {mounted && !hasMoreEmails && filteredEmails.length > EMAILS_PER_PAGE && (
-                  <div className="text-center py-4 text-xs text-muted-foreground">
-                    All {filteredEmails.length} emails loaded
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Right: Kanban Board */}
-          <div className="flex-1 flex flex-col min-w-0 bg-background">
-            <div className="p-3 border-b bg-card flex-shrink-0">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="font-semibold text-sm flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4" />
-                    Task Board
-                  </h2>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Drag cards anywhere to move between columns
-                  </p>
-                </div>
-                {isAdmin && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={openColumnSettings}
-                      >
-                        <Settings className="h-4 w-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Customize columns</TooltipContent>
-                  </Tooltip>
-                )}
-              </div>
-            </div>
-            <div className="flex-1 overflow-auto p-4">
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragStart={handleDragStart}
-                onDragEnd={handleDragEnd}
-              >
-                <div className="inline-flex gap-4 h-full min-w-max pb-4">
-                  {columns.map((column) => (
-                    <KanbanColumn
-                      key={column.id}
-                      column={column}
-                      tasks={tasksByStatus[column.id] || []}
-                      onTaskClick={setSelectedTask}
-                      onTaskSelect={handleTaskSelect}
-                      onQuickAction={handleQuickAction}
-                    />
-                  ))}
-                </div>
-                <DragOverlay dropAnimation={{ duration: 200, easing: "ease" }}>
-                  {activeTask && <TaskCardOverlay task={activeTask} />}
-                </DragOverlay>
-              </DndContext>
-            </div>
-          </div>
+            <DragOverlay dropAnimation={{ duration: 200, easing: "ease" }}>
+              {activeCard && <EmailCardOverlay card={activeCard} />}
+            </DragOverlay>
+          </DndContext>
         </div>
 
         {/* Email Detail Modal */}
         {mounted && (
-          <Dialog
-            open={!!selectedEmail}
-            onOpenChange={() => setSelectedEmail(null)}
-          >
+          <Dialog open={!!selectedEmail} onOpenChange={() => setSelectedEmail(null)}>
             <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
               <DialogHeader className="flex-shrink-0">
                 <DialogTitle>{selectedEmail?.subject}</DialogTitle>
@@ -1789,32 +1137,18 @@ export default function EmailPage() {
                         <p className="font-medium">
                           {selectedEmail.from.name || selectedEmail.from.email}
                         </p>
-                        <p className="text-sm text-muted-foreground">
-                          {selectedEmail.from.email}
-                        </p>
+                        <p className="text-sm text-muted-foreground">{selectedEmail.from.email}</p>
                       </div>
-                      <p
-                        className="text-sm text-muted-foreground ml-auto"
-                        suppressHydrationWarning
-                      >
+                      <p className="text-sm text-muted-foreground ml-auto" suppressHydrationWarning>
                         {format(selectedEmail.receivedAt, "MMM d, yyyy 'at' h:mm a")}
                       </p>
                     </div>
 
-                    {/* Account info */}
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Inbox className="h-4 w-4" />
-                      <span>Received at: {selectedEmail.accountEmail}</span>
-                    </div>
-
-                    {/* AI Classification */}
                     {selectedEmail.aiClassification && (
                       <div className="bg-primary/5 rounded-lg p-4">
                         <div className="flex items-center gap-2 mb-2">
                           <Bot className="h-4 w-4 text-primary" />
-                          <span className="text-sm font-medium text-primary">
-                            AI Analysis
-                          </span>
+                          <span className="text-sm font-medium text-primary">AI Analysis</span>
                           <Badge
                             className={cn(
                               "ml-auto",
@@ -1824,28 +1158,23 @@ export default function EmailPage() {
                             {selectedEmail.aiClassification.priority}
                           </Badge>
                         </div>
-                        <p className="text-sm">
-                          {selectedEmail.aiClassification.summary}
-                        </p>
+                        <p className="text-sm">{selectedEmail.aiClassification.summary}</p>
                         {selectedEmail.aiClassification.keyPoints.length > 0 && (
                           <ul className="mt-2 space-y-1">
-                            {selectedEmail.aiClassification.keyPoints.map(
-                              (point, idx) => (
-                                <li
-                                  key={idx}
-                                  className="text-sm text-muted-foreground flex items-center gap-2"
-                                >
-                                  <ArrowRight className="h-3 w-3 text-primary" />
-                                  {point}
-                                </li>
-                              )
-                            )}
+                            {selectedEmail.aiClassification.keyPoints.map((point, idx) => (
+                              <li
+                                key={idx}
+                                className="text-sm text-muted-foreground flex items-center gap-2"
+                              >
+                                <ArrowRight className="h-3 w-3 text-primary" />
+                                {point}
+                              </li>
+                            ))}
                           </ul>
                         )}
                       </div>
                     )}
 
-                    {/* Email Body */}
                     {selectedEmail.bodyType === "html" ? (
                       <div className="border rounded-lg overflow-hidden bg-white">
                         <iframe
@@ -1854,7 +1183,6 @@ export default function EmailPage() {
                           sandbox="allow-same-origin"
                           title="Email content"
                           onLoad={(e) => {
-                            // Auto-resize iframe to content height
                             const iframe = e.target as HTMLIFrameElement;
                             if (iframe.contentDocument) {
                               const height = iframe.contentDocument.body.scrollHeight;
@@ -1870,29 +1198,29 @@ export default function EmailPage() {
                         </pre>
                       </div>
                     )}
-                    {selectedEmail.attachments &&
-                      selectedEmail.attachments.length > 0 && (
-                        <div className="border-t pt-4">
-                          <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
-                            <Paperclip className="h-4 w-4" />
-                            Attachments
-                          </h4>
-                          <div className="space-y-2">
-                            {selectedEmail.attachments.map((att) => (
-                              <div
-                                key={att.id}
-                                className="flex items-center gap-3 p-2 bg-muted/50 rounded-lg"
-                              >
-                                <FileText className="h-4 w-4 text-primary" />
-                                <span className="text-sm">{att.name}</span>
-                                <span className="text-xs text-muted-foreground">
-                                  {Math.round(att.size / 1024)} KB
-                                </span>
-                              </div>
-                            ))}
-                          </div>
+
+                    {selectedEmail.attachments && selectedEmail.attachments.length > 0 && (
+                      <div className="border-t pt-4">
+                        <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+                          <Paperclip className="h-4 w-4" />
+                          Attachments
+                        </h4>
+                        <div className="space-y-2">
+                          {selectedEmail.attachments.map((att) => (
+                            <div
+                              key={att.id}
+                              className="flex items-center gap-3 p-2 bg-muted/50 rounded-lg"
+                            >
+                              <FileText className="h-4 w-4 text-primary" />
+                              <span className="text-sm">{att.name}</span>
+                              <span className="text-xs text-muted-foreground">
+                                {Math.round(att.size / 1024)} KB
+                              </span>
+                            </div>
+                          ))}
                         </div>
-                      )}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -1929,146 +1257,9 @@ export default function EmailPage() {
           </Dialog>
         )}
 
-        {/* Task Detail Modal */}
-        {mounted && (
-          <Dialog
-            open={!!selectedTask}
-            onOpenChange={() => setSelectedTask(null)}
-          >
-            <DialogContent className="max-w-lg">
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2">
-                  {selectedTask?.emailTask.email.aiClassification && (
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "text-xs",
-                        priorityColors[
-                          selectedTask.emailTask.email.aiClassification.priority
-                        ]
-                      )}
-                    >
-                      {selectedTask.emailTask.email.aiClassification.priority}
-                    </Badge>
-                  )}
-                  {selectedTask?.emailTask.email.subject}
-                </DialogTitle>
-              </DialogHeader>
-              {selectedTask && (
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-sm font-medium mb-1">From</p>
-                    <p className="text-sm text-muted-foreground">
-                      {selectedTask.emailTask.email.matchedClientName ||
-                        selectedTask.emailTask.email.from.name}{" "}
-                      ({selectedTask.emailTask.email.from.email})
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium mb-1">AI Summary</p>
-                    <p className="text-sm text-muted-foreground">
-                      {selectedTask.emailTask.email.aiClassification?.summary ||
-                        selectedTask.emailTask.email.bodyPreview}
-                    </p>
-                  </div>
-                  {selectedTask.emailTask.email.aiClassification?.keyPoints && (
-                    <div>
-                      <p className="text-sm font-medium mb-2">Key Points</p>
-                      <ul className="space-y-1">
-                        {selectedTask.emailTask.email.aiClassification.keyPoints.map(
-                          (item, idx) => (
-                            <li key={idx} className="flex items-center gap-2 text-sm">
-                              <ArrowRight className="h-3 w-3 text-primary" />
-                              {item}
-                            </li>
-                          )
-                        )}
-                      </ul>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-4 text-sm">
-                    <div>
-                      <span className="text-muted-foreground">Assigned to: </span>
-                      <span className="font-medium">
-                        {selectedTask.emailTask.assignedToName || "Unassigned"}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Status: </span>
-                      <Badge variant="outline" className="capitalize">
-                        {selectedTask.status.replace("_", " ")}
-                      </Badge>
-                    </div>
-                  </div>
-
-                  {/* Quick Actions in Modal */}
-                  <div className="border-t pt-4">
-                    <p className="text-sm font-medium mb-2">Quick Actions</p>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          handleQuickAction(selectedTask.id, "archive");
-                          setSelectedTask(null);
-                        }}
-                      >
-                        <Archive className="h-4 w-4 mr-1" />
-                        Archive
-                      </Button>
-                      <Button variant="outline" size="sm">
-                        <UserPlus className="h-4 w-4 mr-1" />
-                        Assign
-                      </Button>
-                      <Button variant="outline" size="sm">
-                        <ListTodo className="h-4 w-4 mr-1" />
-                        Add to Tasks
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-destructive"
-                        onClick={() => {
-                          handleQuickAction(selectedTask.id, "delete");
-                          setSelectedTask(null);
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4 mr-1" />
-                        Delete
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              )}
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setSelectedTask(null)}>
-                  Close
-                </Button>
-                <Button
-                  className="bg-primary"
-                  onClick={() => {
-                    if (selectedTask) {
-                      setSelectedEmail(selectedTask.emailTask.email);
-                      setSelectedTask(null);
-                    }
-                  }}
-                >
-                  <Mail className="h-4 w-4 mr-2" />
-                  View Source Email
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        )}
-
         {/* Column Settings Modal */}
         {mounted && (
-          <Dialog
-            open={showColumnSettings}
-            onOpenChange={(open) => {
-              if (!open) setShowColumnSettings(false);
-            }}
-          >
+          <Dialog open={showColumnSettings} onOpenChange={(open) => !open && setShowColumnSettings(false)}>
             <DialogContent className="max-w-lg">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
@@ -2078,29 +1269,15 @@ export default function EmailPage() {
               </DialogHeader>
               <div className="space-y-4 max-h-[60vh] overflow-y-auto">
                 <p className="text-sm text-muted-foreground">
-                  Add, remove, rename, or reorder columns. Changes are saved for all users.
+                  Add, remove, rename, or reorder columns.
                 </p>
-
-                {/* Column List */}
                 <div className="space-y-2">
                   {editingColumns.map((col, idx) => (
-                    <div
-                      key={col.id}
-                      className="flex items-center gap-2 p-2 border rounded-lg bg-card"
-                    >
-                      {/* Drag handle indicator */}
-                      <div className="text-muted-foreground">
-                        <GripVertical className="h-4 w-4" />
-                      </div>
-
-                      {/* Color selector */}
+                    <div key={col.id} className="flex items-center gap-2 p-2 border rounded-lg bg-card">
+                      <GripVertical className="h-4 w-4 text-muted-foreground" />
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="h-8 w-8 flex-shrink-0"
-                          >
+                          <Button variant="outline" size="icon" className="h-8 w-8">
                             <div className={cn("w-4 h-4 rounded", col.color)} />
                           </Button>
                         </DropdownMenuTrigger>
@@ -2115,22 +1292,16 @@ export default function EmailPage() {
                                   col.color === color.id && "ring-2 ring-primary ring-offset-2"
                                 )}
                                 onClick={() => updateColumn(col.id, { color: color.id })}
-                                title={color.label}
                               />
                             ))}
                           </div>
                         </DropdownMenuContent>
                       </DropdownMenu>
-
-                      {/* Column name input */}
                       <Input
                         value={col.title}
                         onChange={(e) => updateColumn(col.id, { title: e.target.value })}
                         className="flex-1 h-8"
-                        placeholder="Column name"
                       />
-
-                      {/* Move up/down buttons */}
                       <div className="flex flex-col">
                         <Button
                           variant="ghost"
@@ -2151,8 +1322,6 @@ export default function EmailPage() {
                           <span className="text-xs">▼</span>
                         </Button>
                       </div>
-
-                      {/* Delete button */}
                       <Button
                         variant="ghost"
                         size="icon"
@@ -2165,18 +1334,11 @@ export default function EmailPage() {
                     </div>
                   ))}
                 </div>
-
-                {/* Add column button */}
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={addColumn}
-                >
+                <Button variant="outline" className="w-full" onClick={addColumn}>
                   <Plus className="h-4 w-4 mr-2" />
                   Add Column
                 </Button>
               </div>
-
               <DialogFooter className="flex-wrap gap-2">
                 <Button
                   variant="ghost"
@@ -2186,34 +1348,20 @@ export default function EmailPage() {
                   className="mr-auto"
                 >
                   <RotateCcw className="h-4 w-4 mr-1" />
-                  Reset to Defaults
+                  Reset
                 </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setShowColumnSettings(false)}
-                  disabled={isSavingColumns}
-                >
+                <Button variant="outline" onClick={() => setShowColumnSettings(false)} disabled={isSavingColumns}>
                   Cancel
                 </Button>
-                <Button
-                  onClick={() => saveColumns(editingColumns)}
-                  disabled={isSavingColumns || editingColumns.length === 0}
-                >
-                  {isSavingColumns ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    "Save Changes"
-                  )}
+                <Button onClick={() => saveColumns(editingColumns)} disabled={isSavingColumns || editingColumns.length === 0}>
+                  {isSavingColumns ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                  Save
                 </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
         )}
 
-        {/* Confirmation Dialogs */}
         <ConfirmationDialog
           open={bulkState.open}
           onOpenChange={setBulkOpen}
