@@ -1,228 +1,481 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { Header } from "@/components/layout/header";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
-  StatCard,
-  ProgressStatCard,
-  ActivityFeed,
-  RecentTasks,
-  WelcomeBanner,
-  WeeklyChart,
-  DonutChart,
-} from "@/components/dashboard";
-import {
-  ClipboardList,
+  Clock,
   CheckCircle,
-  DollarSign,
   Phone,
   FileText,
+  Mail,
+  Bot,
+  TrendingUp,
+  TrendingDown,
+  AlertCircle,
+  Play,
+  Eye,
+  ArrowRight,
+  Zap,
   Users,
+  Timer,
+  Target,
+  DollarSign,
+  Calendar,
+  BarChart3,
+  Activity,
+  Headphones,
+  MessageSquare,
+  Sparkles,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { format, formatDistanceToNow } from "date-fns";
 
-// Mock data - will be replaced with real data from Supabase
-const mockActivities = [
+// Types
+interface UrgentItem {
+  id: string;
+  title: string;
+  client: string;
+  dueIn: string;
+  type: "irs_notice" | "callback" | "approval" | "deadline";
+  action: string;
+}
+
+interface PriorityItem {
+  id: string;
+  title: string;
+  count?: number;
+}
+
+interface AIPhoneCall {
+  id: string;
+  callerName: string;
+  callerPhone: string;
+  time: Date;
+  intent: string;
+  actionTaken: string;
+  status: "handled" | "needs_action" | "transferred";
+  duration: string;
+}
+
+interface AICompletedAction {
+  id: string;
+  action: string;
+  count: number;
+  icon: React.ElementType;
+}
+
+// Mock Data
+const mockUrgentItems: UrgentItem[] = [
+  { id: "1", title: "IRS Notice - ABC Corp", client: "ABC Corporation", dueIn: "2 days", type: "irs_notice", action: "Review" },
+  { id: "2", title: "Client callback requested", client: "Sarah Johnson", dueIn: "Today", type: "callback", action: "Call" },
+  { id: "3", title: "Document approval needed", client: "Tech Solutions", dueIn: "Today", type: "approval", action: "Approve" },
+  { id: "4", title: "Extension deadline", client: "Miller Family", dueIn: "3 days", type: "deadline", action: "File" },
+];
+
+const mockPriorities: PriorityItem[] = [
+  { id: "1", title: "Review AI-processed documents", count: 5 },
+  { id: "2", title: "Follow up on waiting tasks", count: 3 },
+  { id: "3", title: "Approve AI-drafted emails", count: 2 },
+];
+
+const mockPhoneCalls: AIPhoneCall[] = [
   {
     id: "1",
-    type: "call_received" as const,
-    description: "Inbound call from John Smith regarding tax return status",
-    user: { name: "Elizabeth", avatar: "" },
-    timestamp: new Date(Date.now() - 1000 * 60 * 15),
+    callerName: "John Smith",
+    callerPhone: "(555) 123-4567",
+    time: new Date(Date.now() - 1000 * 60 * 27),
+    intent: "Schedule appointment for tax review",
+    actionTaken: "Created task: Schedule callback",
+    status: "needs_action",
+    duration: "2:34",
   },
   {
     id: "2",
-    type: "document_received" as const,
-    description: "Bank statements received from ABC Corp via email",
-    user: { name: "Britney", avatar: "" },
-    timestamp: new Date(Date.now() - 1000 * 60 * 45),
+    callerName: "Unknown Caller",
+    callerPhone: "(555) 987-6543",
+    time: new Date(Date.now() - 1000 * 60 * 75),
+    intent: "New client inquiry - business taxes",
+    actionTaken: "Added to leads, sent info packet",
+    status: "handled",
+    duration: "4:12",
   },
   {
     id: "3",
-    type: "task_completed" as const,
-    description: "Completed: Send W-2 copy to Sarah Johnson",
-    user: { name: "Elizabeth", avatar: "" },
-    timestamp: new Date(Date.now() - 1000 * 60 * 90),
+    callerName: "Sarah Johnson",
+    callerPhone: "(555) 456-7890",
+    time: new Date(Date.now() - 1000 * 60 * 100),
+    intent: "Refund status question",
+    actionTaken: "AI provided status update",
+    status: "handled",
+    duration: "1:45",
   },
   {
     id: "4",
-    type: "email_received" as const,
-    description: "New client inquiry from Mike Williams",
-    user: { name: "Hunter McGaw", avatar: "" },
-    timestamp: new Date(Date.now() - 1000 * 60 * 120),
-  },
-  {
-    id: "5",
-    type: "client_created" as const,
-    description: "New client added: Williams Consulting LLC",
-    user: { name: "Hunter McGaw", avatar: "" },
-    timestamp: new Date(Date.now() - 1000 * 60 * 180),
+    callerName: "Mike Chen",
+    callerPhone: "(555) 234-5678",
+    time: new Date(Date.now() - 1000 * 60 * 150),
+    intent: "Document submission confirmation",
+    actionTaken: "Confirmed receipt, no action needed",
+    status: "handled",
+    duration: "0:58",
   },
 ];
 
-const mockTasks = [
-  {
-    id: "1",
-    title: "Send 2023 tax return copy to client",
-    client: { name: "John Smith", avatar: "" },
-    assignee: { name: "Elizabeth", avatar: "" },
-    status: "pending" as const,
-    priority: "high" as const,
-    source: "phone_call" as const,
-    dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24),
-    createdAt: new Date(),
-  },
-  {
-    id: "2",
-    title: "Review monthly bookkeeping package",
-    client: { name: "ABC Corp", avatar: "" },
-    assignee: { name: "Britney", avatar: "" },
-    status: "in_progress" as const,
-    priority: "medium" as const,
-    source: "email" as const,
-    dueDate: new Date(Date.now() + 1000 * 60 * 60 * 48),
-    createdAt: new Date(),
-  },
-  {
-    id: "3",
-    title: "Process payroll documents",
-    client: { name: "XYZ Inc", avatar: "" },
-    assignee: { name: "Britney", avatar: "" },
-    status: "pending" as const,
-    priority: "urgent" as const,
-    source: "document_intake" as const,
-    dueDate: new Date(Date.now() + 1000 * 60 * 60 * 8),
-    createdAt: new Date(),
-  },
-  {
-    id: "4",
-    title: "Schedule appointment with new client",
-    client: { name: "Williams Consulting", avatar: "" },
-    assignee: { name: "Hunter McGaw", avatar: "" },
-    status: "pending" as const,
-    priority: "medium" as const,
-    source: "manual" as const,
-    createdAt: new Date(),
-  },
-  {
-    id: "5",
-    title: "Respond to IRS notice",
-    client: { name: "Tech Solutions LLC", avatar: "" },
-    assignee: { name: "Hunter McGaw", avatar: "" },
-    status: "in_progress" as const,
-    priority: "urgent" as const,
-    source: "email" as const,
-    dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 3),
-    createdAt: new Date(),
-  },
+const mockAIActions: AICompletedAction[] = [
+  { id: "1", action: "Emails categorized", count: 12, icon: Mail },
+  { id: "2", action: "Documents processed", count: 5, icon: FileText },
+  { id: "3", action: "Tasks auto-created", count: 3, icon: CheckCircle },
+  { id: "4", action: "Reminders sent", count: 8, icon: Clock },
+  { id: "5", action: "Follow-ups scheduled", count: 2, icon: Calendar },
 ];
 
-const weeklyTaskData = [
-  { day: "Sun", thisWeek: 12, lastWeek: 8 },
-  { day: "Mon", thisWeek: 25, lastWeek: 20 },
-  { day: "Tue", thisWeek: 18, lastWeek: 22 },
-  { day: "Wed", thisWeek: 30, lastWeek: 25 },
-  { day: "Thu", thisWeek: 28, lastWeek: 18 },
-  { day: "Fri", thisWeek: 35, lastWeek: 30 },
-  { day: "Sat", thisWeek: 15, lastWeek: 12 },
-];
+const urgentTypeConfig = {
+  irs_notice: { color: "bg-red-500", icon: AlertCircle },
+  callback: { color: "bg-amber-500", icon: Phone },
+  approval: { color: "bg-blue-500", icon: CheckCircle },
+  deadline: { color: "bg-violet-500", icon: Clock },
+};
 
-const taskDistribution = [
-  { name: "Completed", value: 45, color: "#143009" },
-  { name: "In Progress", value: 30, color: "#DBC16F" },
-  { name: "Pending", value: 20, color: "#4a7c3a" },
-  { name: "Overdue", value: 5, color: "#dc2626" },
-];
+const callStatusConfig = {
+  handled: { label: "AI Handled", className: "bg-green-100 text-green-700" },
+  needs_action: { label: "Needs Action", className: "bg-amber-100 text-amber-700" },
+  transferred: { label: "Transferred", className: "bg-blue-100 text-blue-700" },
+};
 
 export default function DashboardPage() {
+  const [mounted, setMounted] = useState(false);
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    setMounted(true);
+    const interval = setInterval(() => setCurrentTime(new Date()), 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const getGreeting = () => {
+    const hour = currentTime.getHours();
+    if (hour < 12) return "Good morning";
+    if (hour < 17) return "Good afternoon";
+    return "Good evening";
+  };
+
+  // Stats calculations
+  const timeSavedToday = 2.5; // hours
+  const timeSavedYesterday = 2.0;
+  const automationRate = 87;
+  const totalTasks = 12;
+  const urgentTasks = 4;
+  const taskProgress = 67;
+  const weeklyHoursWithoutAI = 40;
+  const weeklyHoursWithAI = 18;
+  const hoursSaved = weeklyHoursWithoutAI - weeklyHoursWithAI;
+  const efficiencyGain = Math.round((hoursSaved / weeklyHoursWithoutAI) * 100);
+  const dollarValue = hoursSaved * 75; // $75/hour rate
+
   return (
     <>
       <Header title="Dashboard" />
-      <main className="p-6 space-y-6">
-        {/* Welcome Banner & Quick Stats Row */}
+      <main className="p-6 space-y-6 overflow-auto">
+        {/* Greeting & Date */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">{getGreeting()}, Elizabeth!</h1>
+            <p className="text-muted-foreground" suppressHydrationWarning>
+              {format(currentTime, "EEEE, MMMM d, yyyy")}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-primary" />
+            <span className="text-sm font-medium">AI Assistant Active</span>
+          </div>
+        </div>
+
+        {/* Top Stats Row */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Time Saved Today */}
+          <Card className="bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Time Saved Today</p>
+                  <p className="text-3xl font-bold mt-1">{timeSavedToday} hours</p>
+                  <p className="text-sm text-primary flex items-center gap-1 mt-1">
+                    <TrendingUp className="h-4 w-4" />
+                    +{((timeSavedToday - timeSavedYesterday) * 60).toFixed(0)} min vs yesterday
+                  </p>
+                </div>
+                <div className="w-14 h-14 rounded-full bg-primary/20 flex items-center justify-center">
+                  <Timer className="h-7 w-7 text-primary" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* AI Efficiency */}
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">AI Automation Rate</p>
+                  <p className="text-3xl font-bold mt-1">{automationRate}%</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    <span className="font-medium text-foreground">156</span> actions auto-completed this week
+                  </p>
+                </div>
+                <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center">
+                  <Zap className="h-7 w-7 text-green-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Workload */}
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <p className="text-sm text-muted-foreground">Today&apos;s Workload</p>
+                  <p className="text-3xl font-bold mt-1">{totalTasks} Tasks</p>
+                </div>
+                <Badge variant="destructive" className="text-xs">
+                  {urgentTasks} Urgent
+                </Badge>
+              </div>
+              <div className="space-y-1">
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Progress</span>
+                  <span className="font-medium">{taskProgress}%</span>
+                </div>
+                <Progress value={taskProgress} className="h-2" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <WelcomeBanner userName="Hunter" className="lg:col-span-2" />
-          <DonutChart
-            title="Task Distribution"
-            subtitle="Overview"
-            data={taskDistribution}
-            centerValue="156"
-            centerLabel="Total Tasks"
-            showLegend={false}
-          />
-        </div>
+          {/* Left Column - What Needs Attention */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Urgent Items */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <AlertCircle className="h-5 w-5 text-red-500" />
+                  What Needs Your Attention
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Urgent Section */}
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-2 h-2 rounded-full bg-red-500" />
+                    <span className="text-sm font-medium">URGENT ({mockUrgentItems.length})</span>
+                  </div>
+                  <div className="space-y-2">
+                    {mockUrgentItems.map((item) => {
+                      const config = urgentTypeConfig[item.type];
+                      const Icon = config.icon;
+                      return (
+                        <div
+                          key={item.id}
+                          className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg hover:bg-muted transition-colors"
+                        >
+                          <div className={cn("w-8 h-8 rounded-full flex items-center justify-center", config.color)}>
+                            <Icon className="h-4 w-4 text-white" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm">{item.title}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {item.client} • Due in {item.dueIn}
+                            </p>
+                          </div>
+                          <Button size="sm" variant="outline">
+                            {item.action}
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
 
-        {/* Stats Cards Row */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <StatCard
-            title="Total Tasks"
-            value="156"
-            change={{ value: 12.5, period: "30 days" }}
-            icon={<ClipboardList className="h-6 w-6 text-primary-foreground" />}
-            iconBg="bg-primary"
-          />
-          <StatCard
-            title="Completed Tasks"
-            value="124"
-            change={{ value: 8.2, period: "30 days" }}
-            icon={<CheckCircle className="h-6 w-6 text-green-700" />}
-            iconBg="bg-green-100"
-          />
-          <StatCard
-            title="Active Clients"
-            value="89"
-            change={{ value: 3.1, period: "30 days" }}
-            icon={<Users className="h-6 w-6 text-accent-foreground" />}
-            iconBg="bg-accent"
-          />
-          <StatCard
-            title="Calls Today"
-            value="12"
-            change={{ value: -5.4, period: "vs yesterday" }}
-            icon={<Phone className="h-6 w-6 text-blue-700" />}
-            iconBg="bg-blue-100"
-          />
-        </div>
+                {/* Today's Priorities */}
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-2 h-2 rounded-full bg-amber-500" />
+                    <span className="text-sm font-medium">TODAY&apos;S PRIORITIES ({mockPriorities.length})</span>
+                  </div>
+                  <div className="space-y-2">
+                    {mockPriorities.map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
+                      >
+                        <ArrowRight className="h-4 w-4 text-amber-500" />
+                        <span className="text-sm">{item.title}</span>
+                        {item.count && (
+                          <Badge variant="secondary" className="ml-auto">
+                            {item.count} pending
+                          </Badge>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
-        {/* Progress Stats Row */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <ProgressStatCard
-            title="Tasks Completed"
-            value="124"
-            progress={80}
-            change={{ value: 8.2, period: "30 days" }}
-            progressColor="#143009"
-          />
-          <ProgressStatCard
-            title="Documents Processed"
-            value="267"
-            progress={92}
-            change={{ value: 15.3, period: "30 days" }}
-            progressColor="#DBC16F"
-          />
-          <ProgressStatCard
-            title="Calls Handled"
-            value="89"
-            progress={75}
-            change={{ value: -2.1, period: "30 days" }}
-            progressColor="#4a7c3a"
-          />
-        </div>
+            {/* Workflow Comparison */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <BarChart3 className="h-5 w-5" />
+                  Weekly Efficiency Report
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Without AI</span>
+                      <span className="font-medium">{weeklyHoursWithoutAI} hrs</span>
+                    </div>
+                    <div className="h-4 bg-muted rounded-full overflow-hidden">
+                      <div className="h-full bg-red-400 rounded-full" style={{ width: "100%" }} />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">With AI</span>
+                      <span className="font-medium">{weeklyHoursWithAI} hrs</span>
+                    </div>
+                    <div className="h-4 bg-muted rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-primary rounded-full"
+                        style={{ width: `${(weeklyHoursWithAI / weeklyHoursWithoutAI) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-center gap-6 pt-4 border-t">
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-primary">{hoursSaved} hrs</p>
+                      <p className="text-xs text-muted-foreground">Hours Saved</p>
+                    </div>
+                    <div className="w-px h-10 bg-border" />
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-green-600">{efficiencyGain}%</p>
+                      <p className="text-xs text-muted-foreground">Efficiency Gain</p>
+                    </div>
+                    <div className="w-px h-10 bg-border" />
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-amber-600">${dollarValue.toLocaleString()}</p>
+                      <p className="text-xs text-muted-foreground">Value Saved</p>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
 
-        {/* Charts Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <WeeklyChart title="Weekly Tasks" data={weeklyTaskData} />
-          <DonutChart
-            title="Task Status"
-            subtitle="Statistics"
-            data={taskDistribution}
-            centerValue="156"
-            centerLabel="Total"
-          />
-        </div>
+          {/* Right Column */}
+          <div className="space-y-6">
+            {/* Recent AI Phone Calls */}
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Headphones className="h-5 w-5" />
+                    AI Phone Calls
+                  </CardTitle>
+                  <Badge variant="secondary" className="text-xs">
+                    {mockPhoneCalls.length} today
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                <ScrollArea className="h-[320px]">
+                  <div className="p-4 space-y-3">
+                    {mockPhoneCalls.map((call) => (
+                      <div key={call.id} className="p-3 border rounded-lg space-y-2">
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-2">
+                            <Phone className="h-4 w-4 text-primary" />
+                            <div>
+                              <p className="font-medium text-sm">{call.callerName}</p>
+                              <p className="text-xs text-muted-foreground" suppressHydrationWarning>
+                                {format(call.time, "h:mm a")} • {call.duration}
+                              </p>
+                            </div>
+                          </div>
+                          <Badge
+                            variant="secondary"
+                            className={cn("text-xs", callStatusConfig[call.status].className)}
+                          >
+                            {callStatusConfig[call.status].label}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground">&quot;{call.intent}&quot;</p>
+                        <div className="flex items-center gap-2 text-xs">
+                          <Bot className="h-3 w-3 text-primary" />
+                          <span className="text-muted-foreground">→ {call.actionTaken}</span>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button variant="ghost" size="sm" className="h-7 text-xs">
+                            <Play className="h-3 w-3 mr-1" />
+                            Listen
+                          </Button>
+                          <Button variant="ghost" size="sm" className="h-7 text-xs">
+                            <MessageSquare className="h-3 w-3 mr-1" />
+                            Transcript
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </CardContent>
+            </Card>
 
-        {/* Tasks & Activity Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <RecentTasks tasks={mockTasks} className="lg:col-span-2" />
-          <ActivityFeed activities={mockActivities} />
+            {/* AI Completed Today */}
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Bot className="h-5 w-5 text-primary" />
+                    AI Completed Today
+                  </CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {mockAIActions.map((action) => {
+                    const Icon = action.icon;
+                    return (
+                      <div key={action.id} className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                          <Icon className="h-4 w-4 text-primary" />
+                        </div>
+                        <span className="flex-1 text-sm">{action.action}</span>
+                        <Badge variant="secondary">{action.count}</Badge>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="mt-4 pt-4 border-t flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <DollarSign className="h-4 w-4 text-green-600" />
+                    <span className="text-sm text-muted-foreground">Est. value:</span>
+                  </div>
+                  <span className="font-semibold text-green-600">$450</span>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </main>
     </>

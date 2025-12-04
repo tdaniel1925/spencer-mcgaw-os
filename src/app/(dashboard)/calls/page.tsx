@@ -1,21 +1,29 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { Header } from "@/components/layout/header";
-import { StatCard } from "@/components/dashboard";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   Select,
   SelectContent,
@@ -24,549 +32,1163 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
+  ConfirmationDialog,
+  useBulkActionConfirmation,
+  useDeleteConfirmation,
+} from "@/components/ui/confirmation-dialog";
 import {
   Phone,
+  Bot,
+  Clock,
+  User,
+  Play,
+  Pause,
+  FileText,
+  ArrowRight,
+  AlertTriangle,
+  DollarSign,
+  Calendar,
+  HelpCircle,
+  Filter,
+  Archive,
+  Trash2,
+  UserPlus,
+  MoreHorizontal,
+  CheckSquare,
+  XSquare,
+  ListTodo,
+  PhoneCall,
   PhoneIncoming,
   PhoneOutgoing,
-  PhoneMissed,
-  Search,
-  Play,
-  Eye,
-  Clock,
+  Mail,
+  MessageSquare,
   CheckCircle,
-  Bot,
-  User,
+  AlertCircle,
+  Search,
+  ChevronDown,
+  ChevronUp,
+  Settings,
+  Eye,
+  FormInput,
+  Globe,
+  Folder,
+  FolderPlus,
+  FolderOpen,
+  Inbox,
+  Pencil,
+  X,
+  GripVertical,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow } from "date-fns";
+import { useCalls } from "@/lib/calls";
+import {
+  CallRecord,
+  CallCategory,
+  callCategoryInfo,
+  callStatusInfo,
+  urgencyInfo,
+} from "@/lib/calls/types";
 
-// Mock call data
-const mockCalls = [
-  {
-    id: "CALL001",
-    vapiCallId: "vapi_abc123",
-    direction: "inbound",
-    status: "completed",
-    callerPhone: "555-0101",
-    callerName: "John Smith",
-    clientId: "CL001",
-    duration: 225,
-    summary:
-      "Client called requesting a copy of their 2023 tax return. Task created for document retrieval and email.",
-    intent: "document_request",
-    sentiment: "neutral",
-    transcript: [
-      {
-        role: "assistant",
-        message:
-          "Thank you for calling Spencer McGaw CPA. This is the AI assistant. How may I help you today?",
-        timestamp: 0,
-      },
-      {
-        role: "user",
-        message:
-          "Hi, this is John Smith. I need a copy of my 2023 tax return sent to me.",
-        timestamp: 5,
-      },
-      {
-        role: "assistant",
-        message:
-          "Hello John! I can help you with that. Let me verify your information. I see you in our system. Would you like the tax return sent to your email on file?",
-        timestamp: 12,
-      },
-      {
-        role: "user",
-        message: "Yes, please send it to my email.",
-        timestamp: 22,
-      },
-      {
-        role: "assistant",
-        message:
-          "I've created a task for our team to send your 2023 tax return to your email. You should receive it within 2 hours. Is there anything else I can help you with?",
-        timestamp: 28,
-      },
-      {
-        role: "user",
-        message: "No, that's all. Thank you!",
-        timestamp: 38,
-      },
-      {
-        role: "assistant",
-        message:
-          "You're welcome, John! Have a great day. Goodbye!",
-        timestamp: 42,
-      },
-    ],
-    recordingUrl: "/recordings/call001.mp3",
-    createdAt: new Date(Date.now() - 1000 * 60 * 30),
-  },
-  {
-    id: "CALL002",
-    vapiCallId: "vapi_def456",
-    direction: "inbound",
-    status: "completed",
-    callerPhone: "555-0102",
-    callerName: "Sarah Johnson",
-    clientId: "CL003",
-    duration: 480,
-    summary:
-      "Client upset about a delay in processing. Escalated to office manager for immediate follow-up. High priority task created.",
-    intent: "complaint",
-    sentiment: "negative",
-    transcript: [],
-    recordingUrl: "/recordings/call002.mp3",
-    createdAt: new Date(Date.now() - 1000 * 60 * 90),
-  },
-  {
-    id: "CALL003",
-    vapiCallId: "vapi_ghi789",
-    direction: "inbound",
-    status: "missed",
-    callerPhone: "555-0199",
-    callerName: "Unknown",
-    duration: 0,
-    createdAt: new Date(Date.now() - 1000 * 60 * 120),
-  },
-  {
-    id: "CALL004",
-    vapiCallId: "vapi_jkl012",
-    direction: "outbound",
-    status: "completed",
-    callerPhone: "555-0104",
-    callerName: "Tech Solutions LLC",
-    clientId: "CL005",
-    duration: 750,
-    summary:
-      "Called client to discuss IRS notice. Explained next steps and scheduled follow-up meeting.",
-    intent: "follow_up",
-    sentiment: "positive",
-    transcript: [],
-    recordingUrl: "/recordings/call004.mp3",
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 3),
-  },
-  {
-    id: "CALL005",
-    vapiCallId: "vapi_mno345",
-    direction: "inbound",
-    status: "completed",
-    callerPhone: "555-0150",
-    callerName: "Mike Williams",
-    duration: 180,
-    summary:
-      "New client inquiry about tax preparation services. Lead task created for Hunter.",
-    intent: "new_client",
-    sentiment: "positive",
-    transcript: [],
-    recordingUrl: "/recordings/call005.mp3",
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 5),
-  },
+// Folder type
+interface CallFolder {
+  id: string;
+  name: string;
+  color: string;
+  callIds: string[];
+}
+
+// Available folder colors
+const folderColors = [
+  { name: "gray", class: "bg-gray-500" },
+  { name: "red", class: "bg-red-500" },
+  { name: "orange", class: "bg-orange-500" },
+  { name: "amber", class: "bg-amber-500" },
+  { name: "green", class: "bg-green-500" },
+  { name: "teal", class: "bg-teal-500" },
+  { name: "blue", class: "bg-blue-500" },
+  { name: "purple", class: "bg-purple-500" },
+  { name: "pink", class: "bg-pink-500" },
 ];
 
-const statusConfig = {
-  completed: {
-    label: "Completed",
-    className: "bg-green-100 text-green-700",
-    icon: CheckCircle,
-  },
-  missed: {
-    label: "Missed",
-    className: "bg-red-100 text-red-700",
-    icon: PhoneMissed,
-  },
-  voicemail: {
-    label: "Voicemail",
-    className: "bg-yellow-100 text-yellow-700",
-    icon: Phone,
-  },
+// Category icons mapping
+const categoryIcons: Record<CallCategory, React.ReactNode> = {
+  new_client_inquiry: <UserPlus className="h-4 w-4" />,
+  existing_client_question: <HelpCircle className="h-4 w-4" />,
+  document_request: <FileText className="h-4 w-4" />,
+  appointment_scheduling: <Calendar className="h-4 w-4" />,
+  payment_inquiry: <DollarSign className="h-4 w-4" />,
+  tax_question: <FileText className="h-4 w-4" />,
+  status_check: <Search className="h-4 w-4" />,
+  complaint: <AlertTriangle className="h-4 w-4" />,
+  urgent_matter: <AlertCircle className="h-4 w-4" />,
+  follow_up: <Clock className="h-4 w-4" />,
+  voicemail: <MessageSquare className="h-4 w-4" />,
+  wrong_number: <Phone className="h-4 w-4" />,
+  spam: <Trash2 className="h-4 w-4" />,
+  web_form: <FormInput className="h-4 w-4" />,
+  contact_request: <Mail className="h-4 w-4" />,
+  general_inquiry: <Globe className="h-4 w-4" />,
+  other: <Phone className="h-4 w-4" />,
 };
 
-const intentConfig: Record<string, { label: string; className: string }> = {
-  document_request: { label: "Document Request", className: "bg-blue-100 text-blue-700" },
-  complaint: { label: "Complaint", className: "bg-red-100 text-red-700" },
-  new_client: { label: "New Client", className: "bg-accent/20 text-accent-foreground" },
-  follow_up: { label: "Follow-up", className: "bg-purple-100 text-purple-700" },
-  question: { label: "Question", className: "bg-gray-100 text-gray-700" },
-};
-
+// Format duration
 function formatDuration(seconds: number): string {
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
-  return `${mins}:${String(secs).padStart(2, "0")}`;
+  return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
-export default function CallsPage() {
-  const [directionFilter, setDirectionFilter] = useState<string>("all");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCall, setSelectedCall] = useState<typeof mockCalls[0] | null>(
-    null
-  );
+// Call Card Component
+function CallCard({
+  call,
+  selected,
+  onSelect,
+  onClick,
+  onQuickAction,
+  onDragStart,
+  onDragEnd,
+  isDragging,
+}: {
+  call: CallRecord;
+  selected: boolean;
+  onSelect: (selected: boolean) => void;
+  onClick: () => void;
+  onQuickAction: (action: string) => void;
+  onDragStart?: () => void;
+  onDragEnd?: () => void;
+  isDragging?: boolean;
+}) {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement>(null);
 
-  const filteredCalls = mockCalls.filter((call) => {
-    const matchesDirection =
-      directionFilter === "all" || call.direction === directionFilter;
-    const matchesStatus =
-      statusFilter === "all" || call.status === statusFilter;
-    const matchesSearch =
-      call.callerName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      call.callerPhone.includes(searchQuery);
-    return matchesDirection && matchesStatus && matchesSearch;
-  });
-
-  const callStats = {
-    total: mockCalls.length,
-    inbound: mockCalls.filter((c) => c.direction === "inbound").length,
-    outbound: mockCalls.filter((c) => c.direction === "outbound").length,
-    missed: mockCalls.filter((c) => c.status === "missed").length,
+  const toggleAudio = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (audioRef.current) {
+      if (isPlaying) {
+        audioRef.current.pause();
+      } else {
+        audioRef.current.play();
+      }
+      setIsPlaying(!isPlaying);
+    }
   };
 
   return (
-    <>
-      <Header title="Call Log" />
-      <main className="p-6 space-y-6">
-        {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <StatCard
-            title="Total Calls Today"
-            value={callStats.total}
-            change={{ value: 12.5, period: "vs yesterday" }}
-            icon={<Phone className="h-6 w-6 text-primary-foreground" />}
-            iconBg="bg-primary"
-          />
-          <StatCard
-            title="Inbound"
-            value={callStats.inbound}
-            change={{ value: 8.2, period: "vs yesterday" }}
-            icon={<PhoneIncoming className="h-6 w-6 text-green-700" />}
-            iconBg="bg-green-100"
-          />
-          <StatCard
-            title="Outbound"
-            value={callStats.outbound}
-            change={{ value: 15.0, period: "vs yesterday" }}
-            icon={<PhoneOutgoing className="h-6 w-6 text-blue-700" />}
-            iconBg="bg-blue-100"
-          />
-          <StatCard
-            title="Missed"
-            value={callStats.missed}
-            change={{ value: -25.0, period: "vs yesterday" }}
-            icon={<PhoneMissed className="h-6 w-6 text-red-700" />}
-            iconBg="bg-red-100"
-          />
+    <Card
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData("callId", call.id);
+        e.dataTransfer.effectAllowed = "move";
+        onDragStart?.();
+      }}
+      onDragEnd={() => onDragEnd?.()}
+      className={cn(
+        "transition-all hover:bg-muted/50 cursor-pointer border-border/50",
+        selected && "ring-2 ring-primary bg-primary/5",
+        isDragging && "opacity-50 ring-2 ring-primary"
+      )}
+    >
+      <CardContent className="p-3">
+        <div className="flex items-center gap-2">
+          {/* Checkbox */}
+          <div onClick={(e) => e.stopPropagation()}>
+            <Checkbox
+              checked={selected}
+              onCheckedChange={(checked) => onSelect(checked === true)}
+            />
+          </div>
+
+          {/* Avatar - smaller */}
+          <Avatar className="h-8 w-8 flex-shrink-0" onClick={onClick}>
+            <AvatarFallback
+              className={cn(
+                "text-xs",
+                call.matchedClientId
+                  ? "bg-primary/20 text-primary"
+                  : "bg-muted text-muted-foreground"
+              )}
+            >
+              {call.callerName
+                ? call.callerName
+                    .split(" ")
+                    .map((n) => n[0])
+                    .join("")
+                    .slice(0, 2)
+                    .toUpperCase()
+                : <Phone className="h-3 w-3" />}
+            </AvatarFallback>
+          </Avatar>
+
+          {/* Main content - single row layout */}
+          <div className="flex-1 min-w-0 flex items-center gap-3" onClick={onClick}>
+            {/* Name and phone */}
+            <div className="min-w-[140px]">
+              <div className="flex items-center gap-1.5">
+                {call.direction === "inbound" ? (
+                  <PhoneIncoming className="h-3 w-3 text-primary flex-shrink-0" />
+                ) : (
+                  <PhoneOutgoing className="h-3 w-3 text-primary/70 flex-shrink-0" />
+                )}
+                <span className="font-medium text-sm truncate">
+                  {call.callerName || call.callerPhone}
+                </span>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                {call.callerPhone} • {formatDuration(call.durationSeconds)}
+              </p>
+            </div>
+
+            {/* AI Summary - compact */}
+            {call.aiAnalysis && (
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-muted-foreground line-clamp-1">
+                  {call.aiAnalysis.summary}
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Audio player button */}
+          {call.recordingUrl && (
+            <div onClick={(e) => e.stopPropagation()}>
+              <audio
+                ref={audioRef}
+                src={call.recordingUrl}
+                onEnded={() => setIsPlaying(false)}
+                onPause={() => setIsPlaying(false)}
+                onPlay={() => setIsPlaying(true)}
+              />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-primary hover:text-primary hover:bg-primary/10"
+                onClick={toggleAudio}
+                aria-label={isPlaying ? "Pause audio" : "Play audio"}
+              >
+                {isPlaying ? (
+                  <Pause className="h-3.5 w-3.5" />
+                ) : (
+                  <Play className="h-3.5 w-3.5" />
+                )}
+              </Button>
+            </div>
+          )}
+
+          {/* Time */}
+          <span className="text-[10px] text-muted-foreground w-20 text-right flex-shrink-0" suppressHydrationWarning>
+            {formatDistanceToNow(call.callStartedAt, { addSuffix: true })}
+          </span>
+
+          {/* Actions Menu */}
+          <div onClick={(e) => e.stopPropagation()}>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Call actions menu">
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={() => onQuickAction("view")}>
+                  <Eye className="h-4 w-4 mr-2" />
+                  View Details
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onQuickAction("call_back")}>
+                  <PhoneCall className="h-4 w-4 mr-2" />
+                  Call Back
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onQuickAction("send_email")}>
+                  <Mail className="h-4 w-4 mr-2" />
+                  Send Email
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onQuickAction("assign")}>
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  Assign To...
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onQuickAction("create_task")}>
+                  <ListTodo className="h-4 w-4 mr-2" />
+                  Add to Tasks
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => onQuickAction("complete")}>
+                  <CheckCircle className="h-4 w-4 mr-2" />
+                  Mark Complete
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onQuickAction("archive")}>
+                  <Archive className="h-4 w-4 mr-2" />
+                  Archive
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => onQuickAction("delete")}
+                  className="text-destructive"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Call Detail Modal
+function CallDetailModal({
+  call,
+  open,
+  onClose,
+  onAction,
+}: {
+  call: CallRecord | null;
+  open: boolean;
+  onClose: () => void;
+  onAction: (action: string) => void;
+}) {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [showTranscript, setShowTranscript] = useState(true);
+  const [note, setNote] = useState("");
+
+  if (!call) return null;
+
+  const category = call.aiAnalysis?.category || "other";
+  const categoryInfo = callCategoryInfo[category];
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col">
+        <DialogHeader className="flex-shrink-0">
+          <DialogTitle className="flex items-center gap-2">
+            {call.direction === "inbound" ? (
+              <PhoneIncoming className="h-5 w-5 text-green-600" />
+            ) : (
+              <PhoneOutgoing className="h-5 w-5 text-blue-600" />
+            )}
+            {call.callerName || call.callerPhone}
+            {call.matchedClientName && (
+              <Badge variant="outline" className="ml-2">
+                <User className="h-3 w-3 mr-1" />
+                {call.matchedClientName}
+              </Badge>
+            )}
+          </DialogTitle>
+          <DialogDescription>
+            {format(call.callStartedAt, "MMMM d, yyyy 'at' h:mm a")} •{" "}
+            {formatDuration(call.durationSeconds)}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex-1 min-h-0 overflow-y-auto -mx-6 px-6">
+          <div className="space-y-4 pb-4">
+            {/* Recording Player */}
+            {call.recordingUrl && (
+              <Card>
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-4">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setIsPlaying(!isPlaying)}
+                    >
+                      {isPlaying ? (
+                        <Pause className="h-4 w-4" />
+                      ) : (
+                        <Play className="h-4 w-4" />
+                      )}
+                    </Button>
+                    <div className="flex-1 h-2 bg-muted rounded-full">
+                      <div className="w-1/3 h-full bg-primary rounded-full" />
+                    </div>
+                    <span className="text-sm text-muted-foreground">
+                      {formatDuration(call.durationSeconds)}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* AI Analysis */}
+            {call.aiAnalysis && (
+              <Card className="bg-primary/5 border-primary/20">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Bot className="h-4 w-4 text-primary" />
+                    AI Analysis
+                    <span className="text-xs text-muted-foreground ml-auto">
+                      {Math.round(call.aiAnalysis.confidence * 100)}% confidence
+                    </span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div>
+                    <p className="text-sm font-medium mb-1">Summary</p>
+                    <p className="text-sm text-muted-foreground">
+                      {call.aiAnalysis.summary}
+                    </p>
+                  </div>
+                  {call.aiAnalysis.keyPoints.length > 0 && (
+                    <div>
+                      <p className="text-sm font-medium mb-1">Key Points</p>
+                      <ul className="space-y-1">
+                        {call.aiAnalysis.keyPoints.map((point, idx) => (
+                          <li
+                            key={idx}
+                            className="text-sm text-muted-foreground flex items-center gap-2"
+                          >
+                            <ArrowRight className="h-3 w-3 text-primary" />
+                            {point}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-sm font-medium mb-1">Caller Sentiment</p>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        call.aiAnalysis.sentiment === "positive" &&
+                          "bg-green-100 text-green-700",
+                        call.aiAnalysis.sentiment === "negative" &&
+                          "bg-red-100 text-red-700",
+                        call.aiAnalysis.sentiment === "frustrated" &&
+                          "bg-orange-100 text-orange-700"
+                      )}
+                    >
+                      {call.aiAnalysis.sentiment}
+                    </Badge>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Suggested Actions */}
+            {call.aiAnalysis?.suggestedActions &&
+              call.aiAnalysis.suggestedActions.length > 0 && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">Suggested Actions</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 gap-2">
+                      {call.aiAnalysis.suggestedActions.map((action) => (
+                        <Button
+                          key={action.id}
+                          variant="outline"
+                          size="sm"
+                          className="justify-start"
+                          onClick={() => onAction(action.type)}
+                        >
+                          <CheckCircle className="h-4 w-4 mr-2" />
+                          {action.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+            {/* Transcript */}
+            {call.transcript && (
+              <Collapsible open={showTranscript} onOpenChange={setShowTranscript}>
+                <Card>
+                  <CollapsibleTrigger asChild>
+                    <CardHeader className="pb-2 cursor-pointer hover:bg-muted/50">
+                      <CardTitle className="text-sm flex items-center justify-between">
+                        <span className="flex items-center gap-2">
+                          <FileText className="h-4 w-4" />
+                          Transcript
+                        </span>
+                        {showTranscript ? (
+                          <ChevronUp className="h-4 w-4" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4" />
+                        )}
+                      </CardTitle>
+                    </CardHeader>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <CardContent>
+                      <pre className="text-sm whitespace-pre-wrap font-sans bg-muted/50 p-3 rounded-lg">
+                        {call.transcript}
+                      </pre>
+                    </CardContent>
+                  </CollapsibleContent>
+                </Card>
+              </Collapsible>
+            )}
+
+            {/* Notes */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Notes</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {call.notes && (
+                  <pre className="text-sm whitespace-pre-wrap font-sans bg-muted/50 p-3 rounded-lg mb-2">
+                    {call.notes}
+                  </pre>
+                )}
+                <Textarea
+                  placeholder="Add a note..."
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  rows={2}
+                />
+                <Button
+                  size="sm"
+                  disabled={!note.trim()}
+                  onClick={() => {
+                    onAction("add_note:" + note);
+                    setNote("");
+                  }}
+                >
+                  Add Note
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
         </div>
 
-        {/* Calls Table */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-lg font-semibold flex items-center gap-2">
-              <Bot className="h-5 w-5" />
-              AI Phone Agent Calls
-            </CardTitle>
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search calls..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 w-64"
-                />
-              </div>
+        <DialogFooter className="flex-shrink-0 gap-2">
+          <Button variant="outline" onClick={onClose}>
+            Close
+          </Button>
+          <Button variant="outline" onClick={() => onAction("call_back")}>
+            <PhoneCall className="h-4 w-4 mr-2" />
+            Call Back
+          </Button>
+          <Button onClick={() => onAction("complete")}>
+            <CheckCircle className="h-4 w-4 mr-2" />
+            Mark Complete
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
-              <Select value={directionFilter} onValueChange={setDirectionFilter}>
-                <SelectTrigger className="w-36">
-                  <SelectValue placeholder="Direction" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Calls</SelectItem>
-                  <SelectItem value="inbound">Inbound</SelectItem>
-                  <SelectItem value="outbound">Outbound</SelectItem>
-                </SelectContent>
-              </Select>
+export default function CallsPage() {
+  const [mounted, setMounted] = useState(false);
+  const {
+    calls,
+    updateCallStatus,
+    addCallNote,
+    archiveCall,
+    deleteCall,
+  } = useCalls();
 
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-36">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
-                  <SelectItem value="missed">Missed</SelectItem>
-                </SelectContent>
-              </Select>
+  const [selectedCalls, setSelectedCalls] = useState<Set<string>>(new Set());
+  const [selectedCall, setSelectedCall] = useState<CallRecord | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Folder state
+  const [folders, setFolders] = useState<CallFolder[]>([]);
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [draggingCallId, setDraggingCallId] = useState<string | null>(null);
+  const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [newFolderColor, setNewFolderColor] = useState("blue");
+  const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
+  const [editingFolderName, setEditingFolderName] = useState("");
+
+  // Infinite scroll state
+  const ITEMS_PER_PAGE = 20;
+  const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+
+  // Confirmation dialogs
+  const { confirmDelete, state: deleteState, setOpen: setDeleteOpen } = useDeleteConfirmation();
+  const { confirmBulkAction, state: bulkState, setOpen: setBulkOpen } = useBulkActionConfirmation();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Reset visible count when folder changes
+  useEffect(() => {
+    setVisibleCount(ITEMS_PER_PAGE);
+  }, [selectedFolderId, searchQuery]);
+
+  // Filter calls by folder and search
+  const filteredCalls = useMemo(() => {
+    let result = calls;
+
+    // Filter by selected folder
+    if (selectedFolderId === "inbox") {
+      // Show only calls not in any folder
+      const allFolderCallIds = new Set(folders.flatMap(f => f.callIds));
+      result = result.filter(c => !allFolderCallIds.has(c.id));
+    } else if (selectedFolderId !== null) {
+      const folder = folders.find(f => f.id === selectedFolderId);
+      if (folder) {
+        result = result.filter(c => folder.callIds.includes(c.id));
+      }
+    }
+
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(
+        (c) =>
+          c.callerName?.toLowerCase().includes(query) ||
+          c.callerPhone.includes(query) ||
+          c.aiAnalysis?.summary.toLowerCase().includes(query)
+      );
+    }
+
+    // Sort by newest first
+    return [...result].sort(
+      (a, b) =>
+        new Date(b.callStartedAt).getTime() - new Date(a.callStartedAt).getTime()
+    );
+  }, [calls, selectedFolderId, folders, searchQuery]);
+
+  // Get calls not in any folder (inbox)
+  const inboxCalls = useMemo(() => {
+    const allFolderCallIds = new Set(folders.flatMap(f => f.callIds));
+    return calls.filter(c => !allFolderCallIds.has(c.id));
+  }, [calls, folders]);
+
+  // Visible calls for infinite scroll
+  const visibleCalls = useMemo(() => {
+    return filteredCalls.slice(0, visibleCount);
+  }, [filteredCalls, visibleCount]);
+
+  const hasMoreCalls = visibleCount < filteredCalls.length;
+
+  // Intersection observer for infinite scroll
+  useEffect(() => {
+    const loadMoreElement = loadMoreRef.current;
+    if (!loadMoreElement) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMoreCalls) {
+          setVisibleCount(prev => Math.min(prev + ITEMS_PER_PAGE, filteredCalls.length));
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    observer.observe(loadMoreElement);
+    return () => observer.disconnect();
+  }, [hasMoreCalls, filteredCalls.length]);
+
+  // Folder management handlers
+  const createFolder = useCallback(() => {
+    if (!newFolderName.trim()) return;
+    const newFolder: CallFolder = {
+      id: `folder-${Date.now()}`,
+      name: newFolderName.trim(),
+      color: newFolderColor,
+      callIds: [],
+    };
+    setFolders(prev => [...prev, newFolder]);
+    setNewFolderName("");
+    setNewFolderColor("blue");
+    setIsCreatingFolder(false);
+  }, [newFolderName, newFolderColor]);
+
+  const updateFolderName = useCallback((folderId: string, name: string) => {
+    setFolders(prev => prev.map(f =>
+      f.id === folderId ? { ...f, name } : f
+    ));
+    setEditingFolderId(null);
+    setEditingFolderName("");
+  }, []);
+
+  const deleteFolder = useCallback((folderId: string) => {
+    setFolders(prev => prev.filter(f => f.id !== folderId));
+    if (selectedFolderId === folderId) {
+      setSelectedFolderId(null);
+    }
+  }, [selectedFolderId]);
+
+  const addCallToFolder = useCallback((callId: string, folderId: string) => {
+    setFolders(prev => prev.map(f => {
+      if (f.id === folderId) {
+        // Remove from any other folder first
+        return { ...f, callIds: [...new Set([...f.callIds, callId])] };
+      }
+      // Remove from other folders
+      return { ...f, callIds: f.callIds.filter(id => id !== callId) };
+    }));
+  }, []);
+
+  const removeCallFromFolder = useCallback((callId: string) => {
+    setFolders(prev => prev.map(f => ({
+      ...f,
+      callIds: f.callIds.filter(id => id !== callId)
+    })));
+  }, []);
+
+  const handleDrop = useCallback((folderId: string, e: React.DragEvent) => {
+    e.preventDefault();
+    const callId = e.dataTransfer.getData("callId");
+    if (callId) {
+      addCallToFolder(callId, folderId);
+    }
+    setDragOverFolderId(null);
+    setDraggingCallId(null);
+  }, [addCallToFolder]);
+
+  const handleDragOver = useCallback((folderId: string, e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverFolderId(folderId);
+  }, []);
+
+  // Selection handlers
+  const handleSelect = useCallback((callId: string, selected: boolean) => {
+    setSelectedCalls((prev) => {
+      const next = new Set(prev);
+      if (selected) {
+        next.add(callId);
+      } else {
+        next.delete(callId);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleSelectAll = useCallback(() => {
+    setSelectedCalls(new Set(filteredCalls.map((c) => c.id)));
+  }, [filteredCalls]);
+
+  const handleDeselectAll = useCallback(() => {
+    setSelectedCalls(new Set());
+  }, []);
+
+  // Quick action handler
+  const handleQuickAction = useCallback(
+    (callId: string, action: string) => {
+      const call = calls.find((c) => c.id === callId);
+      if (!call) return;
+
+      if (action.startsWith("add_note:")) {
+        const noteContent = action.replace("add_note:", "");
+        addCallNote(callId, noteContent);
+        return;
+      }
+
+      switch (action) {
+        case "view":
+          setSelectedCall(call);
+          break;
+        case "complete":
+          updateCallStatus(callId, "completed");
+          break;
+        case "archive":
+          archiveCall(callId);
+          break;
+        case "delete":
+          // Use confirmation dialog for delete
+          confirmDelete({
+            title: "Delete Call Record",
+            description: `Are you sure you want to delete the call from ${call?.callerName || "Unknown Caller"}? This action cannot be undone.`,
+            onConfirm: () => {
+              deleteCall(callId);
+              setSelectedCalls((prev) => {
+                const next = new Set(prev);
+                next.delete(callId);
+                return next;
+              });
+            },
+          });
+          break;
+        case "call_back":
+          // Would trigger call functionality
+          break;
+        case "send_email":
+          // Would open email compose
+          break;
+        case "assign":
+          // Would open assign dialog
+          break;
+        case "create_task":
+          // Would create task
+          break;
+      }
+    },
+    [calls, updateCallStatus, archiveCall, deleteCall, addCallNote, confirmDelete]
+  );
+
+  // Bulk action handler with confirmation
+  const handleBulkAction = useCallback(
+    async (action: string) => {
+      const selectedIds = Array.from(selectedCalls);
+      const count = selectedIds.length;
+
+      // Actions requiring confirmation
+      if (action === "delete" || action === "archive" || action === "complete") {
+        await confirmBulkAction({
+          action: action as "delete" | "archive" | "complete",
+          itemCount: count,
+          itemName: "call",
+          onConfirm: () => {
+            switch (action) {
+              case "complete":
+                selectedIds.forEach((id) => updateCallStatus(id, "completed"));
+                break;
+              case "archive":
+                selectedIds.forEach((id) => archiveCall(id));
+                break;
+              case "delete":
+                selectedIds.forEach((id) => deleteCall(id));
+                break;
+            }
+            setSelectedCalls(new Set());
+          },
+        });
+      } else {
+        // Non-destructive actions execute immediately
+        setSelectedCalls(new Set());
+      }
+    },
+    [selectedCalls, updateCallStatus, archiveCall, deleteCall, confirmBulkAction]
+  );
+
+  // Single item delete with confirmation
+  const handleDeleteCall = useCallback(
+    (callId: string, callerName?: string) => {
+      confirmDelete({
+        title: "Delete Call Record",
+        description: `Are you sure you want to delete the call from ${callerName || "Unknown Caller"}? This action cannot be undone.`,
+        onConfirm: () => {
+          deleteCall(callId);
+        },
+      });
+    },
+    [deleteCall, confirmDelete]
+  );
+
+  return (
+    <TooltipProvider delayDuration={0}>
+      <Header title="AI Phone Agent" />
+      <main className="flex flex-col h-[calc(100vh-64px)] overflow-hidden">
+        {/* Top Bar */}
+        <div className="h-14 border-b bg-card flex items-center px-4 gap-3 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <Phone className="h-5 w-5 text-primary" />
+            <span className="font-medium">AI Phone Agent</span>
+          </div>
+
+          {/* Search */}
+          <div className="relative ml-4">
+            <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+            <Input
+              placeholder="Search calls..."
+              aria-label="Search calls by name or phone number"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-[200px] h-8 pl-9 text-sm"
+            />
+          </div>
+
+          <div className="flex-1" />
+
+          {/* Total count */}
+          <span className="text-sm text-muted-foreground">
+            {calls.length} calls
+          </span>
+        </div>
+
+        {/* Main Content */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* Folders Sidebar */}
+          <div className="w-[200px] flex-shrink-0 border-r bg-muted/30 p-3 flex flex-col">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-xs font-medium text-muted-foreground">
+                FOLDERS
+              </h3>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() => setIsCreatingFolder(true)}
+                  >
+                    <FolderPlus className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Create folder</TooltipContent>
+              </Tooltip>
             </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[100px]">Call ID</TableHead>
-                  <TableHead>Direction</TableHead>
-                  <TableHead>Caller</TableHead>
-                  <TableHead>Intent</TableHead>
-                  <TableHead>Duration</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Time</TableHead>
-                  <TableHead className="w-[100px]">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredCalls.map((call) => {
-                  const DirectionIcon =
-                    call.direction === "inbound"
-                      ? PhoneIncoming
-                      : PhoneOutgoing;
-                  const StatusIcon =
-                    statusConfig[call.status as keyof typeof statusConfig]?.icon ||
-                    Phone;
 
-                  return (
-                    <TableRow key={call.id}>
-                      <TableCell className="font-medium text-primary">
-                        #{call.id}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <DirectionIcon
-                            className={cn(
-                              "h-4 w-4",
-                              call.direction === "inbound"
-                                ? "text-green-600"
-                                : "text-blue-600"
-                            )}
-                          />
-                          <span className="capitalize text-sm">
-                            {call.direction}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div>
-                          <div className="font-medium">
-                            {call.callerName || "Unknown"}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {call.callerPhone}
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {call.intent ? (
-                          <Badge
-                            variant="secondary"
-                            className={cn(
-                              "font-normal",
-                              intentConfig[call.intent]?.className
-                            )}
-                          >
-                            {intentConfig[call.intent]?.label || call.intent}
-                          </Badge>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1 text-sm">
-                          <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                          {call.duration > 0
-                            ? formatDuration(call.duration)
-                            : "-"}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            "font-normal",
-                            statusConfig[call.status as keyof typeof statusConfig]
-                              ?.className
-                          )}
-                        >
-                          {
-                            statusConfig[call.status as keyof typeof statusConfig]
-                              ?.label
-                          }
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm">
-                          {format(call.createdAt, "h:mm a")}
-                        </div>
-                        <div className="text-xs text-muted-foreground" suppressHydrationWarning>
-                          {formatDistanceToNow(call.createdAt, {
-                            addSuffix: true,
-                          })}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Dialog>
-                            <DialogTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8"
-                                onClick={() => setSelectedCall(call)}
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent className="max-w-2xl">
-                              <DialogHeader>
-                                <DialogTitle>
-                                  Call Details - #{call.id}
-                                </DialogTitle>
-                              </DialogHeader>
-                              <div className="space-y-4">
-                                {/* Call Summary */}
-                                <div className="grid grid-cols-2 gap-4">
-                                  <div>
-                                    <p className="text-sm text-muted-foreground">
-                                      Caller
-                                    </p>
-                                    <p className="font-medium">
-                                      {call.callerName || "Unknown"}
-                                    </p>
-                                    <p className="text-sm text-muted-foreground">
-                                      {call.callerPhone}
-                                    </p>
-                                  </div>
-                                  <div>
-                                    <p className="text-sm text-muted-foreground">
-                                      Duration
-                                    </p>
-                                    <p className="font-medium">
-                                      {formatDuration(call.duration || 0)}
-                                    </p>
-                                  </div>
-                                </div>
-
-                                {call.summary && (
-                                  <div>
-                                    <p className="text-sm text-muted-foreground mb-1">
-                                      AI Summary
-                                    </p>
-                                    <p className="bg-muted p-3 rounded-lg text-sm">
-                                      {call.summary}
-                                    </p>
-                                  </div>
-                                )}
-
-                                {/* Transcript */}
-                                {call.transcript && call.transcript.length > 0 && (
-                                  <div>
-                                    <p className="text-sm text-muted-foreground mb-2">
-                                      Transcript
-                                    </p>
-                                    <ScrollArea className="h-[300px] border rounded-lg p-4">
-                                      <div className="space-y-4">
-                                        {call.transcript.map((msg, idx) => (
-                                          <div
-                                            key={idx}
-                                            className={cn(
-                                              "flex gap-3",
-                                              msg.role === "assistant"
-                                                ? ""
-                                                : "flex-row-reverse"
-                                            )}
-                                          >
-                                            <Avatar className="h-8 w-8">
-                                              <AvatarFallback
-                                                className={cn(
-                                                  "text-xs",
-                                                  msg.role === "assistant"
-                                                    ? "bg-primary text-primary-foreground"
-                                                    : "bg-accent text-accent-foreground"
-                                                )}
-                                              >
-                                                {msg.role === "assistant" ? (
-                                                  <Bot className="h-4 w-4" />
-                                                ) : (
-                                                  <User className="h-4 w-4" />
-                                                )}
-                                              </AvatarFallback>
-                                            </Avatar>
-                                            <div
-                                              className={cn(
-                                                "max-w-[80%] rounded-lg p-3 text-sm",
-                                                msg.role === "assistant"
-                                                  ? "bg-primary text-primary-foreground"
-                                                  : "bg-muted"
-                                              )}
-                                            >
-                                              {msg.message}
-                                            </div>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    </ScrollArea>
-                                  </div>
-                                )}
-
-                                {/* Recording */}
-                                {call.recordingUrl && (
-                                  <div>
-                                    <p className="text-sm text-muted-foreground mb-2">
-                                      Recording
-                                    </p>
-                                    <Button variant="outline" className="gap-2">
-                                      <Play className="h-4 w-4" />
-                                      Play Recording
-                                    </Button>
-                                  </div>
-                                )}
-                              </div>
-                            </DialogContent>
-                          </Dialog>
-                          {call.recordingUrl && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                            >
-                              <Play className="h-4 w-4" />
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-
-            {/* Pagination */}
-            <div className="flex items-center justify-between px-6 py-4 border-t">
-              <p className="text-sm text-muted-foreground">
-                Showing 1 to {filteredCalls.length} of {mockCalls.length} calls
-              </p>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" disabled>
-                  Previous
-                </Button>
+            <ScrollArea className="flex-1">
+              <div className="space-y-1">
+                {/* All Calls */}
                 <Button
-                  variant="outline"
+                  variant={selectedFolderId === null ? "secondary" : "ghost"}
                   size="sm"
-                  className="bg-primary text-primary-foreground"
+                  className="w-full justify-start"
+                  onClick={() => setSelectedFolderId(null)}
                 >
-                  1
+                  <Inbox className="h-4 w-4 mr-2" />
+                  <span className="flex-1 text-left">All Calls</span>
+                  <span className="text-xs text-muted-foreground">{calls.length}</span>
                 </Button>
-                <Button variant="outline" size="sm">
-                  Next
-                </Button>
+
+                {/* Inbox (uncategorized) */}
+                <div
+                  className={cn(
+                    "flex items-center rounded-md",
+                    dragOverFolderId === "inbox" && "ring-2 ring-primary bg-primary/10"
+                  )}
+                  onDragOver={(e) => handleDragOver("inbox", e)}
+                  onDragLeave={() => setDragOverFolderId(null)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const callId = e.dataTransfer.getData("callId");
+                    if (callId) {
+                      removeCallFromFolder(callId);
+                    }
+                    setDragOverFolderId(null);
+                    setDraggingCallId(null);
+                  }}
+                >
+                  <Button
+                    variant={selectedFolderId === "inbox" ? "secondary" : "ghost"}
+                    size="sm"
+                    className="w-full justify-start"
+                    onClick={() => setSelectedFolderId("inbox")}
+                  >
+                    <Phone className="h-4 w-4 mr-2 text-muted-foreground" />
+                    <span className="flex-1 text-left">Inbox</span>
+                    <span className="text-xs text-muted-foreground">{inboxCalls.length}</span>
+                  </Button>
+                </div>
+
+                {/* Custom Folders */}
+                {folders.map((folder) => (
+                  <div
+                    key={folder.id}
+                    className={cn(
+                      "group flex items-center rounded-md",
+                      dragOverFolderId === folder.id && "ring-2 ring-primary bg-primary/10"
+                    )}
+                    onDragOver={(e) => handleDragOver(folder.id, e)}
+                    onDragLeave={() => setDragOverFolderId(null)}
+                    onDrop={(e) => handleDrop(folder.id, e)}
+                  >
+                    {editingFolderId === folder.id ? (
+                      <div className="flex items-center gap-1 w-full p-1">
+                        <Input
+                          value={editingFolderName}
+                          onChange={(e) => setEditingFolderName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              updateFolderName(folder.id, editingFolderName);
+                            } else if (e.key === "Escape") {
+                              setEditingFolderId(null);
+                            }
+                          }}
+                          className="h-6 text-sm"
+                          autoFocus
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={() => updateFolderName(folder.id, editingFolderName)}
+                        >
+                          <CheckCircle className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        variant={selectedFolderId === folder.id ? "secondary" : "ghost"}
+                        size="sm"
+                        className="w-full justify-start group"
+                        onClick={() => setSelectedFolderId(folder.id)}
+                      >
+                        <div className={cn(
+                          "w-3 h-3 rounded mr-2",
+                          folderColors.find(c => c.name === folder.color)?.class || "bg-gray-500"
+                        )} />
+                        <Folder className="h-4 w-4 mr-1.5 text-muted-foreground" />
+                        <span className="flex-1 text-left truncate">{folder.name}</span>
+                        <span className="text-xs text-muted-foreground mr-1">
+                          {folder.callIds.length}
+                        </span>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                            <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                              <MoreHorizontal className="h-3 w-3" />
+                            </div>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-32">
+                            <DropdownMenuItem onClick={() => {
+                              setEditingFolderId(folder.id);
+                              setEditingFolderName(folder.name);
+                            }}>
+                              <Pencil className="h-3 w-3 mr-2" />
+                              Rename
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => deleteFolder(folder.id)}
+                              className="text-destructive"
+                            >
+                              <Trash2 className="h-3 w-3 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </Button>
+                    )}
+                  </div>
+                ))}
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </ScrollArea>
+
+            {/* Create Folder Form */}
+            {isCreatingFolder && (
+              <div className="mt-3 p-2 border rounded-md bg-background space-y-2">
+                <Input
+                  placeholder="Folder name"
+                  value={newFolderName}
+                  onChange={(e) => setNewFolderName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") createFolder();
+                    if (e.key === "Escape") setIsCreatingFolder(false);
+                  }}
+                  className="h-8 text-sm"
+                  autoFocus
+                />
+                <div className="flex gap-1 flex-wrap">
+                  {folderColors.map((color) => (
+                    <button
+                      key={color.name}
+                      onClick={() => setNewFolderColor(color.name)}
+                      className={cn(
+                        "w-5 h-5 rounded transition-all",
+                        color.class,
+                        newFolderColor === color.name && "ring-2 ring-offset-1 ring-primary"
+                      )}
+                    />
+                  ))}
+                </div>
+                <div className="flex gap-1">
+                  <Button
+                    size="sm"
+                    className="flex-1 h-7 text-xs"
+                    onClick={createFolder}
+                    disabled={!newFolderName.trim()}
+                  >
+                    Create
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => setIsCreatingFolder(false)}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Calls List */}
+          <div className="flex-1 overflow-hidden">
+            <ScrollArea className="h-full">
+              <div className="p-2 space-y-1.5">
+                {mounted && filteredCalls.length === 0 && (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <Phone className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p>No calls match your filters</p>
+                  </div>
+                )}
+                {mounted &&
+                  visibleCalls.map((call) => (
+                    <CallCard
+                      key={call.id}
+                      call={call}
+                      selected={selectedCalls.has(call.id)}
+                      onSelect={(selected) => handleSelect(call.id, selected)}
+                      onClick={() => setSelectedCall(call)}
+                      onQuickAction={(action) => handleQuickAction(call.id, action)}
+                      onDragStart={() => setDraggingCallId(call.id)}
+                      onDragEnd={() => setDraggingCallId(null)}
+                      isDragging={draggingCallId === call.id}
+                    />
+                  ))}
+                {/* Infinite scroll trigger */}
+                {mounted && hasMoreCalls && (
+                  <div
+                    ref={loadMoreRef}
+                    className="py-4 text-center text-sm text-muted-foreground"
+                  >
+                    Loading more...
+                  </div>
+                )}
+                {mounted && filteredCalls.length > 0 && !hasMoreCalls && (
+                  <div className="py-4 text-center text-xs text-muted-foreground">
+                    Showing all {filteredCalls.length} calls
+                  </div>
+                )}
+              </div>
+            </ScrollArea>
+          </div>
+        </div>
+
+        {/* Call Detail Modal */}
+        <CallDetailModal
+          call={selectedCall}
+          open={!!selectedCall}
+          onClose={() => setSelectedCall(null)}
+          onAction={(action) => {
+            if (selectedCall) {
+              handleQuickAction(selectedCall.id, action);
+              if (action === "complete" || action === "archive" || action === "delete") {
+                setSelectedCall(null);
+              }
+            }
+          }}
+        />
+
+        {/* Confirmation Dialogs */}
+        <ConfirmationDialog
+          open={deleteState.open}
+          onOpenChange={setDeleteOpen}
+          title={deleteState.title}
+          description={deleteState.description}
+          confirmText={deleteState.confirmText}
+          cancelText={deleteState.cancelText}
+          variant={deleteState.variant}
+          onConfirm={deleteState.onConfirm}
+          itemCount={deleteState.itemCount}
+          itemName={deleteState.itemName}
+        />
+        <ConfirmationDialog
+          open={bulkState.open}
+          onOpenChange={setBulkOpen}
+          title={bulkState.title}
+          description={bulkState.description}
+          confirmText={bulkState.confirmText}
+          cancelText={bulkState.cancelText}
+          variant={bulkState.variant}
+          onConfirm={bulkState.onConfirm}
+          itemCount={bulkState.itemCount}
+          itemName={bulkState.itemName}
+        />
       </main>
-    </>
+    </TooltipProvider>
   );
 }

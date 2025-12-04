@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { Header } from "@/components/layout/header";
 import { ProgressStatCard } from "@/components/dashboard";
 import { Button } from "@/components/ui/button";
@@ -17,21 +18,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Users,
-  UserPlus,
-  UserCheck,
   Search,
   Plus,
-  Eye,
-  Edit,
-  Trash2,
-  MoreHorizontal,
+  ChevronRight,
   Printer,
   Phone,
   Mail,
@@ -40,6 +29,7 @@ import {
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import Link from "next/link";
+import { Pagination, usePagination } from "@/components/ui/pagination";
 
 // Mock data
 const mockClients = [
@@ -131,24 +121,42 @@ const mockClients = [
 
 export default function ClientsPage() {
   const [searchQuery, setSearchQuery] = useState("");
+  const router = useRouter();
 
-  const filteredClients = mockClients.filter((client) => {
-    const fullName = `${client.firstName} ${client.lastName}`.toLowerCase();
-    const company = client.companyName?.toLowerCase() || "";
-    const email = client.email.toLowerCase();
-    const query = searchQuery.toLowerCase();
-    return (
-      fullName.includes(query) || company.includes(query) || email.includes(query)
-    );
+  // Filter clients based on search query
+  const filteredClients = useMemo(() => {
+    return mockClients.filter((client) => {
+      const fullName = `${client.firstName} ${client.lastName}`.toLowerCase();
+      const company = client.companyName?.toLowerCase() || "";
+      const email = client.email.toLowerCase();
+      const query = searchQuery.toLowerCase();
+      return (
+        fullName.includes(query) || company.includes(query) || email.includes(query)
+      );
+    });
+  }, [searchQuery]);
+
+  // Use pagination hook with filtered data
+  const {
+    paginatedData: paginatedClients,
+    currentPage,
+    totalPages,
+    totalItems,
+    pageSize,
+    setPage,
+    setPageSize,
+  } = usePagination({
+    data: filteredClients,
+    initialPageSize: 5,
   });
 
-  const clientCounts = {
+  const clientCounts = useMemo(() => ({
     total: mockClients.length,
     active: mockClients.filter((c) => c.isActive).length,
     new: mockClients.filter(
       (c) => c.createdAt > new Date(Date.now() - 1000 * 60 * 60 * 24 * 30)
     ).length,
-  };
+  }), []);
 
   return (
     <>
@@ -186,9 +194,10 @@ export default function ClientsPage() {
             <div className="flex items-center gap-3">
               {/* Search */}
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
                 <Input
                   placeholder="Search clients..."
+                  aria-label="Search clients by name, company, or email"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-9 w-64"
@@ -196,7 +205,7 @@ export default function ClientsPage() {
               </div>
 
               {/* Print */}
-              <Button variant="outline" size="icon">
+              <Button variant="outline" size="icon" aria-label="Print client list">
                 <Printer className="h-4 w-4" />
               </Button>
 
@@ -221,16 +230,29 @@ export default function ClientsPage() {
                   <TableHead>Location</TableHead>
                   <TableHead>Services</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="w-[80px]">Actions</TableHead>
+                  <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredClients.map((client) => {
+                {paginatedClients.map((client) => {
                   const displayName = client.companyName
                     ? client.companyName
                     : `${client.firstName} ${client.lastName}`;
                   return (
-                    <TableRow key={client.id}>
+                    <TableRow
+                      key={client.id}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`View details for ${client.companyName || `${client.firstName} ${client.lastName}`}`}
+                      className="cursor-pointer hover:bg-muted/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                      onClick={() => router.push(`/clients/${client.id}`)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          router.push(`/clients/${client.id}`);
+                        }
+                      }}
+                    >
                       <TableCell className="font-medium text-primary">
                         #{client.id}
                       </TableCell>
@@ -305,37 +327,7 @@ export default function ClientsPage() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem asChild>
-                              <Link href={`/clients/${client.id}`}>
-                                <Eye className="h-4 w-4 mr-2" />
-                                View Details
-                              </Link>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem>
-                              <Edit className="h-4 w-4 mr-2" />
-                              Edit Client
-                            </DropdownMenuItem>
-                            <DropdownMenuItem>
-                              <Phone className="h-4 w-4 mr-2" />
-                              Call Client
-                            </DropdownMenuItem>
-                            <DropdownMenuItem>
-                              <Mail className="h-4 w-4 mr-2" />
-                              Send Email
-                            </DropdownMenuItem>
-                            <DropdownMenuItem className="text-destructive">
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
                       </TableCell>
                     </TableRow>
                   );
@@ -344,29 +336,16 @@ export default function ClientsPage() {
             </Table>
 
             {/* Pagination */}
-            <div className="flex items-center justify-between px-6 py-4 border-t">
-              <p className="text-sm text-muted-foreground">
-                Showing 1 to {filteredClients.length} of {mockClients.length}{" "}
-                entries
-              </p>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" disabled>
-                  Previous
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="bg-primary text-primary-foreground"
-                >
-                  1
-                </Button>
-                <Button variant="outline" size="sm">
-                  2
-                </Button>
-                <Button variant="outline" size="sm">
-                  Next
-                </Button>
-              </div>
+            <div className="px-6 py-4 border-t">
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={totalItems}
+                pageSize={pageSize}
+                onPageChange={setPage}
+                onPageSizeChange={setPageSize}
+                pageSizeOptions={[5, 10, 20]}
+              />
             </div>
           </CardContent>
         </Card>

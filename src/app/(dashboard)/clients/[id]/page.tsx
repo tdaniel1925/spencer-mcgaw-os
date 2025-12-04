@@ -1,10 +1,13 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { Header } from "@/components/layout/header";
+import { useAudit } from "@/lib/audit";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
   TableBody,
@@ -14,6 +17,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Phone,
   Mail,
@@ -26,9 +37,24 @@ import {
   Clock,
   CheckCircle,
   Eye,
+  Plus,
+  Trash2,
+  User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
+
+// Note type
+interface ClientNote {
+  id: string;
+  content: string;
+  createdAt: Date;
+  createdBy: {
+    name: string;
+    avatar?: string;
+  };
+  updatedAt?: Date;
+}
 
 // Mock client data
 const mockClient = {
@@ -47,9 +73,36 @@ const mockClient = {
   serviceTypes: ["Tax Preparation", "Consulting"],
   assignee: { name: "Hunter McGaw", avatar: "" },
   isActive: true,
-  notes: "Long-term client, prefers email communication. Tax returns typically complex due to multiple investment accounts.",
   createdAt: new Date("2022-03-15"),
 };
+
+// Mock notes with timestamps
+const mockNotes: ClientNote[] = [
+  {
+    id: "note-1",
+    content: "Long-term client, prefers email communication. Tax returns typically complex due to multiple investment accounts.",
+    createdAt: new Date("2022-03-15T09:30:00"),
+    createdBy: { name: "Hunter McGaw" },
+  },
+  {
+    id: "note-2",
+    content: "Client called asking about quarterly estimated payments. Explained the process and sent them the vouchers for Q4.",
+    createdAt: new Date("2024-03-10T14:22:00"),
+    createdBy: { name: "Tyler Daniel" },
+  },
+  {
+    id: "note-3",
+    content: "Received all W-2s and 1099s for 2023 tax year. Missing investment summary from Schwab - client will send by end of week.",
+    createdAt: new Date("2024-03-12T11:45:00"),
+    createdBy: { name: "Sarah Johnson" },
+  },
+  {
+    id: "note-4",
+    content: "Follow-up: Client sent Schwab statement. All documents now received. Ready to begin tax preparation.",
+    createdAt: new Date("2024-03-14T16:08:00"),
+    createdBy: { name: "Sarah Johnson" },
+  },
+];
 
 const mockTasks = [
   {
@@ -134,6 +187,73 @@ export default function ClientDetailPage({
   const displayName = client.companyName
     ? client.companyName
     : `${client.firstName} ${client.lastName}`;
+  const { log } = useAudit();
+
+  // Notes state
+  const [notes, setNotes] = useState<ClientNote[]>(mockNotes);
+  const [showAddNote, setShowAddNote] = useState(false);
+  const [newNoteContent, setNewNoteContent] = useState("");
+
+  // Log client view on mount
+  useEffect(() => {
+    log({
+      category: "client",
+      action: "client_view",
+      resource: {
+        type: "client",
+        id: client.id,
+        name: displayName,
+      },
+    });
+  }, [client.id, displayName, log]);
+
+  // Add new note
+  const handleAddNote = () => {
+    if (!newNoteContent.trim()) return;
+
+    const newNote: ClientNote = {
+      id: `note-${Date.now()}`,
+      content: newNoteContent,
+      createdAt: new Date(),
+      createdBy: { name: "Tyler Daniel" }, // Would come from auth context
+    };
+
+    setNotes([newNote, ...notes]);
+    setNewNoteContent("");
+    setShowAddNote(false);
+
+    // Log note addition
+    log({
+      category: "client",
+      action: "client_note_add",
+      resource: {
+        type: "client",
+        id: client.id,
+        name: displayName,
+      },
+      metadata: {
+        noteId: newNote.id,
+        noteLength: newNoteContent.length,
+      },
+    });
+  };
+
+  // Delete note
+  const handleDeleteNote = (noteId: string) => {
+    setNotes(notes.filter((n) => n.id !== noteId));
+
+    // Log note deletion
+    log({
+      category: "client",
+      action: "client_note_delete",
+      resource: {
+        type: "client",
+        id: client.id,
+        name: displayName,
+      },
+      metadata: { noteId },
+    });
+  };
 
   return (
     <>
@@ -180,10 +300,21 @@ export default function ClientDetailPage({
                     </Badge>
                   </div>
                 </div>
-                <Button variant="outline">
-                  <Edit className="h-4 w-4 mr-2" />
-                  Edit
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="icon" title="Call Client">
+                    <Phone className="h-4 w-4" />
+                  </Button>
+                  <Button variant="outline" size="icon" title="Send Email">
+                    <Mail className="h-4 w-4" />
+                  </Button>
+                  <Button variant="outline">
+                    <Edit className="h-4 w-4 mr-2" />
+                    Edit
+                  </Button>
+                  <Button variant="outline" size="icon" className="text-destructive hover:text-destructive" title="Delete Client">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
@@ -529,21 +660,99 @@ export default function ClientDetailPage({
           <TabsContent value="notes">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="text-lg">Notes</CardTitle>
-                <Button className="bg-primary">Add Note</Button>
+                <CardTitle className="text-lg">Notes ({notes.length})</CardTitle>
+                <Button className="bg-primary" onClick={() => setShowAddNote(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Note
+                </Button>
               </CardHeader>
               <CardContent>
-                <div className="bg-muted/50 rounded-lg p-4">
-                  <p className="text-sm text-muted-foreground mb-2">
-                    Client Notes
-                  </p>
-                  <p>{client.notes}</p>
-                </div>
+                {notes.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <MessageSquare className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                    <p>No notes yet</p>
+                    <p className="text-sm">Add a note to keep track of important information</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {notes.map((note) => (
+                      <div
+                        key={note.id}
+                        className="border rounded-lg p-4 hover:bg-muted/30 transition-colors"
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1">
+                            <p className="text-sm whitespace-pre-wrap">{note.content}</p>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                            onClick={() => handleDeleteNote(note.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        <div className="flex items-center gap-4 mt-3 pt-3 border-t text-xs text-muted-foreground">
+                          <div className="flex items-center gap-1.5">
+                            <User className="h-3.5 w-3.5" />
+                            <span>{note.createdBy.name}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <Calendar className="h-3.5 w-3.5" />
+                            <span>{format(note.createdAt, "MMM d, yyyy")}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <Clock className="h-3.5 w-3.5" />
+                            <span>{format(note.createdAt, "h:mm a")}</span>
+                          </div>
+                          {note.updatedAt && (
+                            <span className="text-muted-foreground/70">
+                              (edited {format(note.updatedAt, "MMM d, yyyy 'at' h:mm a")})
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
         </Tabs>
       </main>
+
+      {/* Add Note Dialog */}
+      <Dialog open={showAddNote} onOpenChange={setShowAddNote}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Note</DialogTitle>
+            <DialogDescription>
+              Add a note for {displayName}. Notes are timestamped and visible to all team members.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Textarea
+              placeholder="Enter your note here..."
+              className="min-h-[120px]"
+              value={newNoteContent}
+              onChange={(e) => setNewNoteContent(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground mt-2">
+              This note will be saved with your name and the current date/time.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddNote(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleAddNote} disabled={!newNoteContent.trim()}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Note
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

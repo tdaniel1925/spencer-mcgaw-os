@@ -11,18 +11,30 @@ import {
   FileText,
   BarChart3,
   Calendar,
-  MessageSquare,
   Activity,
   Settings,
   HelpCircle,
   ChevronDown,
   ChevronRight,
   LogOut,
+  Mail,
+  Shield,
+  UserCog,
+  UserPen,
+  Menu,
+  X,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Progress } from "@/components/ui/progress";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,65 +44,111 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/lib/supabase/auth-context";
+import { Permission, roleInfo } from "@/lib/permissions";
+import { useNotifications, getProgressPercentage } from "@/lib/notifications";
 
 interface NavItem {
   title: string;
   href: string;
   icon: React.ElementType;
   badge?: number;
-  children?: { title: string; href: string }[];
+  children?: { title: string; href: string; permission?: Permission }[];
+  permission?: Permission; // Required permission to view this nav item
+  adminOnly?: boolean; // Only show to admin/owner
 }
 
+// Define navigation with permissions
 const mainNavItems: NavItem[] = [
   {
     title: "Dashboard",
     href: "/dashboard",
     icon: LayoutDashboard,
+    permission: "dashboard:view",
   },
   {
     title: "Tasks",
     href: "/tasks",
     icon: ClipboardList,
     badge: 12,
+    permission: "tasks:view",
+  },
+  {
+    title: "AI Email Tasks",
+    href: "/email",
+    icon: Mail,
+    badge: 4,
+    permission: "email:view",
+  },
+  {
+    title: "AI Phone Agent",
+    href: "/calls",
+    icon: Phone,
+    badge: 3,
+    permission: "calls:view",
   },
   {
     title: "Clients",
     href: "/clients",
     icon: Users,
+    permission: "clients:view",
     children: [
-      { title: "Client List", href: "/clients" },
-      { title: "Add Client", href: "/clients/new" },
-    ],
-  },
-  {
-    title: "Calls",
-    href: "/calls",
-    icon: Phone,
-    badge: 3,
-    children: [
-      { title: "Call Log", href: "/calls" },
-      { title: "Phone Agent", href: "/calls/agent" },
+      { title: "Client List", href: "/clients", permission: "clients:view" },
+      { title: "Add Client", href: "/clients/new", permission: "clients:create" },
     ],
   },
   {
     title: "Documents",
     href: "/documents",
     icon: FileText,
+    permission: "documents:view",
   },
   {
     title: "Analytics",
     href: "/analytics",
     icon: BarChart3,
+    permission: "analytics:view",
   },
   {
     title: "Calendar",
     href: "/calendar",
     icon: Calendar,
+    permission: "calendar:view",
   },
   {
     title: "Activity Log",
     href: "/activity",
     icon: Activity,
+    permission: "activity:view",
+  },
+  {
+    title: "Help & Guides",
+    href: "/help",
+    icon: HelpCircle,
+  },
+];
+
+// Admin-only navigation items
+const adminNavItems: NavItem[] = [
+  {
+    title: "User Management",
+    href: "/admin/users",
+    icon: UserCog,
+    permission: "users:view",
+    adminOnly: true,
+  },
+  {
+    title: "Audit Trail",
+    href: "/admin/audit",
+    icon: Activity,
+    permission: "system:view_audit_logs",
+    adminOnly: true,
+  },
+  {
+    title: "System Settings",
+    href: "/admin/system",
+    icon: Shield,
+    permission: "system:view_audit_logs",
+    adminOnly: true,
   },
 ];
 
@@ -98,7 +156,47 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
-  const { user, signOut, loading } = useAuth();
+  const [mounted, setMounted] = useState(false);
+  const { user, signOut, can, isAdmin } = useAuth();
+  const { taskProgress } = useNotifications();
+  const progressPercentage = getProgressPercentage(taskProgress);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Filter nav items based on permissions - include user?.role in deps to ensure recalculation
+  const filteredMainNav = useMemo(() => {
+    return mainNavItems
+      .filter((item) => {
+        // If no permission required, show to all
+        if (!item.permission) return true;
+        // Check if user has permission
+        return can(item.permission);
+      })
+      .map((item) => {
+        // Filter children based on permissions
+        if (item.children) {
+          return {
+            ...item,
+            children: item.children.filter((child) => {
+              if (!child.permission) return true;
+              return can(child.permission);
+            }),
+          };
+        }
+        return item;
+      });
+  }, [can, user?.role]);
+
+  // Filter admin nav items - include user?.role in deps to ensure recalculation
+  const filteredAdminNav = useMemo(() => {
+    if (!isAdmin) return [];
+    return adminNavItems.filter((item) => {
+      if (!item.permission) return true;
+      return can(item.permission);
+    });
+  }, [can, isAdmin, user?.role]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -130,176 +228,282 @@ export function Sidebar() {
     return pathname.startsWith(href);
   };
 
-  return (
-    <aside className="fixed left-0 top-0 z-40 h-screen w-64 bg-sidebar text-sidebar-foreground flex flex-col">
+  // Get role display info
+  const userRoleInfo = user?.role ? roleInfo[user.role] : null;
+
+  const renderNavItem = (item: NavItem) => {
+    const Icon = item.icon;
+    const active = isActive(item.href);
+    const expanded = expandedItems.includes(item.title);
+    const hasChildren = item.children && item.children.length > 0;
+
+    return (
+      <div key={item.title}>
+        {hasChildren ? (
+          <button
+            onClick={() => toggleExpand(item.title)}
+            aria-expanded={expanded}
+            aria-controls={`submenu-${item.title.toLowerCase().replace(/\s+/g, '-')}`}
+            className={cn(
+              "flex items-center justify-between w-full px-3 py-2.5 rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar",
+              active
+                ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            )}
+          >
+            <div className="flex items-center gap-3">
+              <Icon className="h-5 w-5 flex-shrink-0" />
+              <span className="truncate">{item.title}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              {item.badge && (
+                <span className="bg-sidebar-primary text-sidebar-primary-foreground text-xs px-2 py-0.5 rounded-full">
+                  {item.badge}
+                </span>
+              )}
+              {expanded ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )}
+            </div>
+          </button>
+        ) : (
+          <Link
+            href={item.href}
+            className={cn(
+              "flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+              active
+                ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            )}
+          >
+            <div className="flex items-center gap-3">
+              <Icon className="h-5 w-5 flex-shrink-0" />
+              <span className="truncate">{item.title}</span>
+            </div>
+            {item.badge && (
+              <span className={cn(
+                "text-xs px-2 py-0.5 rounded-full",
+                active
+                  ? "bg-sidebar-foreground/20 text-sidebar-primary-foreground"
+                  : "bg-sidebar-primary text-sidebar-primary-foreground"
+              )}>
+                {item.badge}
+              </span>
+            )}
+          </Link>
+        )}
+
+        {/* Children/Submenu */}
+        {hasChildren && expanded && (
+          <div
+            id={`submenu-${item.title.toLowerCase().replace(/\s+/g, '-')}`}
+            role="group"
+            aria-label={`${item.title} submenu`}
+            className="ml-4 mt-1 space-y-1 border-l border-sidebar-border pl-4"
+          >
+            {item.children?.map((child) => (
+              <Link
+                key={child.href}
+                href={child.href}
+                className={cn(
+                  "block px-3 py-2 rounded-lg text-sm transition-colors",
+                  pathname === child.href
+                    ? "text-sidebar-primary font-medium"
+                    : "text-sidebar-foreground/70 hover:text-sidebar-foreground"
+                )}
+              >
+                {child.title}
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Mobile state
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Shared sidebar content component
+  const SidebarContent = () => (
+    <>
       {/* Logo */}
-      <div className="flex h-16 items-center gap-2 px-6 border-b border-sidebar-border">
+      <div className="flex h-16 items-center border-b border-sidebar-border px-6 gap-2 flex-shrink-0">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-sidebar-primary flex items-center justify-center">
+          <div className="w-8 h-8 rounded-lg bg-sidebar-primary flex items-center justify-center flex-shrink-0">
             <span className="text-sidebar-primary-foreground font-bold text-sm">SM</span>
           </div>
-          <div>
-            <span className="font-semibold text-lg text-sidebar-foreground">
-              McGaw CPA
+          <div className="overflow-hidden">
+            <span className="font-semibold text-lg text-sidebar-foreground whitespace-nowrap">
+              Spencer<span className="text-sidebar-primary">|</span>McGaw
             </span>
             <span className="text-xs text-sidebar-foreground/70 block -mt-1">
-              Hub
+              Business OS
             </span>
           </div>
         </div>
       </div>
 
       {/* Navigation */}
-      <ScrollArea className="flex-1 px-3 py-4">
+      <ScrollArea className="flex-1 min-h-0 py-4 px-3">
         <nav className="space-y-1">
-          {mainNavItems.map((item) => {
-            const Icon = item.icon;
-            const active = isActive(item.href);
-            const expanded = expandedItems.includes(item.title);
-            const hasChildren = item.children && item.children.length > 0;
+          {filteredMainNav.map(renderNavItem)}
 
-            return (
-              <div key={item.title}>
-                {hasChildren ? (
-                  <button
-                    onClick={() => toggleExpand(item.title)}
-                    className={cn(
-                      "flex items-center justify-between w-full px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
-                      active
-                        ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                        : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                    )}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Icon className="h-5 w-5" />
-                      <span>{item.title}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {item.badge && (
-                        <span className="bg-sidebar-primary text-sidebar-primary-foreground text-xs px-2 py-0.5 rounded-full">
-                          {item.badge}
-                        </span>
-                      )}
-                      {expanded ? (
-                        <ChevronDown className="h-4 w-4" />
-                      ) : (
-                        <ChevronRight className="h-4 w-4" />
-                      )}
-                    </div>
-                  </button>
-                ) : (
-                  <Link
-                    href={item.href}
-                    className={cn(
-                      "flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
-                      active
-                        ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                        : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                    )}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Icon className="h-5 w-5" />
-                      <span>{item.title}</span>
-                    </div>
-                    {item.badge && (
-                      <span className={cn(
-                        "text-xs px-2 py-0.5 rounded-full",
-                        active
-                          ? "bg-sidebar-foreground/20 text-sidebar-primary-foreground"
-                          : "bg-sidebar-primary text-sidebar-primary-foreground"
-                      )}>
-                        {item.badge}
-                      </span>
-                    )}
-                  </Link>
-                )}
-
-                {/* Children/Submenu */}
-                {hasChildren && expanded && (
-                  <div className="ml-4 mt-1 space-y-1 border-l border-sidebar-border pl-4">
-                    {item.children?.map((child) => (
-                      <Link
-                        key={child.href}
-                        href={child.href}
-                        className={cn(
-                          "block px-3 py-2 rounded-lg text-sm transition-colors",
-                          pathname === child.href
-                            ? "text-sidebar-primary font-medium"
-                            : "text-sidebar-foreground/70 hover:text-sidebar-foreground"
-                        )}
-                      >
-                        {child.title}
-                      </Link>
-                    ))}
-                  </div>
-                )}
+          {/* Admin Section Divider */}
+          {filteredAdminNav.length > 0 && (
+            <>
+              <div className="pt-4 pb-2">
+                <div className="flex items-center gap-2 px-3">
+                  <div className="h-px flex-1 bg-sidebar-border" />
+                  <span className="text-[10px] font-medium text-sidebar-foreground/50 uppercase tracking-wider">
+                    Admin
+                  </span>
+                  <div className="h-px flex-1 bg-sidebar-border" />
+                </div>
               </div>
-            );
-          })}
+              {filteredAdminNav.map(renderNavItem)}
+            </>
+          )}
         </nav>
       </ScrollArea>
 
-      {/* Bottom Stats Section */}
-      <div className="p-4 border-t border-sidebar-border">
-        <div className="mb-4">
-          <div className="flex justify-between text-xs mb-1">
-            <span className="text-sidebar-foreground/70">Today&apos;s Tasks</span>
-            <span className="text-sidebar-foreground">8/12</span>
+      {/* Bottom Section */}
+      <div className="border-t border-sidebar-border p-4 flex-shrink-0">
+        {/* Tasks Progress */}
+        {taskProgress.total > 0 && (
+          <div className="mb-4">
+            <div className="flex justify-between text-xs mb-1">
+              <span className="text-sidebar-foreground/70">Today&apos;s Tasks</span>
+              <span className="text-sidebar-foreground">{taskProgress.completed}/{taskProgress.total}</span>
+            </div>
+            <Progress value={progressPercentage} className="h-1.5 bg-sidebar-accent" />
           </div>
-          <Progress value={66} className="h-1.5 bg-sidebar-accent" />
-        </div>
+        )}
 
         {/* User Profile */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-sidebar-accent transition-colors">
-              <Avatar className="h-9 w-9">
-                <AvatarImage src="" />
-                <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground text-sm">
-                  {getUserInitials()}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1 text-left">
-                <p className="text-sm font-medium text-sidebar-foreground truncate">
-                  {user?.full_name || user?.email || "User"}
-                </p>
-                <p className="text-xs text-sidebar-foreground/70 capitalize">
-                  {user?.role || "Staff"}
-                </p>
-              </div>
-              <ChevronRight className="h-4 w-4 text-sidebar-foreground/50" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel>
-              <div className="flex flex-col">
-                <span>{user?.full_name || "User"}</span>
-                <span className="text-xs font-normal text-muted-foreground">
-                  {user?.email}
-                </span>
-              </div>
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link href="/settings">
-                <Settings className="mr-2 h-4 w-4" />
-                Settings
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/support">
-                <HelpCircle className="mr-2 h-4 w-4" />
-                Help & Support
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={handleSignOut} className="text-red-600">
-              <LogOut className="mr-2 h-4 w-4" />
-              Sign out
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {mounted ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                aria-label="User profile menu"
+                className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-sidebar-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
+              >
+                <Avatar className="h-9 w-9 flex-shrink-0">
+                  <AvatarImage src={user?.avatar_url || ""} />
+                  <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground text-sm">
+                    {getUserInitials()}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1 text-left overflow-hidden">
+                  <p className="text-sm font-medium text-sidebar-foreground truncate">
+                    {user?.full_name || user?.email || "User"}
+                  </p>
+                  <div className="flex items-center gap-1.5">
+                    {userRoleInfo && (
+                      <Badge
+                        variant="secondary"
+                        className={cn(
+                          "text-[10px] px-1.5 py-0 h-4",
+                          userRoleInfo.color,
+                          "text-white border-0"
+                        )}
+                      >
+                        {userRoleInfo.name}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+                <ChevronRight className="h-4 w-4 text-sidebar-foreground/50 flex-shrink-0" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" side="top" className="w-56">
+              <DropdownMenuLabel>
+                <div className="flex flex-col">
+                  <span>{user?.full_name || "User"}</span>
+                  <span className="text-xs font-normal text-muted-foreground">
+                    {user?.email}
+                  </span>
+                  {userRoleInfo && (
+                    <Badge
+                      variant="secondary"
+                      className={cn(
+                        "text-[10px] px-1.5 py-0 h-4 w-fit mt-1",
+                        userRoleInfo.color,
+                        "text-white border-0"
+                      )}
+                    >
+                      {userRoleInfo.name}
+                    </Badge>
+                  )}
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link href="/settings">
+                  <UserPen className="mr-2 h-4 w-4" />
+                  Edit Profile
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/help">
+                  <HelpCircle className="mr-2 h-4 w-4" />
+                  Help & Support
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleSignOut} className="text-red-600">
+                <LogOut className="mr-2 h-4 w-4" />
+                Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <div className="w-full flex items-center gap-3 p-2 rounded-lg">
+            <Avatar className="h-9 w-9">
+              <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground text-sm">
+                U
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex-1 text-left">
+              <p className="text-sm font-medium text-sidebar-foreground truncate">
+                Loading...
+              </p>
+              <p className="text-xs text-sidebar-foreground/70">
+                Staff
+              </p>
+            </div>
+          </div>
+        )}
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* Mobile Menu Button - shown only on mobile */}
+      <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+        <SheetTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="lg:hidden fixed left-4 top-4 z-50"
+            aria-label="Open navigation menu"
+          >
+            <Menu className="h-6 w-6" />
+          </Button>
+        </SheetTrigger>
+        <SheetContent side="left" className="p-0 w-64 bg-sidebar text-sidebar-foreground">
+          <SidebarContent />
+        </SheetContent>
+      </Sheet>
+
+      {/* Desktop Sidebar - hidden on mobile */}
+      <aside className="hidden lg:flex fixed left-0 top-0 z-40 h-screen w-64 bg-sidebar text-sidebar-foreground flex-col shadow-lg overflow-hidden">
+        <SidebarContent />
+      </aside>
+    </>
   );
 }
+

@@ -1,17 +1,45 @@
 import { Sidebar } from "@/components/layout/sidebar";
 import { AuthProvider } from "@/lib/supabase/auth-context";
+import { AuditProvider } from "@/lib/audit/audit-context";
+import { EmailProvider } from "@/lib/email/email-context";
+import { CallProvider } from "@/lib/calls/call-context";
+import { NotificationProvider } from "@/lib/notifications";
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  // In production, these would come from an API/database
+  const initialNotificationCounts = {
+    general: 0,
+    messages: 0,
+    chat: 0,
+  };
+
+  const initialTaskProgress = {
+    completed: 0,
+    total: 0,
+  };
+
   return (
     <AuthProvider>
-      <div className="min-h-screen bg-background">
-        <Sidebar />
-        <div className="pl-64">{children}</div>
-      </div>
+      <AuditProvider>
+        <EmailProvider>
+          <CallProvider>
+            <NotificationProvider
+              initialCounts={initialNotificationCounts}
+              initialTaskProgress={initialTaskProgress}
+            >
+              <div className="min-h-screen bg-background">
+                <Sidebar />
+                {/* Responsive padding: no padding on mobile, pl-64 on desktop (lg+) */}
+                <div className="lg:pl-64 pt-14 lg:pt-0">{children}</div>
+              </div>
+            </NotificationProvider>
+          </CallProvider>
+        </EmailProvider>
+      </AuditProvider>
     </AuthProvider>
   );
 }

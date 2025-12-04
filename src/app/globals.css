@@ -72,9 +72,9 @@
   --secondary: #e8f0e5;
   --secondary-foreground: #143009;
 
-  /* Muted */
+  /* Muted - improved contrast for WCAG AAA compliance */
   --muted: #f1f5f0;
-  --muted-foreground: #5a6b54;
+  --muted-foreground: #3d4a38;
 
   /* Accent - Gold */
   --accent: #DBC16F;

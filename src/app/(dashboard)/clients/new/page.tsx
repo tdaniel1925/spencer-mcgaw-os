@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
@@ -16,8 +16,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ArrowLeft, Save, User, Building, MapPin, Phone, Mail } from "lucide-react";
+import { ArrowLeft, Save, User, Building, MapPin, Phone, Mail, ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
+import { FormProgress, useFormProgress } from "@/components/ui/form-progress";
 
 const serviceTypes = [
   { id: "tax-prep", label: "Tax Preparation" },
@@ -28,10 +29,24 @@ const serviceTypes = [
   { id: "planning", label: "Tax Planning" },
 ];
 
+const formSteps = [
+  { id: "type", label: "Client Type" },
+  { id: "info", label: "Basic Information" },
+  { id: "address", label: "Address" },
+  { id: "services", label: "Services" },
+  { id: "assignment", label: "Assignment" },
+];
+
 export default function NewClientPage() {
   const router = useRouter();
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
   const [clientType, setClientType] = useState<"individual" | "business">("individual");
+  const { currentStep, nextStep, prevStep, isFirstStep, isLastStep, goToStep } = useFormProgress({
+    totalSteps: formSteps.length,
+  });
+
+  // Refs for each section to enable auto-scroll
+  const sectionRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   const toggleService = (serviceId: string) => {
     setSelectedServices((prev) =>
@@ -47,11 +62,24 @@ export default function NewClientPage() {
     router.push("/clients");
   };
 
+  // Scroll to the current step section
+  useEffect(() => {
+    const ref = sectionRefs.current[currentStep];
+    if (ref) {
+      ref.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [currentStep]);
+
+  const handleNextStep = () => {
+    // TODO: Add validation before moving to next step
+    nextStep();
+  };
+
   return (
     <>
       <Header title="Add New Client" />
       <main className="p-6">
-        <div className="mb-6">
+        <div className="mb-6 flex items-center justify-between">
           <Link
             href="/clients"
             className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground"
@@ -61,9 +89,15 @@ export default function NewClientPage() {
           </Link>
         </div>
 
+        {/* Form Progress Indicator */}
+        <div className="mb-8 max-w-4xl">
+          <FormProgress steps={formSteps} currentStep={currentStep} />
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-6 max-w-4xl">
-          {/* Client Type */}
-          <Card>
+          {/* Client Type - Step 0 */}
+          <div ref={(el) => { sectionRefs.current[0] = el; }}>
+          <Card className={currentStep === 0 ? "ring-2 ring-primary" : ""}>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <User className="h-5 w-5" />
@@ -96,9 +130,11 @@ export default function NewClientPage() {
               </div>
             </CardContent>
           </Card>
+          </div>
 
-          {/* Basic Information */}
-          <Card>
+          {/* Basic Information - Step 1 */}
+          <div ref={(el) => { sectionRefs.current[1] = el; }}>
+          <Card className={currentStep === 1 ? "ring-2 ring-primary" : ""}>
             <CardHeader>
               <CardTitle>Basic Information</CardTitle>
               <CardDescription>
@@ -166,9 +202,11 @@ export default function NewClientPage() {
               </div>
             </CardContent>
           </Card>
+          </div>
 
-          {/* Address */}
-          <Card>
+          {/* Address - Step 2 */}
+          <div ref={(el) => { sectionRefs.current[2] = el; }}>
+          <Card className={currentStep === 2 ? "ring-2 ring-primary" : ""}>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <MapPin className="h-5 w-5" />
@@ -207,9 +245,11 @@ export default function NewClientPage() {
               </div>
             </CardContent>
           </Card>
+          </div>
 
-          {/* Services */}
-          <Card>
+          {/* Services - Step 3 */}
+          <div ref={(el) => { sectionRefs.current[3] = el; }}>
+          <Card className={currentStep === 3 ? "ring-2 ring-primary" : ""}>
             <CardHeader>
               <CardTitle>Services</CardTitle>
               <CardDescription>
@@ -236,16 +276,18 @@ export default function NewClientPage() {
               </div>
             </CardContent>
           </Card>
+          </div>
 
-          {/* Assign To */}
-          <Card>
+          {/* Assign To - Step 4 */}
+          <div ref={(el) => { sectionRefs.current[4] = el; }}>
+          <Card className={currentStep === 4 ? "ring-2 ring-primary" : ""}>
             <CardHeader>
               <CardTitle>Assignment</CardTitle>
               <CardDescription>
                 Assign this client to a team member
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-6">
               <div className="space-y-2 max-w-md">
                 <Label htmlFor="assignee">Primary Assignee</Label>
                 <Select>
@@ -259,31 +301,47 @@ export default function NewClientPage() {
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Notes */}
+              <div className="space-y-2">
+                <Label htmlFor="notes">Additional Notes</Label>
+                <Textarea
+                  id="notes"
+                  placeholder="Add any additional notes about this client..."
+                  rows={4}
+                />
+              </div>
             </CardContent>
           </Card>
+          </div>
 
-          {/* Notes */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Additional Notes</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Textarea
-                placeholder="Add any additional notes about this client..."
-                rows={4}
-              />
-            </CardContent>
-          </Card>
+          {/* Actions with step navigation */}
+          <div className="flex items-center justify-between gap-4 pt-4 border-t">
+            <div className="flex items-center gap-2">
+              {!isFirstStep && (
+                <Button type="button" variant="outline" onClick={prevStep}>
+                  <ChevronLeft className="h-4 w-4 mr-1" />
+                  Previous
+                </Button>
+              )}
+            </div>
 
-          {/* Actions */}
-          <div className="flex justify-end gap-4">
-            <Button type="button" variant="outline" onClick={() => router.back()}>
-              Cancel
-            </Button>
-            <Button type="submit" className="bg-primary">
-              <Save className="h-4 w-4 mr-2" />
-              Save Client
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button type="button" variant="outline" onClick={() => router.back()}>
+                Cancel
+              </Button>
+              {!isLastStep ? (
+                <Button type="button" onClick={handleNextStep}>
+                  Next
+                  <ChevronRight className="h-4 w-4 ml-1" />
+                </Button>
+              ) : (
+                <Button type="submit" className="bg-primary">
+                  <Save className="h-4 w-4 mr-2" />
+                  Save Client
+                </Button>
+              )}
+            </div>
           </div>
         </form>
       </main>

@@ -24,6 +24,7 @@ export type WebhookEventType =
 
 export interface WebhookPayload {
   type: WebhookEventType;
+  timestamp?: string | number; // For replay attack prevention
   call: {
     id: string;
     phoneNumber: string;

@@ -68,6 +68,8 @@ export const activityTypeEnum = pgEnum("activity_type", [
   "client_created",
   "client_updated",
   "note_added",
+  "form_submission",
+  "webhook_received",
 ]);
 
 // Users table
