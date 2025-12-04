@@ -275,12 +275,32 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   const [notifications, setNotifications] = useState<CallNotification[]>([]);
   const [actionRules, setActionRules] = useState<CallActionRule[]>([]);
 
-  // Initialize with empty state - real data comes from webhooks
+  // Fetch calls from database on mount
   useEffect(() => {
-    // TODO: Load calls from database on mount
-    // For now, start with empty state for webhook testing
-    setCalls([]);
-    setNotifications([]);
+    async function fetchCalls() {
+      try {
+        const response = await fetch("/api/calls");
+        const data = await response.json();
+        if (data.success && data.calls) {
+          // Transform dates from strings to Date objects
+          const transformedCalls = data.calls.map((call: CallRecord & { callStartedAt: string; createdAt: string; updatedAt: string }) => ({
+            ...call,
+            callStartedAt: new Date(call.callStartedAt),
+            createdAt: new Date(call.createdAt),
+            updatedAt: new Date(call.updatedAt),
+            callEndedAt: call.callEndedAt ? new Date(call.callEndedAt) : undefined,
+            aiAnalysis: call.aiAnalysis ? {
+              ...call.aiAnalysis,
+              analyzedAt: call.aiAnalysis.analyzedAt ? new Date(call.aiAnalysis.analyzedAt) : new Date(),
+            } : undefined,
+          }));
+          setCalls(transformedCalls);
+        }
+      } catch (error) {
+        console.error("Failed to fetch calls:", error);
+      }
+    }
+    fetchCalls();
   }, []);
 
   // Get call by ID

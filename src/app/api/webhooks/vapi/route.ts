@@ -146,7 +146,7 @@ export async function POST(request: NextRequest) {
       console.log("[VAPI Webhook] AI parsed result:", JSON.stringify(parsedData, null, 2));
     }
 
-    // Update status to parsed
+    // Update status to parsed with AI summary for quick visibility
     if (webhookLogId) {
       await db.update(webhookLogs)
         .set({
@@ -154,6 +154,8 @@ export async function POST(request: NextRequest) {
           aiParsingUsed: aiParsingAvailable,
           aiConfidence: parsedData?.confidence ? Math.round(parsedData.confidence * 100) : null,
           parsedData: parsedData as unknown as Record<string, unknown>,
+          aiSummary: parsedData?.analysis?.summary || null,
+          aiCategory: parsedData?.analysis?.category || null,
         })
         .where(eq(webhookLogs.id, webhookLogId));
     }

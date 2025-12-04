@@ -330,6 +330,8 @@ export const webhookLogs = pgTable("webhook_logs", {
   parsedData: jsonb("parsed_data").$type<Record<string, unknown>>(),
   aiParsingUsed: boolean("ai_parsing_used").default(false),
   aiConfidence: integer("ai_confidence"),
+  aiSummary: text("ai_summary"), // Quick view of what AI extracted
+  aiCategory: varchar("ai_category", { length: 50 }), // AI-determined category
   errorMessage: text("error_message"),
   errorStack: text("error_stack"),
   processingTimeMs: integer("processing_time_ms"),
