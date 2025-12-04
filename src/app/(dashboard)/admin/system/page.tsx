@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { createClient } from "@/lib/supabase/client";
 import { Header } from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -118,123 +119,17 @@ interface WebhookConfig {
   successRate: number;
 }
 
-// Mock data
-const mockConnectedAccounts: ConnectedAccount[] = [
-  {
-    id: "acc-1",
-    provider: "microsoft",
-    email: "office@spencermcgaw.com",
-    connectedAt: new Date("2024-01-15"),
-    lastSync: new Date("2024-03-15T10:30:00"),
-    status: "active",
-    syncEnabled: true,
-  },
-];
+// Empty arrays - real data comes from OAuth connections
+const mockConnectedAccounts: ConnectedAccount[] = [];
 
-const mockApiKeys: ApiKey[] = [
-  {
-    id: "key-1",
-    name: "Twilio Production",
-    service: "twilio",
-    keyPreview: "SK...abc123",
-    createdAt: new Date("2024-01-01"),
-    lastUsed: new Date("2024-03-15"),
-    status: "active",
-    usageThisMonth: 1250,
-    usageLimit: 5000,
-  },
-  {
-    id: "key-2",
-    name: "VAPI AI Agent",
-    service: "vapi",
-    keyPreview: "vapi_...xyz789",
-    createdAt: new Date("2024-02-01"),
-    lastUsed: new Date("2024-03-14"),
-    status: "active",
-    usageThisMonth: 450,
-    usageLimit: null,
-  },
-  {
-    id: "key-3",
-    name: "OpenAI GPT-4",
-    service: "openai",
-    keyPreview: "sk-...def456",
-    createdAt: new Date("2024-01-15"),
-    lastUsed: new Date("2024-03-15"),
-    status: "active",
-    usageThisMonth: 8500,
-    usageLimit: 10000,
-  },
-];
+// Empty arrays - real data comes from API key management
+const mockApiKeys: ApiKey[] = [];
 
-const mockAuditLogs: AuditLogEntry[] = [
-  {
-    id: "log-1",
-    timestamp: new Date("2024-03-15T14:30:00"),
-    user: "Tyler Daniel",
-    action: "Updated",
-    resource: "API Key",
-    details: "Rotated Twilio API key",
-    ip: "192.168.1.100",
-  },
-  {
-    id: "log-2",
-    timestamp: new Date("2024-03-15T12:15:00"),
-    user: "System",
-    action: "Sync",
-    resource: "Email",
-    details: "Synced 45 emails from Microsoft Graph",
-    ip: "System",
-  },
-  {
-    id: "log-3",
-    timestamp: new Date("2024-03-15T10:00:00"),
-    user: "Tyler Daniel",
-    action: "Connected",
-    resource: "Email Account",
-    details: "Connected Microsoft 365 account",
-    ip: "192.168.1.100",
-  },
-  {
-    id: "log-4",
-    timestamp: new Date("2024-03-14T16:45:00"),
-    user: "Sarah Johnson",
-    action: "Created",
-    resource: "User",
-    details: "Created new staff account for Mike Chen",
-    ip: "192.168.1.105",
-  },
-  {
-    id: "log-5",
-    timestamp: new Date("2024-03-14T09:30:00"),
-    user: "System",
-    action: "Backup",
-    resource: "Database",
-    details: "Automated daily backup completed",
-    ip: "System",
-  },
-];
+// Empty arrays - real data comes from audit system
+const mockAuditLogs: AuditLogEntry[] = [];
 
-const mockWebhooks: WebhookConfig[] = [
-  {
-    id: "wh-1",
-    name: "Email Notifications",
-    url: "https://api.spencermcgaw.com/webhooks/email",
-    events: ["email.received", "email.sent"],
-    status: "active",
-    lastTriggered: new Date("2024-03-15T14:30:00"),
-    successRate: 99.5,
-  },
-  {
-    id: "wh-2",
-    name: "Client Updates",
-    url: "https://api.spencermcgaw.com/webhooks/clients",
-    events: ["client.created", "client.updated"],
-    status: "active",
-    lastTriggered: new Date("2024-03-14T11:20:00"),
-    successRate: 100,
-  },
-];
+// Empty arrays - real data comes from webhook configuration
+const mockWebhooks: WebhookConfig[] = [];
 
 // Service icons and colors
 const serviceConfig = {
@@ -247,10 +142,11 @@ const serviceConfig = {
 
 export default function SystemSettingsPage() {
   const [activeTab, setActiveTab] = useState("integrations");
-  const [connectedAccounts, setConnectedAccounts] = useState(mockConnectedAccounts);
-  const [apiKeys, setApiKeys] = useState(mockApiKeys);
-  const [webhooks, setWebhooks] = useState(mockWebhooks);
-  const [auditLogs] = useState(mockAuditLogs);
+  const [connectedAccounts, setConnectedAccounts] = useState<ConnectedAccount[]>([]);
+  const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
+  const [webhooks, setWebhooks] = useState<WebhookConfig[]>([]);
+  const [auditLogs] = useState<AuditLogEntry[]>([]);
+  const [loading, setLoading] = useState(true);
 
   // Dialog states
   const [showConnectEmail, setShowConnectEmail] = useState(false);
@@ -258,6 +154,42 @@ export default function SystemSettingsPage() {
   const [showAddWebhook, setShowAddWebhook] = useState(false);
   const [showApiKeyValue, setShowApiKeyValue] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
+
+  // Fetch email connections from database
+  useEffect(() => {
+    async function fetchEmailConnections() {
+      try {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+
+        if (user) {
+          const { data: connections, error } = await supabase
+            .from("email_connections")
+            .select("*")
+            .eq("user_id", user.id);
+
+          if (!error && connections) {
+            const formattedConnections: ConnectedAccount[] = connections.map(conn => ({
+              id: conn.id,
+              provider: conn.provider as "microsoft" | "google",
+              email: conn.email,
+              connectedAt: new Date(conn.created_at || conn.updated_at),
+              lastSync: new Date(conn.updated_at),
+              status: new Date(conn.expires_at) > new Date() ? "active" : "expired",
+              syncEnabled: true,
+            }));
+            setConnectedAccounts(formattedConnections);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch email connections:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchEmailConnections();
+  }, []);
 
   // Form states
   const [newApiKey, setNewApiKey] = useState({
@@ -293,25 +225,11 @@ export default function SystemSettingsPage() {
     dataEncryption: true,
   });
 
-  // Handle Microsoft OAuth connection
+  // Handle Microsoft OAuth connection - redirects to real OAuth flow
   const handleConnectMicrosoft = async () => {
     setIsConnecting(true);
-    // In production, this would redirect to Microsoft OAuth
-    // For demo, simulate connection
-    setTimeout(() => {
-      const newAccount: ConnectedAccount = {
-        id: `acc-${Date.now()}`,
-        provider: "microsoft",
-        email: "new@spencermcgaw.com",
-        connectedAt: new Date(),
-        lastSync: new Date(),
-        status: "active",
-        syncEnabled: true,
-      };
-      setConnectedAccounts([...connectedAccounts, newAccount]);
-      setIsConnecting(false);
-      setShowConnectEmail(false);
-    }, 2000);
+    // Redirect to the actual OAuth endpoint
+    window.location.href = "/api/email/connect";
   };
 
   // Handle API key creation
@@ -332,9 +250,23 @@ export default function SystemSettingsPage() {
     setShowAddApiKey(false);
   };
 
-  // Handle account disconnect
-  const handleDisconnectAccount = (accountId: string) => {
-    setConnectedAccounts(connectedAccounts.filter(a => a.id !== accountId));
+  // Handle account disconnect - also delete from database
+  const handleDisconnectAccount = async (accountId: string) => {
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("email_connections")
+        .delete()
+        .eq("id", accountId);
+
+      if (!error) {
+        setConnectedAccounts(connectedAccounts.filter(a => a.id !== accountId));
+      } else {
+        console.error("Failed to disconnect account:", error);
+      }
+    } catch (error) {
+      console.error("Failed to disconnect account:", error);
+    }
   };
 
   // Handle API key deletion
@@ -575,27 +507,27 @@ export default function SystemSettingsPage() {
                     <Card>
                       <CardContent className="pt-6">
                         <div className="text-center">
-                          <div className="text-3xl font-bold">1,250</div>
+                          <div className="text-3xl font-bold">0</div>
                           <div className="text-sm text-muted-foreground">SMS This Month</div>
-                          <div className="text-xs text-green-600 mt-1">$9.38 estimated</div>
+                          <div className="text-xs text-muted-foreground mt-1">$0.00 estimated</div>
                         </div>
                       </CardContent>
                     </Card>
                     <Card>
                       <CardContent className="pt-6">
                         <div className="text-center">
-                          <div className="text-3xl font-bold">45</div>
+                          <div className="text-3xl font-bold">0</div>
                           <div className="text-sm text-muted-foreground">Calls This Month</div>
-                          <div className="text-xs text-green-600 mt-1">~128 minutes</div>
+                          <div className="text-xs text-muted-foreground mt-1">0 minutes</div>
                         </div>
                       </CardContent>
                     </Card>
                     <Card>
                       <CardContent className="pt-6">
                         <div className="text-center">
-                          <div className="text-3xl font-bold text-green-600">Active</div>
+                          <div className="text-3xl font-bold text-muted-foreground">Not Connected</div>
                           <div className="text-sm text-muted-foreground">Service Status</div>
-                          <div className="text-xs text-muted-foreground mt-1">All systems operational</div>
+                          <div className="text-xs text-muted-foreground mt-1">Configure Twilio to enable</div>
                         </div>
                       </CardContent>
                     </Card>
@@ -688,27 +620,27 @@ export default function SystemSettingsPage() {
                     <Card>
                       <CardContent className="pt-6">
                         <div className="text-center">
-                          <div className="text-3xl font-bold">450</div>
+                          <div className="text-3xl font-bold">0</div>
                           <div className="text-sm text-muted-foreground">AI Minutes This Month</div>
-                          <div className="text-xs text-green-600 mt-1">$22.50 estimated</div>
+                          <div className="text-xs text-muted-foreground mt-1">$0.00 estimated</div>
                         </div>
                       </CardContent>
                     </Card>
                     <Card>
                       <CardContent className="pt-6">
                         <div className="text-center">
-                          <div className="text-3xl font-bold">89%</div>
+                          <div className="text-3xl font-bold">--%</div>
                           <div className="text-sm text-muted-foreground">Resolution Rate</div>
-                          <div className="text-xs text-muted-foreground mt-1">Calls handled without transfer</div>
+                          <div className="text-xs text-muted-foreground mt-1">No calls yet</div>
                         </div>
                       </CardContent>
                     </Card>
                     <Card>
                       <CardContent className="pt-6">
                         <div className="text-center">
-                          <div className="text-3xl font-bold">4.8</div>
+                          <div className="text-3xl font-bold">--</div>
                           <div className="text-sm text-muted-foreground">Satisfaction Score</div>
-                          <div className="text-xs text-muted-foreground mt-1">Out of 5.0</div>
+                          <div className="text-xs text-muted-foreground mt-1">No ratings yet</div>
                         </div>
                       </CardContent>
                     </Card>
@@ -975,9 +907,9 @@ export default function SystemSettingsPage() {
                     <Card>
                       <CardContent className="pt-6">
                         <div className="flex items-center gap-3">
-                          <Phone className="h-8 w-8 text-red-500" />
+                          <Phone className="h-8 w-8 text-muted-foreground" />
                           <div>
-                            <div className="text-2xl font-bold">$9.38</div>
+                            <div className="text-2xl font-bold">$0.00</div>
                             <div className="text-sm text-muted-foreground">Twilio SMS</div>
                           </div>
                         </div>
@@ -986,9 +918,9 @@ export default function SystemSettingsPage() {
                     <Card>
                       <CardContent className="pt-6">
                         <div className="flex items-center gap-3">
-                          <Bot className="h-8 w-8 text-purple-500" />
+                          <Bot className="h-8 w-8 text-muted-foreground" />
                           <div>
-                            <div className="text-2xl font-bold">$22.50</div>
+                            <div className="text-2xl font-bold">$0.00</div>
                             <div className="text-sm text-muted-foreground">VAPI AI</div>
                           </div>
                         </div>
@@ -997,9 +929,9 @@ export default function SystemSettingsPage() {
                     <Card>
                       <CardContent className="pt-6">
                         <div className="flex items-center gap-3">
-                          <Zap className="h-8 w-8 text-green-500" />
+                          <Zap className="h-8 w-8 text-muted-foreground" />
                           <div>
-                            <div className="text-2xl font-bold">$42.50</div>
+                            <div className="text-2xl font-bold">$0.00</div>
                             <div className="text-sm text-muted-foreground">OpenAI</div>
                           </div>
                         </div>
@@ -1008,9 +940,9 @@ export default function SystemSettingsPage() {
                     <Card>
                       <CardContent className="pt-6">
                         <div className="flex items-center gap-3">
-                          <CreditCard className="h-8 w-8 text-blue-500" />
+                          <CreditCard className="h-8 w-8 text-muted-foreground" />
                           <div>
-                            <div className="text-2xl font-bold">$74.38</div>
+                            <div className="text-2xl font-bold">$0.00</div>
                             <div className="text-sm text-muted-foreground">Total MTD</div>
                           </div>
                         </div>
@@ -1518,34 +1450,10 @@ export default function SystemSettingsPage() {
 
                   <div>
                     <h4 className="font-medium mb-4">Recent Backups</h4>
-                    <div className="space-y-2">
-                      {[
-                        { date: new Date("2024-03-15T02:00:00"), size: "2.4 GB", status: "completed" },
-                        { date: new Date("2024-03-14T02:00:00"), size: "2.3 GB", status: "completed" },
-                        { date: new Date("2024-03-13T02:00:00"), size: "2.3 GB", status: "completed" },
-                      ].map((backup, i) => (
-                        <div key={i} className="flex items-center justify-between p-3 border rounded-lg">
-                          <div className="flex items-center gap-3">
-                            <Database className="h-5 w-5 text-muted-foreground" />
-                            <div>
-                              <div className="font-medium">
-                                {format(backup.date, "MMM d, yyyy 'at' h:mm a")}
-                              </div>
-                              <div className="text-sm text-muted-foreground">{backup.size}</div>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Badge variant="default" className="bg-green-500">
-                              <CheckCircle className="h-3 w-3 mr-1" />
-                              {backup.status}
-                            </Badge>
-                            <Button variant="outline" size="sm">
-                              <Download className="h-4 w-4 mr-1" />
-                              Download
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
+                    <div className="text-center py-8 text-muted-foreground">
+                      <Database className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                      <p>No backups yet</p>
+                      <p className="text-sm">Backups will appear here once configured</p>
                     </div>
                   </div>
                 </CardContent>

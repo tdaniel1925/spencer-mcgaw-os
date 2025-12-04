@@ -146,28 +146,24 @@ export default function TasksPage() {
           <StatCard
             title="Total Tasks"
             value={taskCounts.total}
-            change={{ value: 12.5, period: "30 days" }}
             icon={<ClipboardList className="h-6 w-6 text-primary-foreground" />}
             iconBg="bg-primary"
           />
           <StatCard
             title="Pending"
             value={taskCounts.pending}
-            change={{ value: 5.2, period: "30 days" }}
             icon={<Clock className="h-6 w-6 text-yellow-700" />}
             iconBg="bg-yellow-100"
           />
           <StatCard
             title="In Progress"
             value={taskCounts.inProgress}
-            change={{ value: -2.1, period: "30 days" }}
             icon={<AlertCircle className="h-6 w-6 text-blue-700" />}
             iconBg="bg-blue-100"
           />
           <StatCard
             title="Completed"
             value={taskCounts.completed}
-            change={{ value: 18.3, period: "30 days" }}
             icon={<CheckCircle className="h-6 w-6 text-green-700" />}
             iconBg="bg-green-100"
           />
