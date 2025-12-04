@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
-import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import * as schema from "@/db/schema";
 
 export async function GET() {
   // Check if DATABASE_URL is set
@@ -14,44 +12,36 @@ export async function GET() {
   }
 
   // Create a fresh connection for this request
-  const client = postgres(dbUrl, {
-    prepare: false,
+  const sql = postgres(dbUrl, {
     ssl: "require",
     max: 1,
   });
-  const db = drizzle(client, { schema });
 
   try {
-    // Simple test insert
-    const testId = `test-${Date.now()}`;
-    const [result] = await db.insert(schema.calls).values({
-      vapiCallId: testId,
-      callerPhone: "+15559999999",
-      callerName: "Test User",
-      status: "completed",
-      direction: "inbound",
-      duration: 60,
-      transcription: "Test transcript",
-      summary: "Test summary",
-      metadata: { test: true },
-    }).returning({ id: schema.calls.id });
+    // Test raw SQL insert
+    const testId = `test-raw-${Date.now()}`;
+    const result = await sql`
+      INSERT INTO calls (vapi_call_id, caller_phone, caller_name, status, direction, duration, transcription, summary, metadata)
+      VALUES (${testId}, '+15559999999', 'Test User', 'completed', 'inbound', 60, 'Test transcript', 'Test summary', '{"test": true}'::jsonb)
+      RETURNING id
+    `;
 
-    await client.end();
+    await sql.end();
 
     return NextResponse.json({
       success: true,
       message: "Database insert successful",
-      callId: result?.id,
+      callId: result[0]?.id,
       testId,
       dbUrlPrefix: dbUrl.substring(0, 30) + "...",
     });
   } catch (error) {
-    await client.end();
+    await sql.end();
     console.error("Test route error:", error);
     return NextResponse.json({
       success: false,
       error: error instanceof Error ? error.message : "Unknown error",
-      stack: error instanceof Error ? error.stack : undefined,
+      fullError: JSON.stringify(error, Object.getOwnPropertyNames(error)),
       dbUrlPrefix: dbUrl.substring(0, 30) + "...",
     }, { status: 500 });
   }
