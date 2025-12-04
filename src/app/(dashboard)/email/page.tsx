@@ -265,14 +265,36 @@ function SortableEmailCard({
           </div>
         </div>
 
+        {/* Quick thumbs up/down buttons */}
         <div
-          className="flex-shrink-0"
+          className="flex flex-col gap-1 flex-shrink-0"
           onClick={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
         >
+          {card.isRejected ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-50"
+              onClick={() => onQuickAction("mark_relevant")}
+              title="Mark as Relevant"
+            >
+              <ThumbsUp className="h-4 w-4" />
+            </Button>
+          ) : (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50"
+              onClick={() => onQuickAction("mark_rejected")}
+              title="Mark as Not Relevant"
+            >
+              <ThumbsDown className="h-4 w-4" />
+            </Button>
+          )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-6 w-6 -mt-1 -mr-1">
+              <Button variant="ghost" size="icon" className="h-7 w-7">
                 <MoreHorizontal className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -285,17 +307,6 @@ function SortableEmailCard({
                 <ListTodo className="h-4 w-4 mr-2" />
                 Create Task
               </DropdownMenuItem>
-              {card.isRejected ? (
-                <DropdownMenuItem onClick={() => onQuickAction("mark_relevant")}>
-                  <ThumbsUp className="h-4 w-4 mr-2" />
-                  Mark as Relevant
-                </DropdownMenuItem>
-              ) : (
-                <DropdownMenuItem onClick={() => onQuickAction("mark_rejected")}>
-                  <ThumbsDown className="h-4 w-4 mr-2" />
-                  Mark as Not Relevant
-                </DropdownMenuItem>
-              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => onQuickAction("archive")}>
                 <Archive className="h-4 w-4 mr-2" />
@@ -1226,6 +1237,47 @@ export default function EmailPage() {
               )}
               <DialogFooter className="flex-shrink-0 flex-wrap gap-2">
                 <div className="flex gap-2 mr-auto">
+                  {/* Quick thumbs up/down for relevance */}
+                  {(() => {
+                    const isRejected = rejectedEmails.some((e) => e.id === selectedEmail?.id);
+                    return isRejected ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-green-600 hover:text-green-700 hover:bg-green-50 border-green-200"
+                        onClick={() => {
+                          if (selectedEmail) {
+                            markAsRelevant(selectedEmail.id);
+                            toast.success("Moved to Qualified", {
+                              action: { label: "Undo", onClick: () => undoLastAction() },
+                            });
+                            setSelectedEmail(null);
+                          }
+                        }}
+                      >
+                        <ThumbsUp className="h-4 w-4 mr-1.5" />
+                        Mark Relevant
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-red-500 hover:text-red-600 hover:bg-red-50 border-red-200"
+                        onClick={() => {
+                          if (selectedEmail) {
+                            markAsRejected(selectedEmail.id);
+                            toast.success("Moved to Rejected", {
+                              action: { label: "Undo", onClick: () => undoLastAction() },
+                            });
+                            setSelectedEmail(null);
+                          }
+                        }}
+                      >
+                        <ThumbsDown className="h-4 w-4 mr-1.5" />
+                        Not Relevant
+                      </Button>
+                    );
+                  })()}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="outline" size="sm">
