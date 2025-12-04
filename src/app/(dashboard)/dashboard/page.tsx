@@ -106,18 +106,18 @@ export default function DashboardPage() {
     return "Good evening";
   };
 
-  // Stats calculations
-  const timeSavedToday = 2.5; // hours
-  const timeSavedYesterday = 2.0;
-  const automationRate = 87;
-  const totalTasks = 12;
-  const urgentTasks = 4;
-  const taskProgress = 67;
-  const weeklyHoursWithoutAI = 40;
-  const weeklyHoursWithAI = 18;
-  const hoursSaved = weeklyHoursWithoutAI - weeklyHoursWithAI;
-  const efficiencyGain = Math.round((hoursSaved / weeklyHoursWithoutAI) * 100);
-  const dollarValue = hoursSaved * 75; // $75/hour rate
+  // Stats calculations - zeros until real data is available
+  const timeSavedToday = 0;
+  const timeSavedYesterday = 0;
+  const automationRate = 0;
+  const totalTasks = 0;
+  const urgentTasks = 0;
+  const taskProgress = 0;
+  const weeklyHoursWithoutAI = 0;
+  const weeklyHoursWithAI = 0;
+  const hoursSaved = 0;
+  const efficiencyGain = 0;
+  const dollarValue = 0;
 
   return (
     <>
@@ -166,7 +166,7 @@ export default function DashboardPage() {
                   <p className="text-sm text-muted-foreground">AI Automation Rate</p>
                   <p className="text-3xl font-bold mt-1">{automationRate}%</p>
                   <p className="text-sm text-muted-foreground mt-1">
-                    <span className="font-medium text-foreground">156</span> actions auto-completed this week
+                    <span className="font-medium text-foreground">0</span> actions auto-completed this week
                   </p>
                 </div>
                 <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center">
@@ -412,7 +412,7 @@ export default function DashboardPage() {
                     <DollarSign className="h-4 w-4 text-green-600" />
                     <span className="text-sm text-muted-foreground">Est. value:</span>
                   </div>
-                  <span className="font-semibold text-green-600">$450</span>
+                  <span className="font-semibold text-green-600">$0</span>
                 </div>
               </CardContent>
             </Card>
