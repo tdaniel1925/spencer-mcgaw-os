@@ -250,19 +250,19 @@ function SortableEmailCard({
             {classification?.summary || email.bodyPreview}
           </p>
 
-          <div className="flex items-center justify-between mt-2 pt-2 border-t gap-2">
-            {email.hasAttachments && (
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                <Paperclip className="h-3 w-3" />
-                <span>{email.attachments?.length || 1}</span>
-              </div>
-            )}
-            <div className="flex items-center gap-1 text-xs text-muted-foreground ml-auto">
+          <div className="flex items-center mt-2 pt-2 border-t gap-2">
+            <div className="flex items-center gap-1 text-xs text-muted-foreground">
               <Clock className="h-3 w-3" />
               <span suppressHydrationWarning>
                 {formatDistanceToNow(email.receivedAt, { addSuffix: true })}
               </span>
             </div>
+            {email.hasAttachments && (
+              <div className="flex items-center gap-1 text-xs text-muted-foreground ml-auto">
+                <Paperclip className="h-3 w-3" />
+                <span>{email.attachments?.length || 1}</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1321,28 +1321,6 @@ export default function EmailPage() {
                     <Trash2 className="h-4 w-4 mr-1.5" />
                     Delete
                   </Button>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm">
-                        <Shield className="h-4 w-4 mr-1.5" />
-                        Sender Rules
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start">
-                      <DropdownMenuItem
-                        onClick={() => selectedEmail && handleWhitelistSender(selectedEmail)}
-                      >
-                        <ThumbsUp className="h-4 w-4 mr-2 text-green-600" />
-                        Always allow @{selectedEmail?.from.email.split("@")[1]}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => selectedEmail && handleBlacklistSender(selectedEmail)}
-                      >
-                        <Ban className="h-4 w-4 mr-2 text-red-600" />
-                        Always filter @{selectedEmail?.from.email.split("@")[1]}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
                 </div>
                 <Button variant="outline" onClick={() => setSelectedEmail(null)}>
                   Close
