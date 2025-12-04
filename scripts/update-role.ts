@@ -16,7 +16,7 @@ const users = pgTable("users", {
   updated_at: timestamp("updated_at").defaultNow(),
 });
 
-async function updateRole() {
+async function updateUser() {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
     console.error("DATABASE_URL not set");
@@ -26,19 +26,27 @@ async function updateRole() {
   const client = postgres(connectionString);
   const db = drizzle(client);
 
+  // Update role and full_name for tdaniel
   const result = await db
     .update(users)
-    .set({ role: "admin" })
+    .set({ role: "admin", full_name: "Tyler Daniel" })
     .where(eq(users.email, "tdaniel@botmakers.ai"))
-    .returning({ id: users.id, email: users.email, role: users.role });
+    .returning({ id: users.id, email: users.email, role: users.role, full_name: users.full_name });
 
   console.log("Updated user:", result);
+
+  // List all users
+  const allUsers = await db.select().from(users);
+  console.log("\nAll users in database:");
+  allUsers.forEach(u => {
+    console.log(`  - ${u.email}: ${u.full_name} (${u.role})`);
+  });
 
   await client.end();
   process.exit(0);
 }
 
-updateRole().catch((err) => {
+updateUser().catch((err) => {
   console.error("Error:", err);
   process.exit(1);
 });
