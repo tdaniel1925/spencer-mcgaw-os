@@ -210,10 +210,13 @@ export async function POST(request: NextRequest) {
       vapiCall?.summary as string ||
       "Call completed";
 
-    const direction =
+    const rawDirection =
       parsedData?.call?.direction ||
       (vapiCall?.direction as string) ||
       "inbound";
+    // Only accept valid direction values
+    const direction: "inbound" | "outbound" =
+      rawDirection === "outbound" ? "outbound" : "inbound";
 
     // Store call record
     const [insertedCall] = await db.insert(calls).values({
@@ -221,7 +224,7 @@ export async function POST(request: NextRequest) {
       callerPhone,
       callerName,
       status: "completed",
-      direction: direction as "inbound" | "outbound",
+      direction,
       duration,
       transcription: transcript,
       summary,

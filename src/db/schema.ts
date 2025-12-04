@@ -105,7 +105,7 @@ export const clients = pgTable("clients", {
   zipCode: varchar("zip_code", { length: 20 }),
   companyName: varchar("company_name", { length: 255 }),
   taxId: varchar("tax_id", { length: 20 }),
-  serviceTypes: jsonb("service_types").default([]),
+  serviceTypes: jsonb("service_types").$type<string[]>(),
   assignedUserId: uuid("assigned_user_id").references(() => users.id),
   notes: text("notes"),
   isActive: boolean("is_active").notNull().default(true),
@@ -129,7 +129,7 @@ export const tasks = pgTable("tasks", {
   completedAt: timestamp("completed_at"),
   completedById: uuid("completed_by_id").references(() => users.id),
   completionNotes: text("completion_notes"),
-  metadata: jsonb("metadata").default({}),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -151,7 +151,7 @@ export const calls = pgTable("calls", {
   wasTransferred: boolean("was_transferred").default(false),
   transferredToId: uuid("transferred_to_id").references(() => users.id),
   recordingUrl: text("recording_url"),
-  metadata: jsonb("metadata").default({}),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -168,7 +168,7 @@ export const documents = pgTable("documents", {
   sourceChannel: varchar("source_channel", { length: 50 }),
   sourceEmail: varchar("source_email", { length: 255 }),
   taxYear: integer("tax_year"),
-  extractedData: jsonb("extracted_data").default({}),
+  extractedData: jsonb("extracted_data").$type<Record<string, unknown>>(),
   processedById: uuid("processed_by_id").references(() => users.id),
   processedAt: timestamp("processed_at"),
   notes: text("notes"),
@@ -186,7 +186,7 @@ export const activityLogs = pgTable("activity_logs", {
   taskId: uuid("task_id").references(() => tasks.id),
   callId: uuid("call_id").references(() => calls.id),
   documentId: uuid("document_id").references(() => documents.id),
-  metadata: jsonb("metadata").default({}),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>(),
   ipAddress: varchar("ip_address", { length: 45 }),
   userAgent: text("user_agent"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -207,7 +207,7 @@ export const calendarEvents = pgTable("calendar_events", {
   color: varchar("color", { length: 20 }),
   isRecurring: boolean("is_recurring").default(false),
   recurrenceRule: text("recurrence_rule"),
-  metadata: jsonb("metadata").default({}),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
