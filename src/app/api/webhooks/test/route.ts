@@ -13,15 +13,19 @@ export async function GET() {
 
   // Convert direct connection to pooler connection for serverless
   // db.xxx.supabase.co:5432 -> aws-0-us-east-1.pooler.supabase.com:6543
+  // The project ref is the long string between db. and .supabase.co
+  // e.g., db.cyygkhwujcrbhzgjqipj.supabase.co -> cyygkhwujcrbhzgjqipj
   if (dbUrl.includes("db.") && dbUrl.includes(".supabase.co")) {
     // Extract project ref from the direct connection URL
-    const projectRef = dbUrl.match(/db\.([^.]+)\.supabase\.co/)?.[1];
+    const projectRefMatch = dbUrl.match(/@db\.([a-z0-9]+)\.supabase\.co/);
+    const projectRef = projectRefMatch?.[1];
     if (projectRef) {
-      // Construct pooler URL
-      // Format: postgresql://postgres.PROJECT_REF:PASSWORD@aws-0-us-east-1.pooler.supabase.com:6543/postgres
-      const passwordMatch = dbUrl.match(/:([^@]+)@/);
+      // Extract password - it's between : and @ in postgresql://postgres:PASSWORD@...
+      const passwordMatch = dbUrl.match(/postgres:([^@]+)@/);
       const password = passwordMatch?.[1];
       if (password) {
+        // Construct pooler URL
+        // Format: postgresql://postgres.PROJECT_REF:PASSWORD@aws-0-us-east-1.pooler.supabase.com:6543/postgres
         dbUrl = `postgresql://postgres.${projectRef}:${password}@aws-0-us-east-1.pooler.supabase.com:6543/postgres?pgbouncer=true`;
       }
     }
