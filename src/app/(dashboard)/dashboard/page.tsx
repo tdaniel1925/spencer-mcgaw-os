@@ -10,6 +10,7 @@ import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useEmail } from "@/lib/email";
 import { useCalls } from "@/lib/calls/call-context";
+import { useAuth } from "@/lib/supabase/auth-context";
 import {
   Clock,
   CheckCircle,
@@ -58,6 +59,32 @@ const callStatusConfig = {
   transferred: { label: "Transferred", className: "bg-blue-100 text-blue-700" },
 };
 
+// Greeting messages for variety
+const greetings = {
+  morning: [
+    "Good morning",
+    "Rise and shine",
+    "Morning",
+    "Hope you slept well",
+    "Ready to conquer the day",
+  ],
+  afternoon: [
+    "Good afternoon",
+    "Hope your day is going well",
+    "Afternoon",
+    "Keep up the great work",
+  ],
+  evening: [
+    "Good evening",
+    "Evening",
+    "Winding down",
+    "Almost done for the day",
+  ],
+  monday: ["Happy Monday", "New week, new wins", "Let's start the week strong"],
+  friday: ["Happy Friday", "TGIF", "Almost weekend", "Finish strong"],
+  weekend: ["Happy weekend", "Enjoy your weekend"],
+};
+
 export default function DashboardPage() {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
@@ -67,6 +94,7 @@ export default function DashboardPage() {
 
   const { emails, emailTasks, getUnreadCount } = useEmail();
   const { calls } = useCalls();
+  const { user } = useAuth();
 
   useEffect(() => {
     setMounted(true);
@@ -98,9 +126,37 @@ export default function DashboardPage() {
 
   const getGreeting = () => {
     const hour = currentTime.getHours();
-    if (hour < 12) return "Good morning";
-    if (hour < 17) return "Good afternoon";
-    return "Good evening";
+    const dayOfWeek = currentTime.getDay();
+    const dayOfYear = Math.floor((currentTime.getTime() - new Date(currentTime.getFullYear(), 0, 0).getTime()) / 86400000);
+
+    // Get first name from full_name
+    const firstName = user?.full_name?.split(" ")[0] || "";
+
+    let greetingPool: string[];
+
+    // Check for special days first
+    if (dayOfWeek === 1) {
+      // Monday
+      greetingPool = greetings.monday;
+    } else if (dayOfWeek === 5) {
+      // Friday
+      greetingPool = greetings.friday;
+    } else if (dayOfWeek === 0 || dayOfWeek === 6) {
+      // Weekend
+      greetingPool = greetings.weekend;
+    } else if (hour < 12) {
+      greetingPool = greetings.morning;
+    } else if (hour < 17) {
+      greetingPool = greetings.afternoon;
+    } else {
+      greetingPool = greetings.evening;
+    }
+
+    // Use day of year to pick a consistent greeting for the day
+    const greetingIndex = dayOfYear % greetingPool.length;
+    const greeting = greetingPool[greetingIndex];
+
+    return firstName ? `${greeting}, ${firstName}` : greeting;
   };
 
   // Calculate stats from real data
