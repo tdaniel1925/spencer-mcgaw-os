@@ -63,6 +63,7 @@ import {
   Bot,
   Paperclip,
   CheckCircle,
+  Check,
   Clock,
   Eye,
   Plus,
@@ -265,62 +266,52 @@ function SortableEmailCard({
           </div>
         </div>
 
-        {/* Quick thumbs up/down buttons */}
+        {/* Quick action buttons: Approve, Reject, Keep, Delete */}
         <div
-          className="flex flex-col gap-1 flex-shrink-0"
+          className="flex flex-col gap-0.5 flex-shrink-0"
           onClick={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
         >
-          {card.isRejected ? (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-50"
-              onClick={() => onQuickAction("mark_relevant")}
-              title="Mark as Relevant"
-            >
-              <ThumbsUp className="h-4 w-4" />
-            </Button>
-          ) : (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50"
-              onClick={() => onQuickAction("mark_rejected")}
-              title="Mark as Not Relevant"
-            >
-              <ThumbsDown className="h-4 w-4" />
-            </Button>
-          )}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-7 w-7">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem onClick={() => onQuickAction("view")}>
-                <Eye className="h-4 w-4 mr-2" />
-                View Details
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onQuickAction("create_task")}>
-                <ListTodo className="h-4 w-4 mr-2" />
-                Create Task
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => onQuickAction("archive")}>
-                <Archive className="h-4 w-4 mr-2" />
-                Archive
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => onQuickAction("delete")}
-                className="text-destructive"
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {/* Approve - moves to In Progress */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+            onClick={() => onQuickAction("approve")}
+            title="Approve (move to In Progress)"
+          >
+            <ThumbsUp className="h-3.5 w-3.5" />
+          </Button>
+          {/* Reject - moves to Rejected tab */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-red-500 hover:text-red-600 hover:bg-red-50"
+            onClick={() => onQuickAction("reject")}
+            title="Not Approved (move to Rejected)"
+          >
+            <ThumbsDown className="h-3.5 w-3.5" />
+          </Button>
+          {/* Keep - stays in Qualified, no tasks */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-green-600 hover:text-green-700 hover:bg-green-50"
+            onClick={() => onQuickAction("keep")}
+            title="Keep (no tasks needed)"
+          >
+            <Check className="h-3.5 w-3.5" />
+          </Button>
+          {/* Delete - remove from system */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-muted-foreground hover:text-destructive hover:bg-red-50"
+            onClick={() => onQuickAction("delete")}
+            title="Delete"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
         </div>
       </div>
     </div>
@@ -675,6 +666,30 @@ export default function EmailPage() {
             toast.error(result.error || "Failed to create task");
           }
           break;
+        // NEW: Approve - moves to In Progress (has tasks)
+        case "approve":
+          setKanbanCards((prev) =>
+            prev.map((c) => (c.id === cardId ? { ...c, columnId: "in_progress", isRejected: false } : c))
+          );
+          toast.success("Approved - moved to In Progress", {
+            action: { label: "Undo", onClick: () => undoLastAction() },
+          });
+          break;
+        // NEW: Reject - moves to Rejected tab (for training)
+        case "reject":
+          markAsRejected(card.email.id);
+          toast.success("Rejected - moved for training", {
+            action: { label: "Undo", onClick: () => undoLastAction() },
+          });
+          break;
+        // NEW: Keep - stays in Qualified, no tasks needed
+        case "keep":
+          // Mark as relevant (stays in qualified) but don't move columns
+          markAsRelevant(card.email.id);
+          toast.success("Kept in Qualified", {
+            action: { label: "Undo", onClick: () => undoLastAction() },
+          });
+          break;
         case "mark_relevant":
           markAsRelevant(card.email.id);
           toast.success("Marked as relevant", {
@@ -694,6 +709,7 @@ export default function EmailPage() {
           break;
         case "delete":
           setKanbanCards((prev) => prev.filter((c) => c.id !== cardId));
+          toast.success("Email deleted");
           break;
       }
     },
@@ -1236,48 +1252,75 @@ export default function EmailPage() {
                 </div>
               )}
               <DialogFooter className="flex-shrink-0 flex-wrap gap-2">
-                <div className="flex gap-2 mr-auto">
-                  {/* Quick thumbs up/down for relevance */}
-                  {(() => {
-                    const isRejected = rejectedEmails.some((e) => e.id === selectedEmail?.id);
-                    return isRejected ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-green-600 hover:text-green-700 hover:bg-green-50 border-green-200"
-                        onClick={() => {
-                          if (selectedEmail) {
-                            markAsRelevant(selectedEmail.id);
-                            toast.success("Moved to Qualified", {
-                              action: { label: "Undo", onClick: () => undoLastAction() },
-                            });
-                            setSelectedEmail(null);
-                          }
-                        }}
-                      >
-                        <ThumbsUp className="h-4 w-4 mr-1.5" />
-                        Mark Relevant
-                      </Button>
-                    ) : (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-red-500 hover:text-red-600 hover:bg-red-50 border-red-200"
-                        onClick={() => {
-                          if (selectedEmail) {
-                            markAsRejected(selectedEmail.id);
-                            toast.success("Moved to Rejected", {
-                              action: { label: "Undo", onClick: () => undoLastAction() },
-                            });
-                            setSelectedEmail(null);
-                          }
-                        }}
-                      >
-                        <ThumbsDown className="h-4 w-4 mr-1.5" />
-                        Not Relevant
-                      </Button>
-                    );
-                  })()}
+                <div className="flex gap-2 mr-auto flex-wrap">
+                  {/* 4 Action Buttons: Approve, Reject, Keep, Delete */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200"
+                    onClick={() => {
+                      if (selectedEmail) {
+                        const card = kanbanCards.find((c) => c.email.id === selectedEmail.id);
+                        if (card) {
+                          setKanbanCards((prev) =>
+                            prev.map((c) => (c.email.id === selectedEmail.id ? { ...c, columnId: "in_progress", isRejected: false } : c))
+                          );
+                        }
+                        toast.success("Approved - moved to In Progress");
+                        setSelectedEmail(null);
+                      }
+                    }}
+                  >
+                    <ThumbsUp className="h-4 w-4 mr-1.5" />
+                    Approve
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-red-500 hover:text-red-600 hover:bg-red-50 border-red-200"
+                    onClick={() => {
+                      if (selectedEmail) {
+                        markAsRejected(selectedEmail.id);
+                        toast.success("Rejected - moved for training", {
+                          action: { label: "Undo", onClick: () => undoLastAction() },
+                        });
+                        setSelectedEmail(null);
+                      }
+                    }}
+                  >
+                    <ThumbsDown className="h-4 w-4 mr-1.5" />
+                    Reject
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-green-600 hover:text-green-700 hover:bg-green-50 border-green-200"
+                    onClick={() => {
+                      if (selectedEmail) {
+                        markAsRelevant(selectedEmail.id);
+                        toast.success("Kept in Qualified");
+                        setSelectedEmail(null);
+                      }
+                    }}
+                  >
+                    <Check className="h-4 w-4 mr-1.5" />
+                    Keep
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-muted-foreground hover:text-destructive hover:bg-red-50 border-muted"
+                    onClick={() => {
+                      if (selectedEmail) {
+                        setKanbanCards((prev) => prev.filter((c) => c.email.id !== selectedEmail.id));
+                        toast.success("Email deleted");
+                        setSelectedEmail(null);
+                      }
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4 mr-1.5" />
+                    Delete
+                  </Button>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="outline" size="sm">
