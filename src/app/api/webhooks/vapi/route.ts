@@ -82,10 +82,11 @@ export async function POST(request: NextRequest) {
     const artifact = (message?.artifact || data.artifact || {}) as Record<string, unknown>;
 
     // Extract key fields
+    const vapiCustomer = vapiCall?.customer as Record<string, unknown> | undefined;
     const callerPhone =
       parsedData?.contact.phone ||
       customer?.number as string ||
-      vapiCall?.customer?.number as string ||
+      vapiCustomer?.number as string ||
       null;
 
     const callerName =
