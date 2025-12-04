@@ -9,8 +9,8 @@ async function refreshAccessToken(refreshToken: string): Promise<{
   refresh_token: string;
   expires_in: number;
 } | null> {
-  const clientId = process.env.MICROSOFT_CLIENT_ID;
-  const clientSecret = process.env.MICROSOFT_CLIENT_SECRET;
+  const clientId = process.env.MS_GRAPH_CLIENT_ID;
+  const clientSecret = process.env.MS_GRAPH_CLIENT_SECRET;
 
   if (!clientId || !clientSecret) return null;
 

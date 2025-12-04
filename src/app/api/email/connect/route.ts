@@ -24,7 +24,8 @@ const SCOPES = [
 ].join(" ");
 
 export async function GET(request: NextRequest) {
-  const clientId = process.env.MICROSOFT_CLIENT_ID;
+  // Support both naming conventions for Microsoft OAuth credentials
+  const clientId = process.env.MICROSOFT_CLIENT_ID || process.env.MS_GRAPH_CLIENT_ID;
   const redirectUri = process.env.MICROSOFT_REDIRECT_URI || `${request.nextUrl.origin}/api/email/callback`;
 
   if (!clientId) {

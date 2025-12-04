@@ -7,7 +7,7 @@ import { ArrowDown, ArrowUp } from "lucide-react";
 interface ProgressStatCardProps {
   title: string;
   value: string | number;
-  progress: number;
+  progress?: number; // Optional - only show circular progress when provided and > 0
   change?: {
     value: number;
     period: string;
@@ -26,7 +26,7 @@ export function ProgressStatCard({
 }: ProgressStatCardProps) {
   const isPositive = change && change.value >= 0;
   const circumference = 2 * Math.PI * 36;
-  const strokeDashoffset = circumference - (progress / 100) * circumference;
+  const strokeDashoffset = circumference - ((progress ?? 0) / 100) * circumference;
 
   return (
     <Card className={cn("overflow-hidden", className)}>
@@ -57,36 +57,38 @@ export function ProgressStatCard({
             )}
           </div>
 
-          {/* Circular Progress */}
-          <div className="relative w-20 h-20">
-            <svg className="w-full h-full transform -rotate-90">
-              <circle
-                cx="40"
-                cy="40"
-                r="36"
-                stroke="currentColor"
-                strokeWidth="6"
-                fill="none"
-                className="text-muted"
-              />
-              <circle
-                cx="40"
-                cy="40"
-                r="36"
-                stroke={progressColor}
-                strokeWidth="6"
-                fill="none"
-                strokeLinecap="round"
-                style={{
-                  strokeDasharray: circumference,
-                  strokeDashoffset: strokeDashoffset,
-                }}
-              />
-            </svg>
-            <span className="absolute inset-0 flex items-center justify-center text-sm font-semibold">
-              {progress}%
-            </span>
-          </div>
+          {/* Circular Progress - only show when progress is provided and > 0 */}
+          {progress !== undefined && progress > 0 && (
+            <div className="relative w-20 h-20">
+              <svg className="w-full h-full transform -rotate-90">
+                <circle
+                  cx="40"
+                  cy="40"
+                  r="36"
+                  stroke="currentColor"
+                  strokeWidth="6"
+                  fill="none"
+                  className="text-muted"
+                />
+                <circle
+                  cx="40"
+                  cy="40"
+                  r="36"
+                  stroke={progressColor}
+                  strokeWidth="6"
+                  fill="none"
+                  strokeLinecap="round"
+                  style={{
+                    strokeDasharray: circumference,
+                    strokeDashoffset: strokeDashoffset,
+                  }}
+                />
+              </svg>
+              <span className="absolute inset-0 flex items-center justify-center text-sm font-semibold">
+                {progress}%
+              </span>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

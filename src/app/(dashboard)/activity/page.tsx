@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Header } from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -22,11 +22,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Search,
   Download,
-  Filter,
   Phone,
   Mail,
   FileText,
@@ -39,72 +37,206 @@ import {
   PhoneOutgoing,
   MailOpen,
   Send,
+  Loader2,
+  RefreshCw,
+  Edit,
+  Trash2,
+  Plus,
+  Eye,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow } from "date-fns";
+import { toast } from "sonner";
 
-// Activity type definition
-interface ActivityMetadata {
-  duration?: string;
-  documentCount?: number;
-  source?: string;
-  priority?: string;
-  attachments?: number;
-}
-
-interface Activity {
+// Activity type from API
+interface ActivityLog {
   id: string;
-  type: string;
-  description: string;
-  user: { name: string; avatar: string };
-  client?: { name: string };
-  metadata?: ActivityMetadata;
-  timestamp: Date;
+  created_at: string;
+  user_id: string;
+  user_name: string | null;
+  user_email: string | null;
+  action: string;
+  resource_type: string;
+  resource_id: string | null;
+  resource_name: string | null;
+  details: Record<string, unknown> | null;
+  ip_address: string | null;
+  user_agent: string | null;
 }
 
-// Empty activities array - real data comes from database
-const activities: Activity[] = [];
+interface ActivityStats {
+  calls: number;
+  emails: number;
+  documents: number;
+  tasksCompleted: number;
+}
 
-const activityIcons: Record<string, { icon: any; bg: string; color: string }> = {
+const actionIcons: Record<string, { icon: any; bg: string; color: string }> = {
+  created: { icon: Plus, bg: "bg-green-100", color: "text-green-600" },
+  updated: { icon: Edit, bg: "bg-blue-100", color: "text-blue-600" },
+  deleted: { icon: Trash2, bg: "bg-red-100", color: "text-red-600" },
+  completed: { icon: CheckCircle, bg: "bg-green-100", color: "text-green-600" },
+  viewed: { icon: Eye, bg: "bg-gray-100", color: "text-gray-600" },
   call_received: { icon: PhoneIncoming, bg: "bg-green-100", color: "text-green-600" },
   call_made: { icon: PhoneOutgoing, bg: "bg-blue-100", color: "text-blue-600" },
   email_received: { icon: MailOpen, bg: "bg-purple-100", color: "text-purple-600" },
   email_sent: { icon: Send, bg: "bg-indigo-100", color: "text-indigo-600" },
-  document_received: { icon: FileText, bg: "bg-orange-100", color: "text-orange-600" },
-  task_completed: { icon: CheckCircle, bg: "bg-green-100", color: "text-green-600" },
-  task_created: { icon: Clock, bg: "bg-yellow-100", color: "text-yellow-600" },
-  client_created: { icon: UserPlus, bg: "bg-accent/20", color: "text-accent-foreground" },
-  note_added: { icon: MessageSquare, bg: "bg-gray-100", color: "text-gray-600" },
 };
 
-const activityLabels: Record<string, string> = {
-  call_received: "Call Received",
-  call_made: "Call Made",
-  email_received: "Email Received",
-  email_sent: "Email Sent",
-  document_received: "Document Received",
-  task_completed: "Task Completed",
-  task_created: "Task Created",
-  client_created: "Client Created",
-  note_added: "Note Added",
+const resourceTypeIcons: Record<string, { icon: any; bg: string; color: string }> = {
+  task: { icon: Clock, bg: "bg-yellow-100", color: "text-yellow-600" },
+  client: { icon: UserPlus, bg: "bg-accent/20", color: "text-accent-foreground" },
+  email: { icon: Mail, bg: "bg-purple-100", color: "text-purple-600" },
+  call: { icon: Phone, bg: "bg-green-100", color: "text-green-600" },
+  document: { icon: FileText, bg: "bg-orange-100", color: "text-orange-600" },
+  note: { icon: MessageSquare, bg: "bg-gray-100", color: "text-gray-600" },
 };
+
+const actionLabels: Record<string, string> = {
+  created: "Created",
+  updated: "Updated",
+  deleted: "Deleted",
+  completed: "Completed",
+  viewed: "Viewed",
+  call_received: "Received",
+  call_made: "Made",
+  email_received: "Received",
+  email_sent: "Sent",
+};
+
+const ITEMS_PER_PAGE = 20;
 
 export default function ActivityPage() {
-  const [typeFilter, setTypeFilter] = useState<string>("all");
-  const [userFilter, setUserFilter] = useState<string>("all");
+  const [activities, setActivities] = useState<ActivityLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<ActivityStats>({ calls: 0, emails: 0, documents: 0, tasksCompleted: 0 });
+
+  // Filters
+  const [resourceTypeFilter, setResourceTypeFilter] = useState<string>("all");
+  const [actionFilter, setActionFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
 
-  const filteredActivities = activities.filter((activity) => {
-    const matchesType = typeFilter === "all" || activity.type === typeFilter;
-    const matchesUser =
-      userFilter === "all" || activity.user.name === userFilter;
-    const matchesSearch =
-      activity.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      activity.client?.name.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesType && matchesUser && matchesSearch;
-  });
+  // Pagination
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
 
-  const uniqueUsers = [...new Set(activities.map((a) => a.user.name))];
+  // Fetch activities
+  const fetchActivities = useCallback(async () => {
+    try {
+      const params = new URLSearchParams();
+      if (resourceTypeFilter !== "all") params.set("resourceType", resourceTypeFilter);
+      if (actionFilter !== "all") params.set("action", actionFilter);
+      if (searchQuery) params.set("search", searchQuery);
+      params.set("limit", ITEMS_PER_PAGE.toString());
+      params.set("offset", ((page - 1) * ITEMS_PER_PAGE).toString());
+
+      const response = await fetch(`/api/activity?${params}`);
+      if (response.ok) {
+        const data = await response.json();
+        setActivities(data.activities || []);
+        setTotalCount(data.count || 0);
+      }
+    } catch (error) {
+      console.error("Error fetching activities:", error);
+      toast.error("Failed to load activity log");
+    } finally {
+      setLoading(false);
+    }
+  }, [resourceTypeFilter, actionFilter, searchQuery, page]);
+
+  // Fetch stats (count activities by type for today)
+  const fetchStats = useCallback(async () => {
+    try {
+      // Fetch today's stats using the activity API with different filters
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const [callsRes, emailsRes, docsRes, tasksRes] = await Promise.all([
+        fetch(`/api/activity?resourceType=call&limit=1000`),
+        fetch(`/api/activity?resourceType=email&limit=1000`),
+        fetch(`/api/activity?resourceType=document&limit=1000`),
+        fetch(`/api/activity?resourceType=task&action=completed&limit=1000`),
+      ]);
+
+      const [callsData, emailsData, docsData, tasksData] = await Promise.all([
+        callsRes.json(),
+        emailsRes.json(),
+        docsRes.json(),
+        tasksRes.json(),
+      ]);
+
+      // Count today's activities
+      const countToday = (items: ActivityLog[]) => {
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        return items?.filter(a => new Date(a.created_at) >= todayStart).length || 0;
+      };
+
+      setStats({
+        calls: countToday(callsData.activities),
+        emails: countToday(emailsData.activities),
+        documents: countToday(docsData.activities),
+        tasksCompleted: countToday(tasksData.activities),
+      });
+    } catch (error) {
+      console.error("Error fetching stats:", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchActivities();
+    fetchStats();
+  }, [fetchActivities, fetchStats]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [resourceTypeFilter, actionFilter, searchQuery]);
+
+  const handleExport = () => {
+    // Create CSV from current activities
+    const headers = ["Timestamp", "Action", "Resource Type", "Resource Name", "User", "Details"];
+    const rows = activities.map(a => [
+      format(new Date(a.created_at), "yyyy-MM-dd HH:mm:ss"),
+      a.action,
+      a.resource_type,
+      a.resource_name || "",
+      a.user_email || "",
+      JSON.stringify(a.details || {}),
+    ]);
+
+    const csv = [headers.join(","), ...rows.map(r => r.map(c => `"${c}"`).join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `activity-log-${format(new Date(), "yyyy-MM-dd")}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    toast.success("Activity log exported");
+  };
+
+  const getIconConfig = (activity: ActivityLog) => {
+    // First check for action-specific icon
+    if (actionIcons[activity.action]) {
+      return actionIcons[activity.action];
+    }
+    // Fall back to resource type icon
+    if (resourceTypeIcons[activity.resource_type]) {
+      return resourceTypeIcons[activity.resource_type];
+    }
+    // Default
+    return { icon: Activity, bg: "bg-gray-100", color: "text-gray-600" };
+  };
+
+  const getActivityDescription = (activity: ActivityLog) => {
+    const action = actionLabels[activity.action] || activity.action;
+    const resourceType = activity.resource_type.charAt(0).toUpperCase() + activity.resource_type.slice(1);
+    const resourceName = activity.resource_name ? `"${activity.resource_name}"` : "";
+    return `${action} ${resourceType} ${resourceName}`.trim();
+  };
+
+  const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE);
 
   return (
     <>
@@ -119,7 +251,7 @@ export default function ActivityPage() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Calls Today</p>
-                <p className="text-2xl font-bold">24</p>
+                <p className="text-2xl font-bold">{stats.calls}</p>
               </div>
             </CardContent>
           </Card>
@@ -130,7 +262,7 @@ export default function ActivityPage() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Emails Processed</p>
-                <p className="text-2xl font-bold">56</p>
+                <p className="text-2xl font-bold">{stats.emails}</p>
               </div>
             </CardContent>
           </Card>
@@ -141,7 +273,7 @@ export default function ActivityPage() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Documents</p>
-                <p className="text-2xl font-bold">18</p>
+                <p className="text-2xl font-bold">{stats.documents}</p>
               </div>
             </CardContent>
           </Card>
@@ -152,7 +284,7 @@ export default function ActivityPage() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Tasks Completed</p>
-                <p className="text-2xl font-bold">12</p>
+                <p className="text-2xl font-bold">{stats.tasksCompleted}</p>
               </div>
             </CardContent>
           </Card>
@@ -177,183 +309,198 @@ export default function ActivityPage() {
                 />
               </div>
 
-              {/* Type Filter */}
-              <Select value={typeFilter} onValueChange={setTypeFilter}>
-                <SelectTrigger className="w-44">
-                  <SelectValue placeholder="Activity Type" />
+              {/* Resource Type Filter */}
+              <Select value={resourceTypeFilter} onValueChange={setResourceTypeFilter}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Resource Type" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="call_received">Calls Received</SelectItem>
-                  <SelectItem value="call_made">Calls Made</SelectItem>
-                  <SelectItem value="email_received">Emails Received</SelectItem>
-                  <SelectItem value="email_sent">Emails Sent</SelectItem>
-                  <SelectItem value="document_received">Documents</SelectItem>
-                  <SelectItem value="task_completed">Tasks Completed</SelectItem>
-                  <SelectItem value="task_created">Tasks Created</SelectItem>
-                  <SelectItem value="client_created">Clients Created</SelectItem>
+                  <SelectItem value="task">Tasks</SelectItem>
+                  <SelectItem value="client">Clients</SelectItem>
+                  <SelectItem value="email">Emails</SelectItem>
+                  <SelectItem value="call">Calls</SelectItem>
+                  <SelectItem value="document">Documents</SelectItem>
                 </SelectContent>
               </Select>
 
-              {/* User Filter */}
-              <Select value={userFilter} onValueChange={setUserFilter}>
-                <SelectTrigger className="w-44">
-                  <SelectValue placeholder="Actor" />
+              {/* Action Filter */}
+              <Select value={actionFilter} onValueChange={setActionFilter}>
+                <SelectTrigger className="w-36">
+                  <SelectValue placeholder="Action" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Users</SelectItem>
-                  {uniqueUsers.map((user) => (
-                    <SelectItem key={user} value={user}>
-                      {user}
-                    </SelectItem>
-                  ))}
+                  <SelectItem value="all">All Actions</SelectItem>
+                  <SelectItem value="created">Created</SelectItem>
+                  <SelectItem value="updated">Updated</SelectItem>
+                  <SelectItem value="deleted">Deleted</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
                 </SelectContent>
               </Select>
 
+              {/* Refresh */}
+              <Button variant="outline" size="icon" onClick={() => { fetchActivities(); fetchStats(); }}>
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+
               {/* Export */}
-              <Button variant="outline">
+              <Button variant="outline" onClick={handleExport}>
                 <Download className="h-4 w-4 mr-2" />
                 Export
               </Button>
             </div>
           </CardHeader>
           <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[50px]">Type</TableHead>
-                  <TableHead>Activity</TableHead>
-                  <TableHead>Actor</TableHead>
-                  <TableHead>Client</TableHead>
-                  <TableHead>Details</TableHead>
-                  <TableHead>Timestamp</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredActivities.map((activity) => {
-                  const iconConfig = activityIcons[activity.type] || {
-                    icon: Activity,
-                    bg: "bg-gray-100",
-                    color: "text-gray-600",
-                  };
-                  const Icon = iconConfig.icon;
+            {loading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : activities.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <Activity className="h-12 w-12 text-muted-foreground mb-4" />
+                <h3 className="text-lg font-medium">No activities found</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {searchQuery || resourceTypeFilter !== "all" || actionFilter !== "all"
+                    ? "Try adjusting your filters"
+                    : "Activity will appear here as you use the system"}
+                </p>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[50px]">Type</TableHead>
+                    <TableHead>Activity</TableHead>
+                    <TableHead>User</TableHead>
+                    <TableHead>Resource</TableHead>
+                    <TableHead>Details</TableHead>
+                    <TableHead>Timestamp</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {activities.map((activity) => {
+                    const iconConfig = getIconConfig(activity);
+                    const Icon = iconConfig.icon;
 
-                  return (
-                    <TableRow key={activity.id}>
-                      <TableCell>
-                        <div
-                          className={cn(
-                            "w-9 h-9 rounded-full flex items-center justify-center",
-                            iconConfig.bg
-                          )}
-                        >
-                          <Icon className={cn("h-4 w-4", iconConfig.color)} />
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div>
-                          <Badge variant="outline" className="mb-1 text-xs">
-                            {activityLabels[activity.type] || activity.type}
-                          </Badge>
-                          <p className="text-sm">{activity.description}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Avatar className="h-7 w-7">
-                            <AvatarFallback
-                              className={cn(
-                                "text-xs",
-                                activity.user.name.includes("AI")
-                                  ? "bg-primary text-primary-foreground"
-                                  : "bg-muted"
-                              )}
-                            >
-                              {activity.user.name.includes("AI")
-                                ? "AI"
-                                : activity.user.name
-                                    .split(" ")
-                                    .map((n) => n[0])
-                                    .join("")}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span className="text-sm">{activity.user.name}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {activity.client ? (
-                          <span className="text-sm font-medium text-primary">
-                            {activity.client.name}
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-xs text-muted-foreground space-y-0.5">
-                          {activity.metadata?.duration && (
-                            <div>Duration: {activity.metadata.duration}</div>
-                          )}
-                          {activity.metadata?.documentCount && (
-                            <div>
-                              {activity.metadata.documentCount} documents (
-                              {activity.metadata.source})
+                    return (
+                      <TableRow key={activity.id}>
+                        <TableCell>
+                          <div
+                            className={cn(
+                              "w-9 h-9 rounded-full flex items-center justify-center",
+                              iconConfig.bg
+                            )}
+                          >
+                            <Icon className={cn("h-4 w-4", iconConfig.color)} />
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <Badge variant="outline" className="text-xs capitalize">
+                                {activity.action}
+                              </Badge>
+                              <Badge variant="secondary" className="text-xs capitalize">
+                                {activity.resource_type}
+                              </Badge>
                             </div>
+                            <p className="text-sm">{getActivityDescription(activity)}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Avatar className="h-7 w-7">
+                              <AvatarFallback className="text-xs bg-muted">
+                                {activity.user_email
+                                  ? activity.user_email.charAt(0).toUpperCase()
+                                  : "?"}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="text-sm truncate max-w-[150px]">
+                              {activity.user_email || "System"}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {activity.resource_name ? (
+                            <span className="text-sm font-medium text-primary truncate max-w-[150px] block">
+                              {activity.resource_name}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
                           )}
-                          {activity.metadata?.priority && (
-                            <Badge variant="outline" className="text-xs">
-                              {activity.metadata.priority} priority
-                            </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {activity.details && Object.keys(activity.details).length > 0 ? (
+                            <div className="text-xs text-muted-foreground max-w-[200px]">
+                              {Object.entries(activity.details).map(([key, value]) => (
+                                <div key={key} className="truncate">
+                                  <span className="font-medium">{key}:</span>{" "}
+                                  {typeof value === "object" ? JSON.stringify(value) : String(value)}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
                           )}
-                          {activity.metadata?.attachments && (
-                            <div>{activity.metadata.attachments} attachment(s)</div>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm">
-                          {format(activity.timestamp, "MMM d, h:mm a")}
-                        </div>
-                        <div className="text-xs text-muted-foreground" suppressHydrationWarning>
-                          {formatDistanceToNow(activity.timestamp, {
-                            addSuffix: true,
-                          })}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm">
+                            {format(new Date(activity.created_at), "MMM d, h:mm a")}
+                          </div>
+                          <div className="text-xs text-muted-foreground" suppressHydrationWarning>
+                            {formatDistanceToNow(new Date(activity.created_at), {
+                              addSuffix: true,
+                            })}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            )}
 
             {/* Pagination */}
-            <div className="flex items-center justify-between px-6 py-4 border-t">
-              <p className="text-sm text-muted-foreground">
-                Showing 1 to {filteredActivities.length} of{" "}
-                {activities.length} entries
-              </p>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" disabled>
-                  Previous
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="bg-primary text-primary-foreground"
-                >
-                  1
-                </Button>
-                <Button variant="outline" size="sm">
-                  2
-                </Button>
-                <Button variant="outline" size="sm">
-                  3
-                </Button>
-                <Button variant="outline" size="sm">
-                  Next
-                </Button>
+            {activities.length > 0 && (
+              <div className="flex items-center justify-between px-6 py-4 border-t">
+                <p className="text-sm text-muted-foreground">
+                  Showing {((page - 1) * ITEMS_PER_PAGE) + 1} to {Math.min(page * ITEMS_PER_PAGE, totalCount)} of {totalCount} entries
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={page === 1}
+                    onClick={() => setPage(p => p - 1)}
+                  >
+                    Previous
+                  </Button>
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    const pageNum = i + 1;
+                    return (
+                      <Button
+                        key={pageNum}
+                        variant="outline"
+                        size="sm"
+                        className={cn(page === pageNum && "bg-primary text-primary-foreground")}
+                        onClick={() => setPage(pageNum)}
+                      >
+                        {pageNum}
+                      </Button>
+                    );
+                  })}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={page >= totalPages}
+                    onClick={() => setPage(p => p + 1)}
+                  >
+                    Next
+                  </Button>
+                </div>
               </div>
-            </div>
+            )}
           </CardContent>
         </Card>
       </main>

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useEmail } from "@/lib/email";
 import { Header } from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -141,6 +142,8 @@ const serviceConfig = {
 };
 
 export default function SystemSettingsPage() {
+  const { refreshAccounts } = useEmail();
+  const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState("integrations");
   const [connectedAccounts, setConnectedAccounts] = useState<ConnectedAccount[]>([]);
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
@@ -154,6 +157,11 @@ export default function SystemSettingsPage() {
   const [showAddWebhook, setShowAddWebhook] = useState(false);
   const [showApiKeyValue, setShowApiKeyValue] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
+
+  // Handle hydration mismatch
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Fetch email connections from database
   useEffect(() => {
@@ -175,7 +183,8 @@ export default function SystemSettingsPage() {
               email: conn.email,
               connectedAt: new Date(conn.created_at || conn.updated_at),
               lastSync: new Date(conn.updated_at),
-              status: new Date(conn.expires_at) > new Date() ? "active" : "expired",
+              // Show active if we have a refresh token (tokens auto-refresh), only expired if no refresh token
+              status: conn.refresh_token ? "active" : "expired",
               syncEnabled: true,
             }));
             setConnectedAccounts(formattedConnections);
@@ -250,7 +259,7 @@ export default function SystemSettingsPage() {
     setShowAddApiKey(false);
   };
 
-  // Handle account disconnect - also delete from database
+  // Handle account disconnect - also delete from database and clear emails
   const handleDisconnectAccount = async (accountId: string) => {
     try {
       const supabase = createClient();
@@ -261,6 +270,8 @@ export default function SystemSettingsPage() {
 
       if (!error) {
         setConnectedAccounts(connectedAccounts.filter(a => a.id !== accountId));
+        // Refresh the email context to remove emails for this account
+        await refreshAccounts();
       } else {
         console.error("Failed to disconnect account:", error);
       }
@@ -278,6 +289,28 @@ export default function SystemSettingsPage() {
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
   };
+
+  // Prevent hydration mismatch by not rendering until mounted
+  if (!mounted) {
+    return (
+      <>
+        <Header title="System Settings" />
+        <main className="flex-1 overflow-auto">
+          <div className="p-6">
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold">System Configuration</h2>
+              <p className="text-muted-foreground">
+                Manage integrations, API keys, security settings, and system preferences
+              </p>
+            </div>
+            <div className="flex items-center justify-center h-64">
+              <div className="animate-pulse text-muted-foreground">Loading...</div>
+            </div>
+          </div>
+        </main>
+      </>
+    );
+  }
 
   return (
     <>
