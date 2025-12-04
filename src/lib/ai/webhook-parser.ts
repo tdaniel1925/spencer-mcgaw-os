@@ -83,6 +83,16 @@ const PARSING_PROMPT = `You are an AI assistant that parses webhook payloads for
 
 Your job is to analyze incoming JSON data from various sources (phone call transcripts, web form submissions, emails, etc.) and extract structured information.
 
+IMPORTANT FOR VAPI PHONE CALLS:
+- VAPI sends call data in various structures. Look for these key locations:
+  - message.call, message.customer, message.artifact (nested structure)
+  - call, customer, artifact (flat structure)
+  - The artifact object often contains the transcript in artifact.transcript OR artifact.messages array
+  - Customer phone number is usually in customer.number or customer.phoneNumber
+  - Duration may be in call.duration (seconds) or calculate from startedAt/endedAt timestamps
+- When you find a transcript, READ IT CAREFULLY and provide a meaningful summary of what was discussed
+- The summary should explain: who called, what they wanted, what was discussed, and any action items
+
 Given the raw JSON payload, extract and return a JSON object with this structure:
 
 {
@@ -99,8 +109,8 @@ Given the raw JSON payload, extract and return a JSON object with this structure
   "call": {
     "direction": "inbound" | "outbound" (only for phone calls),
     "duration": number in seconds,
-    "transcript": "full transcript text",
-    "summary": "brief summary of the call",
+    "transcript": "full transcript text (reconstruct from messages array if needed)",
+    "summary": "brief summary of what was discussed in the call",
     "recordingUrl": "URL to recording if available",
     "startedAt": "ISO timestamp",
     "endedAt": "ISO timestamp"
@@ -114,9 +124,9 @@ Given the raw JSON payload, extract and return a JSON object with this structure
     "category": "new_client_inquiry" | "existing_client_question" | "document_request" | "appointment_scheduling" | "payment_inquiry" | "tax_question" | "status_check" | "complaint" | "urgent_matter" | "follow_up" | "general_inquiry" | "spam" | "other",
     "sentiment": "positive" | "neutral" | "negative" | "unknown",
     "urgency": "low" | "medium" | "high" | "urgent",
-    "summary": "2-3 sentence summary of what this is about",
-    "keyPoints": ["array of key points or action items"],
-    "suggestedActions": ["array of suggested follow-up actions"],
+    "summary": "2-3 sentence summary describing WHO called, WHAT they wanted, WHAT was discussed, and any ACTION ITEMS. Be specific and informative.",
+    "keyPoints": ["array of key points or action items extracted from the conversation"],
+    "suggestedActions": ["array of suggested follow-up actions based on the call content"],
     "clientMatch": {
       "possibleMatch": true/false (whether this might be an existing client),
       "searchTerms": ["terms to search for in client database"]
@@ -126,6 +136,8 @@ Given the raw JSON payload, extract and return a JSON object with this structure
 }
 
 Important notes:
+- READ THE FULL TRANSCRIPT and provide a MEANINGFUL summary - not just "a call was received"
+- If there's a messages array (like artifact.messages), reconstruct the transcript from it
 - Only include fields that have actual data (omit null/empty fields)
 - For phone numbers, try to normalize to E.164 format (+1XXXXXXXXXX)
 - For timestamps, convert to ISO 8601 format

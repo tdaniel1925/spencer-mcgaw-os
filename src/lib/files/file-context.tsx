@@ -44,7 +44,7 @@ interface FileContextType {
 
   // File operations
   uploadFiles: (files: File[], folderId?: string, clientId?: string) => Promise<FileRecord[]>;
-  downloadFile: (fileId: string) => Promise<void>;
+  downloadFile: (fileId: string, getUrlOnly?: boolean) => Promise<string | void>;
   renameFile: (fileId: string, newName: string) => Promise<boolean>;
   moveFile: (fileId: string, newFolderId: string | null) => Promise<boolean>;
   copyFile: (fileId: string, newFolderId: string | null) => Promise<FileRecord | null>;
@@ -546,11 +546,21 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
     return uploadedFiles;
   }, [supabase, currentFolder, quota, transformFile]);
 
-  // Download file
-  const downloadFile = useCallback(async (fileId: string) => {
+  // Download file or get preview URL
+  const downloadFile = useCallback(async (fileId: string, getUrlOnly: boolean = false): Promise<string | void> => {
     try {
       const file = files.find(f => f.id === fileId);
       if (!file) throw new Error("File not found");
+
+      if (getUrlOnly) {
+        // Return a signed URL for preview
+        const { data, error } = await supabase.storage
+          .from(file.storageBucket)
+          .createSignedUrl(file.storagePath, 3600); // 1 hour expiry
+
+        if (error) throw error;
+        return data.signedUrl;
+      }
 
       const { data, error } = await supabase.storage
         .from(file.storageBucket)

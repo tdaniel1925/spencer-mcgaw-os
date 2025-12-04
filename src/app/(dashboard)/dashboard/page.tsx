@@ -32,6 +32,7 @@ import {
   ListTodo,
   Loader2,
   Settings,
+  FolderOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -319,11 +320,11 @@ export default function DashboardPage() {
           </Card>
         </div>
 
-        {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column - What Needs Attention */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Urgent Items */}
+        {/* Main Content Grid - 2 equal columns */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Left Column */}
+          <div className="space-y-6">
+            {/* What Needs Attention */}
             <Card>
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
@@ -332,7 +333,7 @@ export default function DashboardPage() {
                     What Needs Your Attention
                   </CardTitle>
                   <Button variant="outline" size="sm" onClick={() => router.push("/tasks")}>
-                    View All Tasks
+                    View All
                   </Button>
                 </div>
               </CardHeader>
@@ -351,13 +352,13 @@ export default function DashboardPage() {
                         <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                       </div>
                     ) : taskStats?.urgentTasks && taskStats.urgentTasks.length > 0 ? (
-                      taskStats.urgentTasks.map((task) => (
+                      taskStats.urgentTasks.slice(0, 3).map((task) => (
                         <div
                           key={task.id}
                           className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg hover:bg-muted transition-colors cursor-pointer"
                           onClick={() => router.push("/tasks")}
                         >
-                          <div className="w-8 h-8 rounded-full bg-red-500 flex items-center justify-center">
+                          <div className="w-8 h-8 rounded-full bg-red-500 flex items-center justify-center flex-shrink-0">
                             <AlertCircle className="h-4 w-4 text-white" />
                           </div>
                           <div className="flex-1 min-w-0">
@@ -367,56 +368,41 @@ export default function DashboardPage() {
                               {task.due_date && ` • Due ${format(new Date(task.due_date), "MMM d")}`}
                             </p>
                           </div>
-                          <Button size="sm" variant="outline">
-                            View
-                          </Button>
                         </div>
                       ))
                     ) : (
-                      <p className="text-sm text-muted-foreground p-3">
+                      <p className="text-sm text-muted-foreground p-3 bg-muted/30 rounded-lg">
                         No high priority tasks. Great job!
                       </p>
                     )}
                   </div>
                 </div>
 
-                {/* Overdue Section */}
-                {(taskStats?.overdue || 0) > 0 && (
-                  <div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="w-2 h-2 rounded-full bg-amber-500" />
-                      <span className="text-sm font-medium">
-                        OVERDUE ({taskStats?.overdue || 0})
-                      </span>
-                    </div>
-                    <div
-                      className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
-                      onClick={() => router.push("/tasks")}
-                    >
-                      <Clock className="h-4 w-4 text-amber-500" />
-                      <span className="text-sm">{taskStats?.overdue} tasks are past their due date</span>
-                      <ArrowRight className="h-4 w-4 ml-auto" />
-                    </div>
-                  </div>
-                )}
-
-                {/* Due Today Section */}
-                {(taskStats?.dueToday || 0) > 0 && (
-                  <div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="w-2 h-2 rounded-full bg-blue-500" />
-                      <span className="text-sm font-medium">
-                        DUE TODAY ({taskStats?.dueToday || 0})
-                      </span>
-                    </div>
-                    <div
-                      className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
-                      onClick={() => router.push("/tasks")}
-                    >
-                      <Timer className="h-4 w-4 text-blue-500" />
-                      <span className="text-sm">{taskStats?.dueToday} tasks due today</span>
-                      <ArrowRight className="h-4 w-4 ml-auto" />
-                    </div>
+                {/* Overdue & Due Today Combined */}
+                {((taskStats?.overdue || 0) > 0 || (taskStats?.dueToday || 0) > 0) && (
+                  <div className="grid grid-cols-2 gap-3 pt-2">
+                    {(taskStats?.overdue || 0) > 0 && (
+                      <div
+                        className="flex items-center gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 cursor-pointer hover:bg-amber-100 transition-colors"
+                        onClick={() => router.push("/tasks")}
+                      >
+                        <Clock className="h-4 w-4 text-amber-600" />
+                        <div>
+                          <p className="text-sm font-medium text-amber-800">{taskStats?.overdue} Overdue</p>
+                        </div>
+                      </div>
+                    )}
+                    {(taskStats?.dueToday || 0) > 0 && (
+                      <div
+                        className="flex items-center gap-2 p-3 rounded-lg bg-blue-50 border border-blue-200 cursor-pointer hover:bg-blue-100 transition-colors"
+                        onClick={() => router.push("/tasks")}
+                      >
+                        <Timer className="h-4 w-4 text-blue-600" />
+                        <div>
+                          <p className="text-sm font-medium text-blue-800">{taskStats?.dueToday} Due Today</p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </CardContent>
@@ -441,15 +427,15 @@ export default function DashboardPage() {
                   </div>
 
                   <div className="grid grid-cols-3 gap-4 pt-4 border-t">
-                    <div className="text-center">
+                    <div className="text-center p-3 rounded-lg bg-amber-50">
                       <p className="text-2xl font-bold text-amber-600">{pendingTasks}</p>
                       <p className="text-xs text-muted-foreground">Pending</p>
                     </div>
-                    <div className="text-center">
+                    <div className="text-center p-3 rounded-lg bg-blue-50">
                       <p className="text-2xl font-bold text-blue-600">{taskStats?.inProgress || 0}</p>
                       <p className="text-xs text-muted-foreground">In Progress</p>
                     </div>
-                    <div className="text-center">
+                    <div className="text-center p-3 rounded-lg bg-green-50">
                       <p className="text-2xl font-bold text-green-600">{completedTasks}</p>
                       <p className="text-xs text-muted-foreground">Completed</p>
                     </div>
@@ -457,14 +443,6 @@ export default function DashboardPage() {
                 </div>
               </CardContent>
             </Card>
-          </div>
-
-          {/* Right Column */}
-          <div className="space-y-6">
-            {/* Calendar Widget */}
-            <TooltipProvider>
-              <CalendarWidget size="medium" />
-            </TooltipProvider>
 
             {/* Recent Calls */}
             <Card>
@@ -480,50 +458,50 @@ export default function DashboardPage() {
                 </div>
               </CardHeader>
               <CardContent className="p-0">
-                <ScrollArea className="h-[200px]">
-                  <div className="p-4 space-y-3">
-                    {calls.length > 0 ? (
-                      calls.slice(0, 3).map((call) => (
-                        <div
-                          key={call.id}
-                          className="p-3 border rounded-lg space-y-2 cursor-pointer hover:bg-muted/50"
-                          onClick={() => router.push("/calls")}
-                        >
-                          <div className="flex items-start justify-between">
-                            <div className="flex items-center gap-2">
-                              <Phone className="h-4 w-4 text-primary" />
-                              <div>
-                                <p className="font-medium text-sm">{call.callerName || "Unknown Caller"}</p>
-                                <p className="text-xs text-muted-foreground" suppressHydrationWarning>
-                                  {format(new Date(call.callStartedAt), "MMM d, h:mm a")}
-                                </p>
-                              </div>
+                <div className="divide-y">
+                  {calls.length > 0 ? (
+                    calls.slice(0, 4).map((call) => (
+                      <div
+                        key={call.id}
+                        className="p-4 cursor-pointer hover:bg-muted/50 transition-colors"
+                        onClick={() => router.push("/calls")}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-3 flex-1 min-w-0">
+                            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                              <Phone className="h-5 w-5 text-primary" />
                             </div>
-                            <Badge
-                              variant="secondary"
-                              className={cn("text-xs",
-                                call.status === "new" ? "bg-blue-100 text-blue-700" :
-                                call.status === "action_required" ? "bg-amber-100 text-amber-700" :
-                                call.status === "archived" ? "bg-green-100 text-green-700" :
-                                "bg-slate-100 text-slate-700"
+                            <div className="min-w-0 flex-1">
+                              <p className="font-medium text-sm truncate">{call.callerName || "Unknown Caller"}</p>
+                              <p className="text-xs text-muted-foreground" suppressHydrationWarning>
+                                {format(new Date(call.callStartedAt), "MMM d, h:mm a")}
+                              </p>
+                              {call.aiAnalysis?.summary && (
+                                <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{call.aiAnalysis.summary}</p>
                               )}
-                            >
-                              {call.status.replace(/_/g, " ")}
-                            </Badge>
+                            </div>
                           </div>
-                          {call.aiAnalysis?.summary && (
-                            <p className="text-sm text-muted-foreground line-clamp-1">{call.aiAnalysis.summary}</p>
-                          )}
+                          <Badge
+                            variant="secondary"
+                            className={cn("text-xs flex-shrink-0",
+                              call.status === "new" ? "bg-blue-100 text-blue-700" :
+                              call.status === "action_required" ? "bg-amber-100 text-amber-700" :
+                              call.status === "archived" ? "bg-green-100 text-green-700" :
+                              "bg-slate-100 text-slate-700"
+                            )}
+                          >
+                            {call.status.replace(/_/g, " ")}
+                          </Badge>
                         </div>
-                      ))
-                    ) : (
-                      <div className="text-center py-6 text-muted-foreground">
-                        <Phone className="h-6 w-6 mx-auto mb-2 opacity-50" />
-                        <p className="text-sm">No calls yet</p>
                       </div>
-                    )}
-                  </div>
-                </ScrollArea>
+                    ))
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <Phone className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">No calls yet</p>
+                    </div>
+                  )}
+                </div>
                 {calls.length > 0 && (
                   <div className="p-3 border-t">
                     <Button
@@ -539,6 +517,14 @@ export default function DashboardPage() {
                 )}
               </CardContent>
             </Card>
+          </div>
+
+          {/* Right Column */}
+          <div className="space-y-6">
+            {/* Calendar Widget */}
+            <TooltipProvider>
+              <CalendarWidget size="medium" />
+            </TooltipProvider>
 
             {/* Quick Actions */}
             <Card>
@@ -549,39 +535,110 @@ export default function DashboardPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-3">
                   <Button
                     variant="outline"
-                    className="justify-start text-xs h-9"
+                    className="justify-start h-12"
                     onClick={() => router.push("/tasks")}
                   >
-                    <ListTodo className="h-3.5 w-3.5 mr-1.5" />
+                    <ListTodo className="h-4 w-4 mr-2" />
                     Add Task
                   </Button>
                   <Button
                     variant="outline"
-                    className="justify-start text-xs h-9"
+                    className="justify-start h-12"
                     onClick={() => router.push("/email")}
                   >
-                    <Mail className="h-3.5 w-3.5 mr-1.5" />
+                    <Mail className="h-4 w-4 mr-2" />
                     Email
                   </Button>
                   <Button
                     variant="outline"
-                    className="justify-start text-xs h-9"
+                    className="justify-start h-12"
                     onClick={() => router.push("/clients")}
                   >
-                    <Bot className="h-3.5 w-3.5 mr-1.5" />
+                    <Bot className="h-4 w-4 mr-2" />
                     Clients
                   </Button>
                   <Button
                     variant="outline"
-                    className="justify-start text-xs h-9"
-                    onClick={() => router.push("/calendar")}
+                    className="justify-start h-12"
+                    onClick={() => router.push("/files")}
                   >
-                    <BarChart3 className="h-3.5 w-3.5 mr-1.5" />
-                    Calendar
+                    <FolderOpen className="h-4 w-4 mr-2" />
+                    Files
                   </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Email Summary */}
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Mail className="h-5 w-5" />
+                    Email Summary
+                  </CardTitle>
+                  <Button variant="ghost" size="sm" onClick={() => router.push("/email")}>
+                    View All
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-4 rounded-lg bg-blue-50 border border-blue-100">
+                    <p className="text-3xl font-bold text-blue-600">{unreadEmails}</p>
+                    <p className="text-sm text-muted-foreground">Unread Emails</p>
+                  </div>
+                  <div className="p-4 rounded-lg bg-amber-50 border border-amber-100">
+                    <p className="text-3xl font-bold text-amber-600">{emailTaskCount}</p>
+                    <p className="text-sm text-muted-foreground">Email Tasks</p>
+                  </div>
+                </div>
+                {emailTasks.length > 0 && (
+                  <div className="mt-4 space-y-2">
+                    <p className="text-sm font-medium text-muted-foreground">Recent Email Tasks</p>
+                    {emailTasks.slice(0, 2).map((task, idx) => (
+                      <div
+                        key={idx}
+                        className="p-3 rounded-lg bg-muted/50 cursor-pointer hover:bg-muted transition-colors"
+                        onClick={() => router.push("/email")}
+                      >
+                        <p className="text-sm font-medium truncate">{task.email?.subject || "No Subject"}</p>
+                        <p className="text-xs text-muted-foreground truncate">{task.email?.from?.name || task.email?.from?.email}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* AI Performance */}
+            <Card className="bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-primary" />
+                  AI Performance
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Tasks Automated</span>
+                    <span className="text-2xl font-bold text-primary">{automationRate}%</span>
+                  </div>
+                  <Progress value={automationRate} className="h-2" />
+                  <div className="grid grid-cols-2 gap-4 pt-2">
+                    <div className="text-center">
+                      <p className="text-xl font-bold">{completedToday}</p>
+                      <p className="text-xs text-muted-foreground">Completed Today</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xl font-bold">~{timeSavedToday}h</p>
+                      <p className="text-xs text-muted-foreground">Time Saved</p>
+                    </div>
+                  </div>
                 </div>
               </CardContent>
             </Card>

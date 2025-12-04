@@ -67,7 +67,33 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create initial webhook log entry (don't fail if logging fails)
+    // Log incoming webhook for debugging
+    console.log("[VAPI Webhook] Received payload:", JSON.stringify(data, null, 2));
+
+    // Extract VAPI-specific fields
+    const message = data.message as Record<string, unknown> | undefined;
+    const messageType = message?.type as string | undefined;
+
+    // Generate unique event ID for idempotency
+    // VAPI can send call ID in various locations
+    const callId = (message?.call as Record<string, unknown>)?.id as string ||
+                   (data.call as Record<string, unknown>)?.id as string ||
+                   data.callId as string ||
+                   data.id as string ||
+                   `vapi-${Date.now()}`;
+
+    // Check for duplicate processing BEFORE creating log entry
+    if (processedWebhooks.has(callId)) {
+      console.log("[VAPI Webhook] Duplicate webhook ignored (not logged):", callId);
+      // Don't create a log entry for duplicates - just return success
+      return NextResponse.json({
+        success: true,
+        message: "Webhook already processed",
+        duplicate: true,
+      });
+    }
+
+    // Create webhook log entry only for non-duplicates
     try {
       const [webhookLog] = await db.insert(webhookLogs).values({
         endpoint: "/api/webhooks/vapi",
@@ -83,41 +109,6 @@ export async function POST(request: NextRequest) {
     } catch (logError) {
       console.error("[VAPI Webhook] Failed to create webhook log:", logError);
       // Continue processing even if logging fails
-    }
-
-    // Log incoming webhook for debugging
-    console.log("[VAPI Webhook] Received payload:", JSON.stringify(data, null, 2));
-
-    // Extract VAPI-specific fields
-    const message = data.message as Record<string, unknown> | undefined;
-    const messageType = message?.type as string | undefined;
-
-    // Generate unique event ID for idempotency
-    const callId = (message?.call as Record<string, unknown>)?.id as string ||
-                   (data.call as Record<string, unknown>)?.id as string ||
-                   data.callId as string ||
-                   `vapi-${Date.now()}`;
-
-    // Check for duplicate processing
-    if (processedWebhooks.has(callId)) {
-      console.log("[VAPI Webhook] Duplicate webhook ignored:", callId);
-
-      // Update webhook log
-      if (webhookLogId) {
-        await db.update(webhookLogs)
-          .set({
-            status: "stored",
-            processingTimeMs: Date.now() - startTime,
-            errorMessage: "Duplicate - already processed",
-          })
-          .where(eq(webhookLogs.id, webhookLogId));
-      }
-
-      return NextResponse.json({
-        success: true,
-        message: "Webhook already processed",
-        duplicate: true,
-      });
     }
 
     // Add to processed set (with cleanup)
@@ -161,64 +152,141 @@ export async function POST(request: NextRequest) {
     }
 
     // Extract call data from VAPI payload
-    // VAPI can send data in different structures depending on the event type
+    // VAPI sends end-of-call-report with this structure:
+    // { message: { type: "end-of-call-report", call: {...}, artifact: {...}, summary: "...", endedAt: "..." } }
+    // The call object has nested customer: { number: "+1..." }
+    // The artifact has messages array with the conversation
+    const vapiMessage = message || data;
     const vapiCall = (message?.call || data.call || data) as Record<string, unknown>;
-    const customer = (message?.customer || data.customer || {}) as Record<string, unknown>;
-    const artifact = (message?.artifact || data.artifact || {}) as Record<string, unknown>;
+    const customer = (vapiCall?.customer || message?.customer || data.customer || {}) as Record<string, unknown>;
+    const artifact = (message?.artifact || data.artifact || vapiCall?.artifact || {}) as Record<string, unknown>;
 
-    // Extract key fields
+    // VAPI provides summary at the message level for end-of-call-report
+    const vapiSummary = (message?.summary || data.summary) as string | undefined;
+    const vapiAnalysis = (message?.analysis || data.analysis) as Record<string, unknown> | undefined;
+    const vapiEndedAt = (message?.endedAt || data.endedAt) as string | undefined;
+
+    // VAPI often puts transcript in artifact.messages array or artifact.transcript
+    const artifactMessages = artifact?.messages as Array<Record<string, unknown>> | undefined;
+    const artifactTranscript = artifact?.transcript as string | undefined;
+
+    // Extract key fields with extensive fallbacks
+    // Phone number can be in customer.number, phoneNumber, or nested structures
     const vapiCustomer = vapiCall?.customer as Record<string, unknown> | undefined;
     const callerPhone =
-      parsedData?.contact.phone ||
-      customer?.number as string ||
-      vapiCustomer?.number as string ||
+      parsedData?.contact?.phone ||
+      (customer?.number as string) ||
+      (customer?.phoneNumber as string) ||
+      (vapiCustomer?.number as string) ||
+      (vapiCustomer?.phoneNumber as string) ||
+      (vapiCall?.phoneNumber as string) ||
+      (data.phoneNumber as string) ||
+      (data.from as string) ||
+      (data.caller as string) ||
       null;
 
     const callerName =
-      parsedData?.contact.name ||
-      (parsedData?.contact.firstName
+      parsedData?.contact?.name ||
+      (parsedData?.contact?.firstName
         ? `${parsedData.contact.firstName} ${parsedData.contact.lastName || ""}`.trim()
         : null) ||
-      customer?.name as string ||
+      (customer?.name as string) ||
+      (vapiCustomer?.name as string) ||
+      (data.callerName as string) ||
       null;
 
-    const transcript =
-      parsedData?.call?.transcript ||
-      artifact?.transcript as string ||
-      vapiCall?.transcript as string ||
-      null;
+    // Build transcript from artifact.messages array (VAPI's format)
+    // VAPI stores conversation in artifact.messages as: { role: "user"|"bot"|"system", message: "..." }
+    let transcript: string | null = null;
 
+    // First try to build from messages array (most reliable for VAPI)
+    if (artifactMessages && Array.isArray(artifactMessages) && artifactMessages.length > 0) {
+      transcript = artifactMessages
+        .filter((m: Record<string, unknown>) => m.role && m.message && m.role !== "system")
+        .map((m: Record<string, unknown>) => {
+          const role = m.role === "bot" ? "Assistant" : m.role === "user" ? "Caller" : String(m.role);
+          return `${role}: ${m.message}`;
+        })
+        .join("\n\n");
+    }
+
+    // Fallback to other transcript sources
+    if (!transcript) {
+      transcript =
+        parsedData?.call?.transcript ||
+        artifactTranscript ||
+        (artifact?.transcript as string) ||
+        (vapiCall?.transcript as string) ||
+        (data.transcript as string) ||
+        null;
+    }
+
+    // Recording URL extraction
     const recordingUrl =
       parsedData?.call?.recordingUrl ||
-      artifact?.recordingUrl as string ||
-      vapiCall?.recordingUrl as string ||
+      (artifact?.recordingUrl as string) ||
+      (artifact?.recording as string) ||
+      (vapiCall?.recordingUrl as string) ||
+      (vapiCall?.recording as string) ||
+      (data.recordingUrl as string) ||
       null;
 
-    const duration =
-      parsedData?.call?.duration ||
-      (vapiCall?.duration as number) ||
-      (vapiCall?.endedAt && vapiCall?.startedAt
-        ? Math.round(
-            (new Date(vapiCall.endedAt as string).getTime() -
-              new Date(vapiCall.startedAt as string).getTime()) /
-              1000
-          )
-        : null);
+    // Duration extraction with multiple strategies
+    // VAPI provides createdAt and endedAt timestamps on the call object
+    const callCreatedAt = (vapiCall?.createdAt || data.createdAt) as string | undefined;
+    const callEndedAt = vapiEndedAt || (vapiCall?.endedAt || data.endedAt) as string | undefined;
 
+    // Calculate duration from timestamps (most reliable for VAPI)
+    let duration: number | null = null;
+    if (callCreatedAt && callEndedAt) {
+      duration = Math.round(
+        (new Date(callEndedAt).getTime() - new Date(callCreatedAt).getTime()) / 1000
+      );
+    }
+
+    // Fallback to explicit duration fields
+    if (!duration || duration <= 0) {
+      duration =
+        parsedData?.call?.duration ||
+        (artifact?.duration as number) ||
+        (vapiCall?.duration as number) ||
+        (data.duration as number) ||
+        null;
+    }
+
+    // Use VAPI-provided summary first (it's already high quality from their AI)
+    // Then fall back to our AI parsing, then generic message
     const summary =
-      parsedData?.analysis.summary ||
+      vapiSummary ||
+      (vapiAnalysis?.summary as string) ||
+      parsedData?.analysis?.summary ||
       parsedData?.call?.summary ||
-      artifact?.summary as string ||
-      vapiCall?.summary as string ||
-      "Call completed";
+      (artifact?.summary as string) ||
+      (vapiCall?.summary as string) ||
+      (transcript ? "Call with transcript available - see details" : "Call completed");
 
+    // VAPI uses "type" field with values like "inboundPhoneCall" or "outboundPhoneCall"
+    const callType = (vapiCall?.type as string) || "";
     const rawDirection =
       parsedData?.call?.direction ||
       (vapiCall?.direction as string) ||
-      "inbound";
+      (data.direction as string) ||
+      (callType.toLowerCase().includes("outbound") ? "outbound" : "inbound");
     // Only accept valid direction values
     const direction: "inbound" | "outbound" =
-      rawDirection === "outbound" ? "outbound" : "inbound";
+      rawDirection === "outbound" || rawDirection === "outboundPhoneCall" ? "outbound" : "inbound";
+
+    // Debug log extracted data
+    console.log("[VAPI Webhook] Extracted data:", {
+      callerPhone,
+      callerName,
+      hasTranscript: !!transcript,
+      transcriptLength: transcript?.length,
+      duration,
+      recordingUrl,
+      direction,
+      summary: summary?.substring(0, 100),
+    });
 
     // Store call record
     const [insertedCall] = await db.insert(calls).values({

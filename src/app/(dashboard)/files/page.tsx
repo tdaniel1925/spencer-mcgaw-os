@@ -93,6 +93,7 @@ import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow } from "date-fns";
 import { useFiles } from "@/lib/files";
 import { Folder as FolderType, FileRecord, formatFileSize, getFileCategory } from "@/lib/files/types";
+import { FilePreview } from "@/components/files/file-preview";
 
 // File type to icon mapping
 const getFileIcon = (mimeType: string) => {
@@ -178,6 +179,8 @@ export default function FilesPage() {
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; type: "file" | "folder" } | null>(null);
   const [activeSection, setActiveSection] = useState<"all" | "recent" | "starred" | "trash">("all");
   const [sectionFiles, setSectionFiles] = useState<FileRecord[]>([]);
+  const [previewFile, setPreviewFile] = useState<FileRecord | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -297,6 +300,25 @@ export default function FilesPage() {
       }
     }
   }, [shareTarget, createShareLink]);
+
+  // Open file preview
+  const openPreview = useCallback((file: FileRecord) => {
+    setPreviewFile(file);
+    setShowPreview(true);
+  }, []);
+
+  // Navigate to next/previous file in preview
+  const navigatePreview = useCallback((direction: "next" | "prev") => {
+    if (!previewFile) return;
+    const currentFiles = activeSection === "all" ? files : sectionFiles;
+    const currentIndex = currentFiles.findIndex(f => f.id === previewFile.id);
+    if (currentIndex === -1) return;
+
+    const newIndex = direction === "next" ? currentIndex + 1 : currentIndex - 1;
+    if (newIndex >= 0 && newIndex < currentFiles.length) {
+      setPreviewFile(currentFiles[newIndex]);
+    }
+  }, [previewFile, files, sectionFiles, activeSection]);
 
   // Open rename dialog
   const openRename = (id: string, name: string, type: "file" | "folder") => {
@@ -680,7 +702,7 @@ export default function FilesPage() {
                                 isSelected ? "border-primary bg-primary/5" : "hover:border-primary/50"
                               )}
                               onClick={() => toggleSelection(file.id, "file")}
-                              onDoubleClick={() => downloadFile(file.id)}
+                              onDoubleClick={() => openPreview(file)}
                             >
                               <div className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <Checkbox
@@ -700,6 +722,10 @@ export default function FilesPage() {
                             </div>
                           </ContextMenuTrigger>
                           <ContextMenuContent>
+                            <ContextMenuItem onClick={() => openPreview(file)}>
+                              <Eye className="h-4 w-4 mr-2" />
+                              Preview
+                            </ContextMenuItem>
                             <ContextMenuItem onClick={() => downloadFile(file.id)}>
                               <Download className="h-4 w-4 mr-2" />
                               Download
@@ -798,7 +824,7 @@ export default function FilesPage() {
                             isSelected ? "bg-primary/10" : "hover:bg-muted/50"
                           )}
                           onClick={() => toggleSelection(file.id, "file")}
-                          onDoubleClick={() => downloadFile(file.id)}
+                          onDoubleClick={() => openPreview(file)}
                         >
                           <div className="col-span-6 flex items-center gap-3">
                             <Checkbox
@@ -940,6 +966,17 @@ export default function FilesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* File Preview Modal */}
+      <FilePreview
+        file={previewFile}
+        open={showPreview}
+        onOpenChange={setShowPreview}
+        onNext={() => navigatePreview("next")}
+        onPrevious={() => navigatePreview("prev")}
+        hasNext={previewFile ? displayFiles.findIndex(f => f.id === previewFile.id) < displayFiles.length - 1 : false}
+        hasPrevious={previewFile ? displayFiles.findIndex(f => f.id === previewFile.id) > 0 : false}
+      />
     </>
   );
 }
