@@ -274,34 +274,79 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   const [calls, setCalls] = useState<CallRecord[]>([]);
   const [notifications, setNotifications] = useState<CallNotification[]>([]);
   const [actionRules, setActionRules] = useState<CallActionRule[]>([]);
+  const [seenCallIds, setSeenCallIds] = useState<Set<string>>(new Set());
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
 
-  // Fetch calls from database on mount
+  // Transform API response to CallRecord
+  const transformCall = (call: CallRecord & { callStartedAt: string; createdAt: string; updatedAt: string }): CallRecord => ({
+    ...call,
+    callStartedAt: new Date(call.callStartedAt),
+    createdAt: new Date(call.createdAt),
+    updatedAt: new Date(call.updatedAt),
+    callEndedAt: call.callEndedAt ? new Date(call.callEndedAt) : undefined,
+    aiAnalysis: call.aiAnalysis ? {
+      ...call.aiAnalysis,
+      analyzedAt: call.aiAnalysis.analyzedAt ? new Date(call.aiAnalysis.analyzedAt) : new Date(),
+    } : undefined,
+  });
+
+  // Create notification for a new call
+  const createNotificationForCall = useCallback((call: CallRecord) => {
+    const notification: CallNotification = {
+      id: generateId(),
+      callId: call.id,
+      title: call.aiAnalysis?.urgency === "urgent" ? "Urgent Call Received" : "New Call Received",
+      message: call.aiAnalysis?.summary || "New phone call received",
+      callerName: call.callerName,
+      callerPhone: call.callerPhone,
+      category: call.aiAnalysis?.category || "other",
+      urgency: call.aiAnalysis?.urgency || "medium",
+      createdAt: new Date(),
+      read: false,
+      dismissed: false,
+    };
+    setNotifications(prev => [notification, ...prev]);
+  }, []);
+
+  // Fetch calls from database and poll for new ones
   useEffect(() => {
     async function fetchCalls() {
       try {
         const response = await fetch("/api/calls");
         const data = await response.json();
         if (data.success && data.calls) {
-          // Transform dates from strings to Date objects
-          const transformedCalls = data.calls.map((call: CallRecord & { callStartedAt: string; createdAt: string; updatedAt: string }) => ({
-            ...call,
-            callStartedAt: new Date(call.callStartedAt),
-            createdAt: new Date(call.createdAt),
-            updatedAt: new Date(call.updatedAt),
-            callEndedAt: call.callEndedAt ? new Date(call.callEndedAt) : undefined,
-            aiAnalysis: call.aiAnalysis ? {
-              ...call.aiAnalysis,
-              analyzedAt: call.aiAnalysis.analyzedAt ? new Date(call.aiAnalysis.analyzedAt) : new Date(),
-            } : undefined,
-          }));
+          const transformedCalls = data.calls.map(transformCall);
+
+          // On initial load, just mark all as seen (don't create notifications for old calls)
+          if (!initialLoadDone) {
+            const ids = new Set<string>(transformedCalls.map((c: CallRecord) => c.id));
+            setSeenCallIds(ids);
+            setInitialLoadDone(true);
+          } else {
+            // Check for new calls we haven't seen yet
+            transformedCalls.forEach((call: CallRecord) => {
+              if (!seenCallIds.has(call.id)) {
+                // This is a new call - create notification
+                createNotificationForCall(call);
+                setSeenCallIds(prev => new Set([...prev, call.id]));
+              }
+            });
+          }
+
           setCalls(transformedCalls);
         }
       } catch (error) {
         console.error("Failed to fetch calls:", error);
       }
     }
+
+    // Initial fetch
     fetchCalls();
-  }, []);
+
+    // Poll every 15 seconds for new calls
+    const interval = setInterval(fetchCalls, 15000);
+    return () => clearInterval(interval);
+  }, [initialLoadDone, seenCallIds, createNotificationForCall]);
 
   // Get call by ID
   const getCallById = useCallback(
