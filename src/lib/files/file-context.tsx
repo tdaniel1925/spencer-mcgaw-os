@@ -1,0 +1,1266 @@
+"use client";
+
+import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { createClient } from "@/lib/supabase/client";
+import type { RealtimeChannel } from "@supabase/supabase-js";
+import {
+  Folder,
+  FileRecord,
+  FileVersion,
+  FolderPermission,
+  FileShare,
+  StorageQuota,
+  FileActivity,
+  UploadProgress,
+  FileFilter,
+  FolderType,
+  Permission,
+  BreadcrumbItem,
+  generateSlug,
+} from "./types";
+
+interface FileContextType {
+  // State
+  folders: Folder[];
+  files: FileRecord[];
+  currentFolder: Folder | null;
+  breadcrumbs: BreadcrumbItem[];
+  selectedItems: string[];
+  uploads: UploadProgress[];
+  quota: StorageQuota | null;
+  isLoading: boolean;
+  error: string | null;
+
+  // Navigation
+  navigateToFolder: (folderId: string | null) => Promise<void>;
+  navigateUp: () => Promise<void>;
+  refreshCurrentFolder: () => Promise<void>;
+
+  // Folder operations
+  createFolder: (name: string, parentId?: string, type?: FolderType) => Promise<Folder | null>;
+  renameFolder: (folderId: string, newName: string) => Promise<boolean>;
+  moveFolder: (folderId: string, newParentId: string | null) => Promise<boolean>;
+  deleteFolder: (folderId: string) => Promise<boolean>;
+
+  // File operations
+  uploadFiles: (files: File[], folderId?: string, clientId?: string) => Promise<FileRecord[]>;
+  downloadFile: (fileId: string) => Promise<void>;
+  renameFile: (fileId: string, newName: string) => Promise<boolean>;
+  moveFile: (fileId: string, newFolderId: string | null) => Promise<boolean>;
+  copyFile: (fileId: string, newFolderId: string | null) => Promise<FileRecord | null>;
+  deleteFile: (fileId: string, permanent?: boolean) => Promise<boolean>;
+  restoreFile: (fileId: string) => Promise<boolean>;
+  starFile: (fileId: string, starred: boolean) => Promise<boolean>;
+
+  // Version management
+  getFileVersions: (fileId: string) => Promise<FileVersion[]>;
+  restoreVersion: (fileId: string, versionId: string) => Promise<boolean>;
+
+  // Sharing
+  createShareLink: (fileId: string, options?: Partial<FileShare>) => Promise<FileShare | null>;
+  getShareLinks: (fileId: string) => Promise<FileShare[]>;
+  revokeShareLink: (shareId: string) => Promise<boolean>;
+
+  // Permissions
+  getFolderPermissions: (folderId: string) => Promise<FolderPermission[]>;
+  setFolderPermission: (folderId: string, userId: string, permission: Permission) => Promise<boolean>;
+  removeFolderPermission: (folderId: string, userId: string) => Promise<boolean>;
+
+  // Selection
+  selectItem: (itemId: string, type: "file" | "folder") => void;
+  deselectItem: (itemId: string) => void;
+  selectAll: () => void;
+  clearSelection: () => void;
+  toggleSelection: (itemId: string, type: "file" | "folder") => void;
+
+  // Bulk operations
+  bulkMove: (targetFolderId: string | null) => Promise<boolean>;
+  bulkDelete: (permanent?: boolean) => Promise<boolean>;
+  bulkDownload: () => Promise<void>;
+
+  // Search and filter
+  searchFiles: (query: string, filter?: FileFilter) => Promise<FileRecord[]>;
+  getRecentFiles: (limit?: number) => Promise<FileRecord[]>;
+  getStarredFiles: () => Promise<FileRecord[]>;
+  getTrashedFiles: () => Promise<FileRecord[]>;
+
+  // Activity
+  getFileActivity: (fileId: string) => Promise<FileActivity[]>;
+
+  // Initialize user's personal folder
+  initializeUserStorage: () => Promise<void>;
+}
+
+const FileContext = createContext<FileContextType | undefined>(undefined);
+
+export function FileProvider({ children }: { children: React.ReactNode }) {
+  const [folders, setFolders] = useState<Folder[]>([]);
+  const [files, setFiles] = useState<FileRecord[]>([]);
+  const [currentFolder, setCurrentFolder] = useState<Folder | null>(null);
+  const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([{ id: "root", name: "My Files", type: "root" }]);
+  const [selectedItems, setSelectedItems] = useState<string[]>([]);
+  const [uploads, setUploads] = useState<UploadProgress[]>([]);
+  const [quota, setQuota] = useState<StorageQuota | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const channelRef = useRef<RealtimeChannel | null>(null);
+  const supabase = createClient();
+
+  // Transform database row to Folder
+  const transformFolder = useCallback((row: Record<string, unknown>): Folder => {
+    return {
+      id: row.id as string,
+      name: row.name as string,
+      slug: row.slug as string,
+      description: row.description as string | undefined,
+      parentId: row.parent_id as string | undefined,
+      ownerId: row.owner_id as string | undefined,
+      folderType: row.folder_type as FolderType,
+      clientId: row.client_id as string | undefined,
+      isRoot: row.is_root as boolean,
+      color: row.color as string | undefined,
+      icon: row.icon as string | undefined,
+      sortOrder: row.sort_order as number,
+      createdAt: new Date(row.created_at as string),
+      updatedAt: new Date(row.updated_at as string),
+      createdBy: row.created_by as string | undefined,
+    };
+  }, []);
+
+  // Transform database row to FileRecord
+  const transformFile = useCallback((row: Record<string, unknown>): FileRecord => {
+    return {
+      id: row.id as string,
+      name: row.name as string,
+      originalName: row.original_name as string,
+      description: row.description as string | undefined,
+      folderId: row.folder_id as string | undefined,
+      ownerId: row.owner_id as string | undefined,
+      storagePath: row.storage_path as string,
+      storageBucket: row.storage_bucket as string,
+      mimeType: row.mime_type as string,
+      sizeBytes: row.size_bytes as number,
+      fileExtension: row.file_extension as string | undefined,
+      checksum: row.checksum as string | undefined,
+      isStarred: row.is_starred as boolean,
+      isTrashed: row.is_trashed as boolean,
+      trashedAt: row.trashed_at ? new Date(row.trashed_at as string) : undefined,
+      clientId: row.client_id as string | undefined,
+      version: row.version as number,
+      currentVersionId: row.current_version_id as string | undefined,
+      thumbnailPath: row.thumbnail_path as string | undefined,
+      previewGenerated: row.preview_generated as boolean,
+      metadata: (row.metadata as Record<string, unknown>) || {},
+      tags: (row.tags as string[]) || [],
+      createdAt: new Date(row.created_at as string),
+      updatedAt: new Date(row.updated_at as string),
+      createdBy: row.created_by as string | undefined,
+      lastAccessedAt: row.last_accessed_at ? new Date(row.last_accessed_at as string) : undefined,
+    };
+  }, []);
+
+  // Initialize user storage (create personal root folder if not exists)
+  const initializeUserStorage = useCallback(async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Check if personal root folder exists
+      const { data: existing } = await supabase
+        .from("folders")
+        .select("*")
+        .eq("owner_id", user.id)
+        .eq("is_root", true)
+        .eq("folder_type", "personal")
+        .single();
+
+      if (!existing) {
+        // Create personal root folder
+        const { error: createError } = await supabase.from("folders").insert({
+          name: "My Files",
+          slug: "my-files",
+          owner_id: user.id,
+          folder_type: "personal",
+          is_root: true,
+          created_by: user.id,
+        });
+
+        if (createError) {
+          console.error("Error creating personal folder:", createError);
+        }
+      }
+
+      // Initialize storage quota if not exists
+      const { data: quotaData } = await supabase
+        .from("storage_quotas")
+        .select("*")
+        .eq("user_id", user.id)
+        .single();
+
+      if (!quotaData) {
+        await supabase.from("storage_quotas").insert({
+          user_id: user.id,
+          quota_bytes: 10737418240, // 10GB default
+          used_bytes: 0,
+          file_count: 0,
+        });
+      }
+
+      // Fetch quota
+      const { data: newQuota } = await supabase
+        .from("storage_quotas")
+        .select("*")
+        .eq("user_id", user.id)
+        .single();
+
+      if (newQuota) {
+        setQuota({
+          ...newQuota,
+          percentUsed: (newQuota.used_bytes / newQuota.quota_bytes) * 100,
+          remainingBytes: newQuota.quota_bytes - newQuota.used_bytes,
+        } as StorageQuota);
+      }
+    } catch (err) {
+      console.error("Error initializing user storage:", err);
+    }
+  }, [supabase]);
+
+  // Navigate to folder
+  const navigateToFolder = useCallback(async (folderId: string | null) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      if (folderId === null || folderId === "root") {
+        // Go to root - show all root folders (personal, team, repository)
+        const { data: rootFolders, error: foldersError } = await supabase
+          .from("folders")
+          .select("*")
+          .is("parent_id", null)
+          .order("folder_type", { ascending: true })
+          .order("name", { ascending: true });
+
+        if (foldersError) throw foldersError;
+
+        setFolders((rootFolders || []).map(transformFolder));
+        setFiles([]);
+        setCurrentFolder(null);
+        setBreadcrumbs([{ id: "root", name: "All Files", type: "root" }]);
+      } else {
+        // Navigate to specific folder
+        const { data: folder, error: folderError } = await supabase
+          .from("folders")
+          .select("*")
+          .eq("id", folderId)
+          .single();
+
+        if (folderError) throw folderError;
+
+        const transformedFolder = transformFolder(folder);
+        setCurrentFolder(transformedFolder);
+
+        // Fetch subfolders
+        const { data: subfolders, error: subfoldersError } = await supabase
+          .from("folders")
+          .select("*")
+          .eq("parent_id", folderId)
+          .order("name", { ascending: true });
+
+        if (subfoldersError) throw subfoldersError;
+
+        setFolders((subfolders || []).map(transformFolder));
+
+        // Fetch files in this folder
+        const { data: folderFiles, error: filesError } = await supabase
+          .from("files")
+          .select("*")
+          .eq("folder_id", folderId)
+          .eq("is_trashed", false)
+          .order("name", { ascending: true });
+
+        if (filesError) throw filesError;
+
+        setFiles((folderFiles || []).map(transformFile));
+
+        // Build breadcrumbs
+        const newBreadcrumbs: BreadcrumbItem[] = [{ id: "root", name: "All Files", type: "root" }];
+        let currentId: string | undefined = folderId;
+        const visited = new Set<string>();
+
+        while (currentId && !visited.has(currentId)) {
+          visited.add(currentId);
+          const { data: parentFolderData } = await supabase
+            .from("folders")
+            .select("id, name, parent_id")
+            .eq("id", currentId)
+            .single();
+
+          const parentFolder = parentFolderData as { id: string; name: string; parent_id: string | null } | null;
+
+          if (parentFolder) {
+            newBreadcrumbs.splice(1, 0, { id: parentFolder.id, name: parentFolder.name, type: "folder" });
+            currentId = parentFolder.parent_id ?? undefined;
+          } else {
+            break;
+          }
+        }
+
+        setBreadcrumbs(newBreadcrumbs);
+      }
+    } catch (err) {
+      console.error("Error navigating to folder:", err);
+      setError(err instanceof Error ? err.message : "Failed to navigate");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [supabase, transformFolder, transformFile]);
+
+  // Navigate up one level
+  const navigateUp = useCallback(async () => {
+    if (currentFolder?.parentId) {
+      await navigateToFolder(currentFolder.parentId);
+    } else {
+      await navigateToFolder(null);
+    }
+  }, [currentFolder, navigateToFolder]);
+
+  // Refresh current folder
+  const refreshCurrentFolder = useCallback(async () => {
+    await navigateToFolder(currentFolder?.id || null);
+  }, [currentFolder, navigateToFolder]);
+
+  // Create folder
+  const createFolder = useCallback(async (
+    name: string,
+    parentId?: string,
+    type: FolderType = "personal"
+  ): Promise<Folder | null> => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      const { data, error } = await supabase
+        .from("folders")
+        .insert({
+          name,
+          slug: generateSlug(name),
+          parent_id: parentId || currentFolder?.id || null,
+          owner_id: user.id,
+          folder_type: type,
+          created_by: user.id,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const newFolder = transformFolder(data);
+      setFolders(prev => [...prev, newFolder]);
+      return newFolder;
+    } catch (err) {
+      console.error("Error creating folder:", err);
+      setError(err instanceof Error ? err.message : "Failed to create folder");
+      return null;
+    }
+  }, [supabase, currentFolder, transformFolder]);
+
+  // Rename folder
+  const renameFolder = useCallback(async (folderId: string, newName: string): Promise<boolean> => {
+    try {
+      const { error } = await supabase
+        .from("folders")
+        .update({ name: newName, slug: generateSlug(newName), updated_at: new Date().toISOString() })
+        .eq("id", folderId);
+
+      if (error) throw error;
+
+      setFolders(prev => prev.map(f => f.id === folderId ? { ...f, name: newName, slug: generateSlug(newName) } : f));
+      return true;
+    } catch (err) {
+      console.error("Error renaming folder:", err);
+      return false;
+    }
+  }, [supabase]);
+
+  // Move folder
+  const moveFolder = useCallback(async (folderId: string, newParentId: string | null): Promise<boolean> => {
+    try {
+      const { error } = await supabase
+        .from("folders")
+        .update({ parent_id: newParentId, updated_at: new Date().toISOString() })
+        .eq("id", folderId);
+
+      if (error) throw error;
+
+      setFolders(prev => prev.filter(f => f.id !== folderId));
+      return true;
+    } catch (err) {
+      console.error("Error moving folder:", err);
+      return false;
+    }
+  }, [supabase]);
+
+  // Delete folder
+  const deleteFolder = useCallback(async (folderId: string): Promise<boolean> => {
+    try {
+      const { error } = await supabase
+        .from("folders")
+        .delete()
+        .eq("id", folderId);
+
+      if (error) throw error;
+
+      setFolders(prev => prev.filter(f => f.id !== folderId));
+      return true;
+    } catch (err) {
+      console.error("Error deleting folder:", err);
+      return false;
+    }
+  }, [supabase]);
+
+  // Upload files
+  const uploadFiles = useCallback(async (
+    filesToUpload: File[],
+    folderId?: string,
+    clientId?: string
+  ): Promise<FileRecord[]> => {
+    const uploadedFiles: FileRecord[] = [];
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("Not authenticated");
+
+    const targetFolderId = folderId || currentFolder?.id;
+
+    for (const file of filesToUpload) {
+      const uploadId = crypto.randomUUID();
+      const storagePath = `${user.id}/${targetFolderId || "root"}/${uploadId}-${file.name}`;
+
+      // Add to upload progress
+      setUploads(prev => [...prev, {
+        fileId: uploadId,
+        fileName: file.name,
+        progress: 0,
+        status: "uploading",
+        bytesUploaded: 0,
+        totalBytes: file.size,
+      }]);
+
+      try {
+        // Upload to Supabase Storage
+        const { error: uploadError } = await supabase.storage
+          .from("files")
+          .upload(storagePath, file, {
+            cacheControl: "3600",
+            upsert: false,
+          });
+
+        if (uploadError) throw uploadError;
+
+        // Update progress
+        setUploads(prev => prev.map(u => u.fileId === uploadId ? {
+          ...u,
+          progress: 100,
+          status: "processing",
+          bytesUploaded: file.size,
+        } : u));
+
+        // Get file extension
+        const extension = file.name.split(".").pop()?.toLowerCase();
+
+        // Create file record in database
+        const { data: fileRecord, error: dbError } = await supabase
+          .from("files")
+          .insert({
+            name: file.name,
+            original_name: file.name,
+            folder_id: targetFolderId,
+            owner_id: user.id,
+            storage_path: storagePath,
+            storage_bucket: "files",
+            mime_type: file.type || "application/octet-stream",
+            size_bytes: file.size,
+            file_extension: extension,
+            client_id: clientId,
+            created_by: user.id,
+          })
+          .select()
+          .single();
+
+        if (dbError) throw dbError;
+
+        // Create initial version
+        await supabase.from("file_versions").insert({
+          file_id: fileRecord.id,
+          version_number: 1,
+          storage_path: storagePath,
+          storage_bucket: "files",
+          size_bytes: file.size,
+          created_by: user.id,
+        });
+
+        // Update quota - try RPC first, fallback to direct update
+        try {
+          await supabase.rpc("increment_storage_usage", {
+            p_user_id: user.id,
+            p_bytes: file.size,
+          });
+        } catch {
+          // RPC might not exist, update manually
+          await supabase.from("storage_quotas")
+            .update({
+              used_bytes: (quota?.usedBytes || 0) + file.size,
+              file_count: (quota?.fileCount || 0) + 1,
+            })
+            .eq("user_id", user.id);
+        }
+
+        const transformedFile = transformFile(fileRecord);
+        uploadedFiles.push(transformedFile);
+
+        // Update progress to complete
+        setUploads(prev => prev.map(u => u.fileId === uploadId ? {
+          ...u,
+          status: "complete",
+        } : u));
+
+        // Add to files list
+        setFiles(prev => [...prev, transformedFile]);
+
+      } catch (err) {
+        console.error("Error uploading file:", file.name, err);
+        setUploads(prev => prev.map(u => u.fileId === uploadId ? {
+          ...u,
+          status: "error",
+          error: err instanceof Error ? err.message : "Upload failed",
+        } : u));
+      }
+    }
+
+    // Clean up completed uploads after 3 seconds
+    setTimeout(() => {
+      setUploads(prev => prev.filter(u => u.status !== "complete"));
+    }, 3000);
+
+    return uploadedFiles;
+  }, [supabase, currentFolder, quota, transformFile]);
+
+  // Download file
+  const downloadFile = useCallback(async (fileId: string) => {
+    try {
+      const file = files.find(f => f.id === fileId);
+      if (!file) throw new Error("File not found");
+
+      const { data, error } = await supabase.storage
+        .from(file.storageBucket)
+        .download(file.storagePath);
+
+      if (error) throw error;
+
+      // Create download link
+      const url = URL.createObjectURL(data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = file.originalName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      // Update last accessed
+      await supabase
+        .from("files")
+        .update({ last_accessed_at: new Date().toISOString() })
+        .eq("id", fileId);
+
+    } catch (err) {
+      console.error("Error downloading file:", err);
+      setError(err instanceof Error ? err.message : "Download failed");
+    }
+  }, [supabase, files]);
+
+  // Rename file
+  const renameFile = useCallback(async (fileId: string, newName: string): Promise<boolean> => {
+    try {
+      const { error } = await supabase
+        .from("files")
+        .update({ name: newName, updated_at: new Date().toISOString() })
+        .eq("id", fileId);
+
+      if (error) throw error;
+
+      setFiles(prev => prev.map(f => f.id === fileId ? { ...f, name: newName } : f));
+      return true;
+    } catch (err) {
+      console.error("Error renaming file:", err);
+      return false;
+    }
+  }, [supabase]);
+
+  // Move file
+  const moveFile = useCallback(async (fileId: string, newFolderId: string | null): Promise<boolean> => {
+    try {
+      const { error } = await supabase
+        .from("files")
+        .update({ folder_id: newFolderId, updated_at: new Date().toISOString() })
+        .eq("id", fileId);
+
+      if (error) throw error;
+
+      setFiles(prev => prev.filter(f => f.id !== fileId));
+      return true;
+    } catch (err) {
+      console.error("Error moving file:", err);
+      return false;
+    }
+  }, [supabase]);
+
+  // Copy file
+  const copyFile = useCallback(async (fileId: string, newFolderId: string | null): Promise<FileRecord | null> => {
+    try {
+      const file = files.find(f => f.id === fileId);
+      if (!file) throw new Error("File not found");
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      // Copy in storage
+      const newPath = `${user.id}/${newFolderId || "root"}/${crypto.randomUUID()}-${file.originalName}`;
+      const { error: copyError } = await supabase.storage
+        .from(file.storageBucket)
+        .copy(file.storagePath, newPath);
+
+      if (copyError) throw copyError;
+
+      // Create new file record
+      const { data: newFile, error: dbError } = await supabase
+        .from("files")
+        .insert({
+          name: `Copy of ${file.name}`,
+          original_name: file.originalName,
+          folder_id: newFolderId,
+          owner_id: user.id,
+          storage_path: newPath,
+          storage_bucket: file.storageBucket,
+          mime_type: file.mimeType,
+          size_bytes: file.sizeBytes,
+          file_extension: file.fileExtension,
+          client_id: file.clientId,
+          created_by: user.id,
+        })
+        .select()
+        .single();
+
+      if (dbError) throw dbError;
+
+      return transformFile(newFile);
+    } catch (err) {
+      console.error("Error copying file:", err);
+      return null;
+    }
+  }, [supabase, files, transformFile]);
+
+  // Delete file (move to trash or permanent)
+  const deleteFile = useCallback(async (fileId: string, permanent = false): Promise<boolean> => {
+    try {
+      const file = files.find(f => f.id === fileId);
+      if (!file) throw new Error("File not found");
+
+      if (permanent) {
+        // Delete from storage
+        await supabase.storage
+          .from(file.storageBucket)
+          .remove([file.storagePath]);
+
+        // Delete from database
+        const { error } = await supabase
+          .from("files")
+          .delete()
+          .eq("id", fileId);
+
+        if (error) throw error;
+      } else {
+        // Move to trash
+        const { error } = await supabase
+          .from("files")
+          .update({
+            is_trashed: true,
+            trashed_at: new Date().toISOString(),
+          })
+          .eq("id", fileId);
+
+        if (error) throw error;
+      }
+
+      setFiles(prev => prev.filter(f => f.id !== fileId));
+      return true;
+    } catch (err) {
+      console.error("Error deleting file:", err);
+      return false;
+    }
+  }, [supabase, files]);
+
+  // Restore file from trash
+  const restoreFile = useCallback(async (fileId: string): Promise<boolean> => {
+    try {
+      const { error } = await supabase
+        .from("files")
+        .update({
+          is_trashed: false,
+          trashed_at: null,
+        })
+        .eq("id", fileId);
+
+      if (error) throw error;
+      return true;
+    } catch (err) {
+      console.error("Error restoring file:", err);
+      return false;
+    }
+  }, [supabase]);
+
+  // Star/unstar file
+  const starFile = useCallback(async (fileId: string, starred: boolean): Promise<boolean> => {
+    try {
+      const { error } = await supabase
+        .from("files")
+        .update({ is_starred: starred })
+        .eq("id", fileId);
+
+      if (error) throw error;
+
+      setFiles(prev => prev.map(f => f.id === fileId ? { ...f, isStarred: starred } : f));
+      return true;
+    } catch (err) {
+      console.error("Error starring file:", err);
+      return false;
+    }
+  }, [supabase]);
+
+  // Get file versions
+  const getFileVersions = useCallback(async (fileId: string): Promise<FileVersion[]> => {
+    try {
+      const { data, error } = await supabase
+        .from("file_versions")
+        .select("*")
+        .eq("file_id", fileId)
+        .order("version_number", { ascending: false });
+
+      if (error) throw error;
+
+      return (data || []).map(v => ({
+        id: v.id,
+        fileId: v.file_id,
+        versionNumber: v.version_number,
+        storagePath: v.storage_path,
+        storageBucket: v.storage_bucket,
+        sizeBytes: v.size_bytes,
+        checksum: v.checksum,
+        changeSummary: v.change_summary,
+        createdAt: new Date(v.created_at),
+        createdBy: v.created_by,
+      }));
+    } catch (err) {
+      console.error("Error getting file versions:", err);
+      return [];
+    }
+  }, [supabase]);
+
+  // Restore version
+  const restoreVersion = useCallback(async (fileId: string, versionId: string): Promise<boolean> => {
+    try {
+      const { data: version, error: versionError } = await supabase
+        .from("file_versions")
+        .select("*")
+        .eq("id", versionId)
+        .single();
+
+      if (versionError) throw versionError;
+
+      const { error: updateError } = await supabase
+        .from("files")
+        .update({
+          storage_path: version.storage_path,
+          size_bytes: version.size_bytes,
+          version: version.version_number,
+          current_version_id: versionId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", fileId);
+
+      if (updateError) throw updateError;
+
+      return true;
+    } catch (err) {
+      console.error("Error restoring version:", err);
+      return false;
+    }
+  }, [supabase]);
+
+  // Create share link
+  const createShareLink = useCallback(async (
+    fileId: string,
+    options?: Partial<FileShare>
+  ): Promise<FileShare | null> => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      const shareToken = crypto.randomUUID();
+
+      const { data, error } = await supabase
+        .from("file_shares")
+        .insert({
+          file_id: fileId,
+          share_token: shareToken,
+          share_type: options?.shareType || "link",
+          permission: options?.permission || "view",
+          expires_at: options?.expiresAt?.toISOString(),
+          max_downloads: options?.maxDownloads,
+          created_by: user.id,
+          recipient_email: options?.recipientEmail,
+          message: options?.message,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      return {
+        ...data,
+        shareUrl: `${window.location.origin}/share/${shareToken}`,
+      } as FileShare;
+    } catch (err) {
+      console.error("Error creating share link:", err);
+      return null;
+    }
+  }, [supabase]);
+
+  // Get share links for a file
+  const getShareLinks = useCallback(async (fileId: string): Promise<FileShare[]> => {
+    try {
+      const { data, error } = await supabase
+        .from("file_shares")
+        .select("*")
+        .eq("file_id", fileId)
+        .eq("is_active", true);
+
+      if (error) throw error;
+
+      return (data || []).map(s => ({
+        ...s,
+        shareUrl: `${window.location.origin}/share/${s.share_token}`,
+      })) as FileShare[];
+    } catch (err) {
+      console.error("Error getting share links:", err);
+      return [];
+    }
+  }, [supabase]);
+
+  // Revoke share link
+  const revokeShareLink = useCallback(async (shareId: string): Promise<boolean> => {
+    try {
+      const { error } = await supabase
+        .from("file_shares")
+        .update({ is_active: false })
+        .eq("id", shareId);
+
+      if (error) throw error;
+      return true;
+    } catch (err) {
+      console.error("Error revoking share link:", err);
+      return false;
+    }
+  }, [supabase]);
+
+  // Get folder permissions
+  const getFolderPermissions = useCallback(async (folderId: string): Promise<FolderPermission[]> => {
+    try {
+      const { data, error } = await supabase
+        .from("folder_permissions")
+        .select(`
+          *,
+          users:user_id (
+            full_name,
+            email,
+            avatar_url
+          )
+        `)
+        .eq("folder_id", folderId);
+
+      if (error) throw error;
+
+      return (data || []).map(p => ({
+        id: p.id,
+        folderId: p.folder_id,
+        userId: p.user_id,
+        role: p.role,
+        permission: p.permission as Permission,
+        inherited: p.inherited,
+        grantedBy: p.granted_by,
+        createdAt: new Date(p.created_at),
+        expiresAt: p.expires_at ? new Date(p.expires_at) : undefined,
+        userName: p.users?.full_name,
+        userEmail: p.users?.email,
+        userAvatar: p.users?.avatar_url,
+      }));
+    } catch (err) {
+      console.error("Error getting folder permissions:", err);
+      return [];
+    }
+  }, [supabase]);
+
+  // Set folder permission
+  const setFolderPermission = useCallback(async (
+    folderId: string,
+    userId: string,
+    permission: Permission
+  ): Promise<boolean> => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      const { error } = await supabase
+        .from("folder_permissions")
+        .upsert({
+          folder_id: folderId,
+          user_id: userId,
+          permission,
+          granted_by: user.id,
+        }, {
+          onConflict: "folder_id,user_id",
+        });
+
+      if (error) throw error;
+      return true;
+    } catch (err) {
+      console.error("Error setting folder permission:", err);
+      return false;
+    }
+  }, [supabase]);
+
+  // Remove folder permission
+  const removeFolderPermission = useCallback(async (folderId: string, userId: string): Promise<boolean> => {
+    try {
+      const { error } = await supabase
+        .from("folder_permissions")
+        .delete()
+        .eq("folder_id", folderId)
+        .eq("user_id", userId);
+
+      if (error) throw error;
+      return true;
+    } catch (err) {
+      console.error("Error removing folder permission:", err);
+      return false;
+    }
+  }, [supabase]);
+
+  // Selection handlers
+  const selectItem = useCallback((itemId: string) => {
+    setSelectedItems(prev => [...prev, itemId]);
+  }, []);
+
+  const deselectItem = useCallback((itemId: string) => {
+    setSelectedItems(prev => prev.filter(id => id !== itemId));
+  }, []);
+
+  const selectAll = useCallback(() => {
+    const allIds = [...folders.map(f => f.id), ...files.map(f => f.id)];
+    setSelectedItems(allIds);
+  }, [folders, files]);
+
+  const clearSelection = useCallback(() => {
+    setSelectedItems([]);
+  }, []);
+
+  const toggleSelection = useCallback((itemId: string) => {
+    setSelectedItems(prev =>
+      prev.includes(itemId) ? prev.filter(id => id !== itemId) : [...prev, itemId]
+    );
+  }, []);
+
+  // Bulk operations
+  const bulkMove = useCallback(async (targetFolderId: string | null): Promise<boolean> => {
+    try {
+      for (const itemId of selectedItems) {
+        const isFolder = folders.some(f => f.id === itemId);
+        if (isFolder) {
+          await moveFolder(itemId, targetFolderId);
+        } else {
+          await moveFile(itemId, targetFolderId);
+        }
+      }
+      clearSelection();
+      return true;
+    } catch (err) {
+      console.error("Error in bulk move:", err);
+      return false;
+    }
+  }, [selectedItems, folders, moveFolder, moveFile, clearSelection]);
+
+  const bulkDelete = useCallback(async (permanent = false): Promise<boolean> => {
+    try {
+      for (const itemId of selectedItems) {
+        const isFolder = folders.some(f => f.id === itemId);
+        if (isFolder) {
+          await deleteFolder(itemId);
+        } else {
+          await deleteFile(itemId, permanent);
+        }
+      }
+      clearSelection();
+      return true;
+    } catch (err) {
+      console.error("Error in bulk delete:", err);
+      return false;
+    }
+  }, [selectedItems, folders, deleteFolder, deleteFile, clearSelection]);
+
+  const bulkDownload = useCallback(async () => {
+    for (const itemId of selectedItems) {
+      const isFile = files.some(f => f.id === itemId);
+      if (isFile) {
+        await downloadFile(itemId);
+      }
+    }
+  }, [selectedItems, files, downloadFile]);
+
+  // Search files
+  const searchFiles = useCallback(async (query: string, filter?: FileFilter): Promise<FileRecord[]> => {
+    try {
+      let queryBuilder = supabase
+        .from("files")
+        .select("*")
+        .eq("is_trashed", false)
+        .ilike("name", `%${query}%`);
+
+      if (filter?.mimeTypes?.length) {
+        queryBuilder = queryBuilder.in("mime_type", filter.mimeTypes);
+      }
+
+      if (filter?.isStarred !== undefined) {
+        queryBuilder = queryBuilder.eq("is_starred", filter.isStarred);
+      }
+
+      if (filter?.clientId) {
+        queryBuilder = queryBuilder.eq("client_id", filter.clientId);
+      }
+
+      const { data, error } = await queryBuilder.limit(50);
+
+      if (error) throw error;
+
+      return (data || []).map(transformFile);
+    } catch (err) {
+      console.error("Error searching files:", err);
+      return [];
+    }
+  }, [supabase, transformFile]);
+
+  // Get recent files
+  const getRecentFiles = useCallback(async (limit = 10): Promise<FileRecord[]> => {
+    try {
+      const { data, error } = await supabase
+        .from("files")
+        .select("*")
+        .eq("is_trashed", false)
+        .order("last_accessed_at", { ascending: false, nullsFirst: false })
+        .order("updated_at", { ascending: false })
+        .limit(limit);
+
+      if (error) throw error;
+
+      return (data || []).map(transformFile);
+    } catch (err) {
+      console.error("Error getting recent files:", err);
+      return [];
+    }
+  }, [supabase, transformFile]);
+
+  // Get starred files
+  const getStarredFiles = useCallback(async (): Promise<FileRecord[]> => {
+    try {
+      const { data, error } = await supabase
+        .from("files")
+        .select("*")
+        .eq("is_starred", true)
+        .eq("is_trashed", false)
+        .order("name", { ascending: true });
+
+      if (error) throw error;
+
+      return (data || []).map(transformFile);
+    } catch (err) {
+      console.error("Error getting starred files:", err);
+      return [];
+    }
+  }, [supabase, transformFile]);
+
+  // Get trashed files
+  const getTrashedFiles = useCallback(async (): Promise<FileRecord[]> => {
+    try {
+      const { data, error } = await supabase
+        .from("files")
+        .select("*")
+        .eq("is_trashed", true)
+        .order("trashed_at", { ascending: false });
+
+      if (error) throw error;
+
+      return (data || []).map(transformFile);
+    } catch (err) {
+      console.error("Error getting trashed files:", err);
+      return [];
+    }
+  }, [supabase, transformFile]);
+
+  // Get file activity
+  const getFileActivity = useCallback(async (fileId: string): Promise<FileActivity[]> => {
+    try {
+      const { data, error } = await supabase
+        .from("file_activity")
+        .select("*")
+        .eq("file_id", fileId)
+        .order("created_at", { ascending: false })
+        .limit(50);
+
+      if (error) throw error;
+
+      return (data || []).map(a => ({
+        id: a.id,
+        fileId: a.file_id,
+        folderId: a.folder_id,
+        userId: a.user_id,
+        action: a.action,
+        details: a.details || {},
+        ipAddress: a.ip_address,
+        userAgent: a.user_agent,
+        createdAt: new Date(a.created_at),
+      }));
+    } catch (err) {
+      console.error("Error getting file activity:", err);
+      return [];
+    }
+  }, [supabase]);
+
+  // Initialize on mount
+  useEffect(() => {
+    initializeUserStorage();
+    navigateToFolder(null);
+  }, [initializeUserStorage, navigateToFolder]);
+
+  // Set up realtime subscription
+  useEffect(() => {
+    channelRef.current = supabase
+      .channel("files-realtime")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "files" }, (payload) => {
+        const newFile = transformFile(payload.new as Record<string, unknown>);
+        if (newFile.folderId === currentFolder?.id) {
+          setFiles(prev => [newFile, ...prev]);
+        }
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "files" }, (payload) => {
+        const updatedFile = transformFile(payload.new as Record<string, unknown>);
+        setFiles(prev => prev.map(f => f.id === updatedFile.id ? updatedFile : f));
+      })
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "files" }, (payload) => {
+        const deletedId = (payload.old as { id: string }).id;
+        setFiles(prev => prev.filter(f => f.id !== deletedId));
+      })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "folders" }, (payload) => {
+        const newFolder = transformFolder(payload.new as Record<string, unknown>);
+        if (newFolder.parentId === currentFolder?.id || (!newFolder.parentId && !currentFolder)) {
+          setFolders(prev => [...prev, newFolder]);
+        }
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "folders" }, (payload) => {
+        const updatedFolder = transformFolder(payload.new as Record<string, unknown>);
+        setFolders(prev => prev.map(f => f.id === updatedFolder.id ? updatedFolder : f));
+      })
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "folders" }, (payload) => {
+        const deletedId = (payload.old as { id: string }).id;
+        setFolders(prev => prev.filter(f => f.id !== deletedId));
+      })
+      .subscribe();
+
+    return () => {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+      }
+    };
+  }, [supabase, currentFolder, transformFile, transformFolder]);
+
+  const contextValue = useMemo(() => ({
+    folders,
+    files,
+    currentFolder,
+    breadcrumbs,
+    selectedItems,
+    uploads,
+    quota,
+    isLoading,
+    error,
+    navigateToFolder,
+    navigateUp,
+    refreshCurrentFolder,
+    createFolder,
+    renameFolder,
+    moveFolder,
+    deleteFolder,
+    uploadFiles,
+    downloadFile,
+    renameFile,
+    moveFile,
+    copyFile,
+    deleteFile,
+    restoreFile,
+    starFile,
+    getFileVersions,
+    restoreVersion,
+    createShareLink,
+    getShareLinks,
+    revokeShareLink,
+    getFolderPermissions,
+    setFolderPermission,
+    removeFolderPermission,
+    selectItem,
+    deselectItem,
+    selectAll,
+    clearSelection,
+    toggleSelection,
+    bulkMove,
+    bulkDelete,
+    bulkDownload,
+    searchFiles,
+    getRecentFiles,
+    getStarredFiles,
+    getTrashedFiles,
+    getFileActivity,
+    initializeUserStorage,
+  }), [
+    folders, files, currentFolder, breadcrumbs, selectedItems, uploads, quota, isLoading, error,
+    navigateToFolder, navigateUp, refreshCurrentFolder, createFolder, renameFolder, moveFolder,
+    deleteFolder, uploadFiles, downloadFile, renameFile, moveFile, copyFile, deleteFile,
+    restoreFile, starFile, getFileVersions, restoreVersion, createShareLink, getShareLinks,
+    revokeShareLink, getFolderPermissions, setFolderPermission, removeFolderPermission,
+    selectItem, deselectItem, selectAll, clearSelection, toggleSelection, bulkMove, bulkDelete,
+    bulkDownload, searchFiles, getRecentFiles, getStarredFiles, getTrashedFiles, getFileActivity,
+    initializeUserStorage,
+  ]);
+
+  return (
+    <FileContext.Provider value={contextValue}>
+      {children}
+    </FileContext.Provider>
+  );
+}
+
+export function useFiles() {
+  const context = useContext(FileContext);
+  if (context === undefined) {
+    throw new Error("useFiles must be used within a FileProvider");
+  }
+  return context;
+}

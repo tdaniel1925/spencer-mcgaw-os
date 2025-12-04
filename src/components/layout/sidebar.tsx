@@ -9,6 +9,7 @@ import {
   Users,
   Phone,
   FileText,
+  FolderOpen,
   BarChart3,
   Calendar,
   Activity,
@@ -95,7 +96,13 @@ const mainNavItems: NavItem[] = [
     ],
   },
   {
-    title: "Documents",
+    title: "Files",
+    href: "/files",
+    icon: FolderOpen,
+    permission: "documents:view",
+  },
+  {
+    title: "AI Documents",
     href: "/documents",
     icon: FileText,
     permission: "documents:view",
