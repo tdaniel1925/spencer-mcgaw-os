@@ -42,19 +42,23 @@ export async function POST(request: NextRequest) {
     try {
       data = JSON.parse(rawBody);
     } catch {
-      // Log failed webhook
-      await db.insert(webhookLogs).values({
-        endpoint: "/api/webhooks/vapi",
-        source: "vapi",
-        status: "failed",
-        httpMethod: "POST",
-        headers,
-        rawPayload: { raw: rawBody.substring(0, 10000) },
-        errorMessage: "Invalid JSON payload",
-        processingTimeMs: Date.now() - startTime,
-        ipAddress,
-        userAgent,
-      });
+      // Try to log failed webhook (don't fail the request if logging fails)
+      try {
+        await db.insert(webhookLogs).values({
+          endpoint: "/api/webhooks/vapi",
+          source: "vapi",
+          status: "failed",
+          httpMethod: "POST",
+          headers: headers as Record<string, unknown>,
+          rawPayload: { raw: rawBody.substring(0, 10000) } as Record<string, unknown>,
+          errorMessage: "Invalid JSON payload",
+          processingTimeMs: Date.now() - startTime,
+          ipAddress,
+          userAgent,
+        });
+      } catch (logError) {
+        console.error("[VAPI Webhook] Failed to log webhook error:", logError);
+      }
 
       console.error("[VAPI Webhook] Failed to parse JSON payload");
       return NextResponse.json(
@@ -63,19 +67,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create initial webhook log entry
-    const [webhookLog] = await db.insert(webhookLogs).values({
-      endpoint: "/api/webhooks/vapi",
-      source: "vapi",
-      status: "received",
-      httpMethod: "POST",
-      headers,
-      rawPayload: data,
-      ipAddress,
-      userAgent,
-    }).returning({ id: webhookLogs.id });
-
-    webhookLogId = webhookLog?.id || null;
+    // Create initial webhook log entry (don't fail if logging fails)
+    try {
+      const [webhookLog] = await db.insert(webhookLogs).values({
+        endpoint: "/api/webhooks/vapi",
+        source: "vapi",
+        status: "received",
+        httpMethod: "POST",
+        headers: headers as Record<string, unknown>,
+        rawPayload: data as Record<string, unknown>,
+        ipAddress,
+        userAgent,
+      }).returning({ id: webhookLogs.id });
+      webhookLogId = webhookLog?.id || null;
+    } catch (logError) {
+      console.error("[VAPI Webhook] Failed to create webhook log:", logError);
+      // Continue processing even if logging fails
+    }
 
     // Log incoming webhook for debugging
     console.log("[VAPI Webhook] Received payload:", JSON.stringify(data, null, 2));
