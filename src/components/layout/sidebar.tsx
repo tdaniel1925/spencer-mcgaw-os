@@ -25,6 +25,7 @@ import {
   Menu,
   X,
   Webhook,
+  Sparkles,
 } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -77,6 +78,12 @@ const mainNavItems: NavItem[] = [
     title: "AI Email Tasks",
     href: "/email",
     icon: Mail,
+    permission: "email:view",
+  },
+  {
+    title: "Email Intelligence",
+    href: "/email-intelligence",
+    icon: Sparkles,
     permission: "email:view",
   },
   {
