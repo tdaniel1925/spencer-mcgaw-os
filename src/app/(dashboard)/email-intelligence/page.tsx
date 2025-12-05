@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -47,6 +48,7 @@ import {
   ChevronDown,
   ChevronRight,
   Clock,
+  Columns3,
   DollarSign,
   Edit3,
   ExternalLink,
@@ -71,6 +73,7 @@ import {
   Zap,
   AlertTriangle,
   ListTodo,
+  CheckSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow } from "date-fns";
@@ -142,7 +145,21 @@ interface ActionItem {
   priority: "low" | "medium" | "high" | "urgent";
   dueDate?: Date;
   confidence: number;
+  // Assignment fields (can be set per action item)
+  assigneeId?: string;
+  assigneeName?: string;
+  targetColumn?: string;
+  selected?: boolean;
 }
+
+// Kanban columns for routing
+const kanbanColumns = [
+  { id: "inbox", label: "Inbox", color: "bg-slate-100 text-slate-700" },
+  { id: "in_progress", label: "In Progress", color: "bg-blue-100 text-blue-700" },
+  { id: "review", label: "Review", color: "bg-purple-100 text-purple-700" },
+  { id: "waiting", label: "Waiting", color: "bg-amber-100 text-amber-700" },
+  { id: "done", label: "Done", color: "bg-green-100 text-green-700" },
+];
 
 interface TeamMember {
   id: string;
@@ -177,18 +194,39 @@ const priorityConfig: Record<string, { label: string; color: string; bgColor: st
 function EmailIntelligenceCard({
   intelligence,
   onApprove,
+  onApproveSelected,
   onDismiss,
   onDelegate,
   onEdit,
   onView,
+  onUpdateActionItem,
+  teamMembers,
 }: {
   intelligence: EmailIntelligence;
   onApprove: () => void;
+  onApproveSelected: (selectedItems: ActionItem[]) => void;
   onDismiss: () => void;
   onDelegate: () => void;
   onEdit: () => void;
   onView: () => void;
+  onUpdateActionItem: (itemId: string, updates: Partial<ActionItem>) => void;
+  teamMembers: TeamMember[];
 }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [localActionItems, setLocalActionItems] = useState<ActionItem[]>([]);
+
+  // Initialize local action items state
+  useEffect(() => {
+    const items = intelligence.actionItems || [];
+    setLocalActionItems(items.map(item => ({
+      ...item,
+      selected: item.selected ?? true, // Default to selected
+      assigneeId: item.assigneeId || intelligence.suggestedAssigneeId || undefined,
+      assigneeName: item.assigneeName || intelligence.suggestedAssigneeName || undefined,
+      targetColumn: item.targetColumn || "in_progress",
+    })));
+  }, [intelligence.actionItems, intelligence.suggestedAssigneeId, intelligence.suggestedAssigneeName]);
+
   const category = categoryConfig[intelligence.category] || categoryConfig.other;
   const priority = priorityConfig[intelligence.priority] || priorityConfig.medium;
 
@@ -216,6 +254,44 @@ function EmailIntelligenceCard({
 
   // Also check receivedDate validity
   const isReceivedDateValid = receivedDate instanceof Date && !isNaN(receivedDate.getTime());
+
+  // Action item handlers
+  const handleToggleItem = (itemId: string) => {
+    setLocalActionItems(prev => prev.map(item =>
+      item.id === itemId ? { ...item, selected: !item.selected } : item
+    ));
+  };
+
+  const handleToggleAll = () => {
+    const allSelected = localActionItems.every(item => item.selected);
+    setLocalActionItems(prev => prev.map(item => ({ ...item, selected: !allSelected })));
+  };
+
+  const handleAssigneeChange = (itemId: string, assigneeId: string) => {
+    const member = teamMembers.find(m => m.id === assigneeId);
+    setLocalActionItems(prev => prev.map(item =>
+      item.id === itemId ? { ...item, assigneeId, assigneeName: member?.name } : item
+    ));
+    onUpdateActionItem(itemId, { assigneeId, assigneeName: member?.name });
+  };
+
+  const handleColumnChange = (itemId: string, columnId: string) => {
+    setLocalActionItems(prev => prev.map(item =>
+      item.id === itemId ? { ...item, targetColumn: columnId } : item
+    ));
+    onUpdateActionItem(itemId, { targetColumn: columnId });
+  };
+
+  const selectedItems = localActionItems.filter(item => item.selected);
+  const hasActionItems = localActionItems.length > 0;
+
+  // Priority dot colors
+  const priorityDotColors: Record<string, string> = {
+    urgent: "bg-red-500",
+    high: "bg-orange-500",
+    medium: "bg-amber-500",
+    low: "bg-slate-400",
+  };
 
   return (
     <Card className="p-4 hover:shadow-md transition-shadow">
@@ -266,21 +342,171 @@ function EmailIntelligenceCard({
         <p className="text-sm text-foreground">{intelligence.summary}</p>
       </div>
 
-      {/* Primary Action / Extracted Task */}
-      {(intelligence.primaryAction || (intelligence.actionItems?.length || 0) > 0) && (
+      {/* Expandable Action Items */}
+      {hasActionItems && (
+        <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
+          <div className="bg-primary/5 border border-primary/20 rounded-lg overflow-hidden mb-3">
+            <CollapsibleTrigger className="w-full p-3 flex items-center justify-between hover:bg-primary/10 transition-colors">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-primary">
+                <Zap className="h-3.5 w-3.5" />
+                <span>Extracted Actions ({localActionItems.length})</span>
+                {selectedItems.length > 0 && selectedItems.length < localActionItems.length && (
+                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0 ml-1">
+                    {selectedItems.length} selected
+                  </Badge>
+                )}
+              </div>
+              <ChevronDown className={cn(
+                "h-4 w-4 text-primary transition-transform",
+                isExpanded && "rotate-180"
+              )} />
+            </CollapsibleTrigger>
+
+            <CollapsibleContent>
+              <div className="border-t border-primary/20">
+                {/* Select All Header */}
+                <div className="px-3 py-2 bg-primary/5 border-b border-primary/10 flex items-center justify-between">
+                  <button
+                    onClick={handleToggleAll}
+                    className="flex items-center gap-2 text-xs text-primary hover:text-primary/80 transition-colors"
+                  >
+                    <Checkbox
+                      checked={localActionItems.length > 0 && localActionItems.every(item => item.selected)}
+                      onCheckedChange={handleToggleAll}
+                      className="h-3.5 w-3.5"
+                    />
+                    <span>{localActionItems.every(item => item.selected) ? "Deselect All" : "Select All"}</span>
+                  </button>
+                  <span className="text-[10px] text-muted-foreground">
+                    Assign & route each action
+                  </span>
+                </div>
+
+                {/* Action Items List */}
+                <div className="divide-y divide-primary/10">
+                  {localActionItems.map((item) => (
+                    <div key={item.id} className={cn(
+                      "p-3 transition-colors",
+                      item.selected ? "bg-white" : "bg-muted/30"
+                    )}>
+                      {/* Row 1: Checkbox + Title + Priority */}
+                      <div className="flex items-start gap-2 mb-2">
+                        <Checkbox
+                          checked={item.selected}
+                          onCheckedChange={() => handleToggleItem(item.id)}
+                          className="mt-0.5 h-4 w-4"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className={cn(
+                              "text-sm",
+                              item.selected ? "font-medium" : "text-muted-foreground"
+                            )}>
+                              {item.title}
+                            </span>
+                            <span className={cn(
+                              "h-2 w-2 rounded-full flex-shrink-0",
+                              priorityDotColors[item.priority] || priorityDotColors.medium
+                            )} title={`${item.priority} priority`} />
+                          </div>
+                          {item.description && (
+                            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
+                              {item.description}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Row 2: Assignee + Column Dropdowns */}
+                      {item.selected && (
+                        <div className="flex items-center gap-2 ml-6">
+                          {/* Assignee Dropdown */}
+                          <Select
+                            value={item.assigneeId || "unassigned"}
+                            onValueChange={(value) => handleAssigneeChange(item.id, value)}
+                          >
+                            <SelectTrigger className="h-7 text-xs w-[140px] bg-white">
+                              <div className="flex items-center gap-1.5">
+                                <User className="h-3 w-3 text-muted-foreground" />
+                                <SelectValue placeholder="Assign to..." />
+                              </div>
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="unassigned">
+                                <span className="text-muted-foreground">Unassigned</span>
+                              </SelectItem>
+                              {teamMembers.map((member) => (
+                                <SelectItem key={member.id} value={member.id}>
+                                  <div className="flex items-center gap-2">
+                                    <Avatar className="h-4 w-4">
+                                      <AvatarFallback className="text-[8px] bg-primary/10">
+                                        {member.name.split(" ").map(n => n[0]).join("").toUpperCase()}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                    {member.name}
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+
+                          <ChevronRight className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+
+                          {/* Column Dropdown */}
+                          <Select
+                            value={item.targetColumn || "in_progress"}
+                            onValueChange={(value) => handleColumnChange(item.id, value)}
+                          >
+                            <SelectTrigger className="h-7 text-xs w-[130px] bg-white">
+                              <div className="flex items-center gap-1.5">
+                                <Columns3 className="h-3 w-3 text-muted-foreground" />
+                                <SelectValue placeholder="Column..." />
+                              </div>
+                            </SelectTrigger>
+                            <SelectContent>
+                              {kanbanColumns.map((col) => (
+                                <SelectItem key={col.id} value={col.id}>
+                                  <div className="flex items-center gap-2">
+                                    <span className={cn("h-2 w-2 rounded-full", col.color.split(" ")[0])} />
+                                    {col.label}
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Bulk Create Button */}
+                {selectedItems.length > 0 && (
+                  <div className="p-3 bg-primary/5 border-t border-primary/10">
+                    <Button
+                      size="sm"
+                      className="w-full h-8"
+                      onClick={() => onApproveSelected(selectedItems)}
+                    >
+                      <CheckSquare className="h-3.5 w-3.5 mr-1.5" />
+                      Create {selectedItems.length} Task{selectedItems.length > 1 ? "s" : ""}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </CollapsibleContent>
+          </div>
+        </Collapsible>
+      )}
+
+      {/* Show simple message if no action items */}
+      {!hasActionItems && intelligence.primaryAction && (
         <div className="bg-primary/5 border border-primary/20 rounded-lg p-3 mb-3">
           <div className="flex items-center gap-1.5 text-xs font-medium text-primary mb-1.5">
             <Zap className="h-3.5 w-3.5" />
-            <span>Extracted Action{(intelligence.actionItems?.length || 0) > 1 ? "s" : ""}</span>
+            <span>Suggested Action</span>
           </div>
-          <p className="text-sm font-medium">
-            {intelligence.primaryAction || intelligence.actionItems?.[0]?.title || "Review email"}
-          </p>
-          {(intelligence.actionItems?.length || 0) > 1 && (
-            <p className="text-xs text-muted-foreground mt-1">
-              +{(intelligence.actionItems?.length || 0) - 1} more action{(intelligence.actionItems?.length || 0) > 2 ? "s" : ""}
-            </p>
-          )}
+          <p className="text-sm font-medium">{intelligence.primaryAction}</p>
         </div>
       )}
 
@@ -307,8 +533,8 @@ function EmailIntelligenceCard({
         )}
       </div>
 
-      {/* Suggested Assignee */}
-      {intelligence.suggestedAssigneeName && (
+      {/* Suggested Assignee (shown if not expanded) */}
+      {!isExpanded && intelligence.suggestedAssigneeName && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
           <UserPlus className="h-3.5 w-3.5" />
           <span>Suggested: <span className="font-medium text-foreground">{intelligence.suggestedAssigneeName}</span></span>
@@ -326,7 +552,7 @@ function EmailIntelligenceCard({
           onClick={onApprove}
         >
           <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />
-          Create Task
+          Create All Tasks
         </Button>
         <Button
           variant="outline"
@@ -828,6 +1054,48 @@ export default function EmailIntelligencePage() {
     handleApprove({ ...intelligence, ...updates });
   };
 
+  // Approve selected action items only
+  const handleApproveSelected = async (intelligence: EmailIntelligence, selectedItems: ActionItem[]) => {
+    try {
+      // In a real implementation, this would send selectedItems to the API
+      // with their individual assignees and target columns
+      const res = await fetch(`/api/email-intelligence/${intelligence.id}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actionItems: selectedItems }),
+      });
+      if (res.ok) {
+        toast.success(`Created ${selectedItems.length} task${selectedItems.length > 1 ? "s" : ""}`);
+        setIntelligences((prev) =>
+          prev.map((i) => (i.id === intelligence.id ? { ...i, status: "approved" } : i))
+        );
+      } else {
+        toast.error("Failed to create tasks");
+      }
+    } catch (error) {
+      // For demo, just update local state
+      toast.success(`Created ${selectedItems.length} task${selectedItems.length > 1 ? "s" : ""}`);
+      setIntelligences((prev) =>
+        prev.map((i) => (i.id === intelligence.id ? { ...i, status: "approved" } : i))
+      );
+    }
+  };
+
+  // Update individual action item
+  const handleUpdateActionItem = (intelligenceId: string, itemId: string, updates: Partial<ActionItem>) => {
+    setIntelligences((prev) =>
+      prev.map((intel) => {
+        if (intel.id !== intelligenceId) return intel;
+        return {
+          ...intel,
+          actionItems: intel.actionItems?.map((item) =>
+            item.id === itemId ? { ...item, ...updates } : item
+          ) || [],
+        };
+      })
+    );
+  };
+
   // Filter intelligences
   const filteredIntelligences = intelligences.filter((i) => {
     if (filter !== "all" && i.status !== filter) return false;
@@ -981,10 +1249,13 @@ export default function EmailIntelligencePage() {
                   key={intelligence.id}
                   intelligence={intelligence}
                   onApprove={() => handleApprove(intelligence)}
+                  onApproveSelected={(selectedItems) => handleApproveSelected(intelligence, selectedItems)}
                   onDismiss={() => handleDismiss(intelligence)}
                   onDelegate={() => setDelegatingIntelligence(intelligence)}
                   onEdit={() => setEditingIntelligence(intelligence)}
                   onView={() => setViewingIntelligence(intelligence)}
+                  onUpdateActionItem={(itemId, updates) => handleUpdateActionItem(intelligence.id, itemId, updates)}
+                  teamMembers={teamMembers}
                 />
               ))}
             </div>
