@@ -202,6 +202,21 @@ function EmailIntelligenceCard({
     ? intelligence.receivedAt
     : new Date(intelligence.receivedAt);
 
+  // Safe response deadline
+  const responseDeadline = intelligence.responseDeadline
+    ? (intelligence.responseDeadline instanceof Date
+        ? intelligence.responseDeadline
+        : new Date(intelligence.responseDeadline))
+    : null;
+
+  // Check if date is valid
+  const isValidDate = (date: Date | null | undefined): date is Date => {
+    return date != null && date instanceof Date && !isNaN(date.getTime());
+  };
+
+  // Also check receivedDate validity
+  const isReceivedDateValid = receivedDate instanceof Date && !isNaN(receivedDate.getTime());
+
   return (
     <Card className="p-4 hover:shadow-md transition-shadow">
       {/* Header: From & Time */}
@@ -231,7 +246,7 @@ function EmailIntelligenceCard({
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <span className="text-xs text-muted-foreground" suppressHydrationWarning>
-            {formatDistanceToNow(receivedDate, { addSuffix: true })}
+            {isReceivedDateValid ? formatDistanceToNow(receivedDate, { addSuffix: true }) : "Unknown"}
           </span>
           {intelligence.hasAttachments && (
             <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
@@ -278,10 +293,10 @@ function EmailIntelligenceCard({
           {category.icon}
           {category.label}
         </Badge>
-        {intelligence.responseDeadline && (
+        {isValidDate(responseDeadline) && (
           <Badge variant="outline" className="text-[10px] px-1.5 gap-1 bg-orange-50 text-orange-700 border-orange-200">
             <Clock className="h-3 w-3" />
-            Due: {format(intelligence.responseDeadline, "MMM d")}
+            Due: {format(responseDeadline, "MMM d")}
           </Badge>
         )}
         {intelligence.extractedAmounts.length > 0 && (
@@ -575,6 +590,7 @@ function ViewEmailModal({
   const receivedDate = intelligence.receivedAt instanceof Date
     ? intelligence.receivedAt
     : new Date(intelligence.receivedAt);
+  const isReceivedDateValid = receivedDate instanceof Date && !isNaN(receivedDate.getTime());
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -596,7 +612,7 @@ function ViewEmailModal({
               <p className="text-sm text-muted-foreground">{fromEmail}</p>
             </div>
             <p className="text-sm text-muted-foreground ml-auto" suppressHydrationWarning>
-              {format(receivedDate, "MMM d, yyyy 'at' h:mm a")}
+              {isReceivedDateValid ? format(receivedDate, "MMM d, yyyy 'at' h:mm a") : "Unknown date"}
             </p>
           </div>
 
