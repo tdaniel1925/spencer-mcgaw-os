@@ -192,24 +192,34 @@ function EmailIntelligenceCard({
   const category = categoryConfig[intelligence.category] || categoryConfig.other;
   const priority = priorityConfig[intelligence.priority] || priorityConfig.medium;
 
+  // Safe access to from fields
+  const fromName = intelligence.from?.name || "";
+  const fromEmail = intelligence.from?.email || "unknown@email.com";
+  const displayName = intelligence.matchedClientName || fromName || fromEmail;
+
+  // Safe date formatting
+  const receivedDate = intelligence.receivedAt instanceof Date
+    ? intelligence.receivedAt
+    : new Date(intelligence.receivedAt);
+
   return (
     <Card className="p-4 hover:shadow-md transition-shadow">
       {/* Header: From & Time */}
       <div className="flex items-start gap-3 mb-3">
         <Avatar className="h-10 w-10 flex-shrink-0">
           <AvatarFallback className="bg-primary/10 text-primary text-sm font-medium">
-            {(intelligence.from.name || intelligence.from.email)
+            {(fromName || fromEmail)
               .split(" ")
-              .map((n) => n[0])
+              .map((n) => n?.[0] || "")
               .join("")
               .slice(0, 2)
-              .toUpperCase()}
+              .toUpperCase() || "??"}
           </AvatarFallback>
         </Avatar>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="font-medium text-sm truncate">
-              {intelligence.matchedClientName || intelligence.from.name || intelligence.from.email}
+              {displayName}
             </span>
             {intelligence.matchedClientId && (
               <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-primary/5">
@@ -217,11 +227,11 @@ function EmailIntelligenceCard({
               </Badge>
             )}
           </div>
-          <p className="text-xs text-muted-foreground truncate">{intelligence.from.email}</p>
+          <p className="text-xs text-muted-foreground truncate">{fromEmail}</p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <span className="text-xs text-muted-foreground" suppressHydrationWarning>
-            {formatDistanceToNow(intelligence.receivedAt, { addSuffix: true })}
+            {formatDistanceToNow(receivedDate, { addSuffix: true })}
           </span>
           {intelligence.hasAttachments && (
             <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
@@ -558,6 +568,14 @@ function ViewEmailModal({
 }) {
   if (!intelligence) return null;
 
+  // Safe access
+  const fromName = intelligence.from?.name || "";
+  const fromEmail = intelligence.from?.email || "unknown@email.com";
+  const displayName = fromName || fromEmail;
+  const receivedDate = intelligence.receivedAt instanceof Date
+    ? intelligence.receivedAt
+    : new Date(intelligence.receivedAt);
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
@@ -570,15 +588,15 @@ function ViewEmailModal({
           <div className="flex items-center gap-3">
             <Avatar className="h-10 w-10">
               <AvatarFallback className="bg-primary text-primary-foreground">
-                {(intelligence.from.name || intelligence.from.email).slice(0, 2).toUpperCase()}
+                {displayName.slice(0, 2).toUpperCase() || "??"}
               </AvatarFallback>
             </Avatar>
             <div>
-              <p className="font-medium">{intelligence.from.name || intelligence.from.email}</p>
-              <p className="text-sm text-muted-foreground">{intelligence.from.email}</p>
+              <p className="font-medium">{displayName}</p>
+              <p className="text-sm text-muted-foreground">{fromEmail}</p>
             </div>
             <p className="text-sm text-muted-foreground ml-auto" suppressHydrationWarning>
-              {format(intelligence.receivedAt, "MMM d, yyyy 'at' h:mm a")}
+              {format(receivedDate, "MMM d, yyyy 'at' h:mm a")}
             </p>
           </div>
 
