@@ -267,18 +267,18 @@ function EmailIntelligenceCard({
       </div>
 
       {/* Primary Action / Extracted Task */}
-      {(intelligence.primaryAction || intelligence.actionItems.length > 0) && (
+      {(intelligence.primaryAction || (intelligence.actionItems?.length || 0) > 0) && (
         <div className="bg-primary/5 border border-primary/20 rounded-lg p-3 mb-3">
           <div className="flex items-center gap-1.5 text-xs font-medium text-primary mb-1.5">
             <Zap className="h-3.5 w-3.5" />
-            <span>Extracted Action{intelligence.actionItems.length > 1 ? "s" : ""}</span>
+            <span>Extracted Action{(intelligence.actionItems?.length || 0) > 1 ? "s" : ""}</span>
           </div>
           <p className="text-sm font-medium">
-            {intelligence.primaryAction || intelligence.actionItems[0]?.title}
+            {intelligence.primaryAction || intelligence.actionItems?.[0]?.title || "Review email"}
           </p>
-          {intelligence.actionItems.length > 1 && (
+          {(intelligence.actionItems?.length || 0) > 1 && (
             <p className="text-xs text-muted-foreground mt-1">
-              +{intelligence.actionItems.length - 1} more action{intelligence.actionItems.length > 2 ? "s" : ""}
+              +{(intelligence.actionItems?.length || 0) - 1} more action{(intelligence.actionItems?.length || 0) > 2 ? "s" : ""}
             </p>
           )}
         </div>
@@ -299,10 +299,10 @@ function EmailIntelligenceCard({
             Due: {format(responseDeadline, "MMM d")}
           </Badge>
         )}
-        {intelligence.extractedAmounts.length > 0 && (
+        {intelligence.extractedAmounts?.length > 0 && intelligence.extractedAmounts[0]?.value != null && (
           <Badge variant="outline" className="text-[10px] px-1.5 gap-1 bg-green-50 text-green-700 border-green-200">
             <DollarSign className="h-3 w-3" />
-            ${intelligence.extractedAmounts[0].value.toLocaleString()}
+            ${Number(intelligence.extractedAmounts[0].value).toLocaleString()}
           </Badge>
         )}
       </div>
@@ -391,7 +391,7 @@ function EditIntelligenceModal({
 
   useEffect(() => {
     if (intelligence) {
-      setEditedPrimaryAction(intelligence.primaryAction || intelligence.actionItems[0]?.title || "");
+      setEditedPrimaryAction(intelligence.primaryAction || intelligence.actionItems?.[0]?.title || "");
       setEditedPriority(intelligence.priority);
       setEditedCategory(intelligence.category);
     }
@@ -522,8 +522,8 @@ function DelegateModal({
 
         <div className="space-y-4">
           <div className="bg-muted/50 p-3 rounded-lg">
-            <p className="text-sm font-medium">{intelligence.primaryAction || intelligence.actionItems[0]?.title}</p>
-            <p className="text-xs text-muted-foreground mt-1">From: {intelligence.from.name}</p>
+            <p className="text-sm font-medium">{intelligence.primaryAction || intelligence.actionItems?.[0]?.title || "Review email"}</p>
+            <p className="text-xs text-muted-foreground mt-1">From: {intelligence.from?.name || intelligence.from?.email || "Unknown"}</p>
           </div>
 
           <div>
@@ -542,7 +542,7 @@ function DelegateModal({
                 >
                   <Avatar className="h-8 w-8">
                     <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                      {member.name.split(" ").map((n) => n[0]).join("").toUpperCase()}
+                      {(member.name || "?").split(" ").map((n) => n?.[0] || "").join("").toUpperCase() || "?"}
                     </AvatarFallback>
                   </Avatar>
                   <div>
@@ -629,11 +629,11 @@ function ViewEmailModal({
                   <p className="text-xs text-muted-foreground mb-1">Summary</p>
                   <p className="text-sm">{intelligence.summary}</p>
                 </div>
-                {intelligence.actionItems.length > 0 && (
+                {(intelligence.actionItems?.length || 0) > 0 && (
                   <div>
                     <p className="text-xs text-muted-foreground mb-1">Action Items</p>
                     <ul className="space-y-1">
-                      {intelligence.actionItems.map((item) => (
+                      {intelligence.actionItems?.map((item) => (
                         <li key={item.id} className="text-sm flex items-start gap-2">
                           <ListTodo className="h-3.5 w-3.5 mt-0.5 text-primary" />
                           {item.title}
