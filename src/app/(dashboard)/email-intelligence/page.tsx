@@ -839,7 +839,7 @@ export default function EmailIntelligencePage() {
   // Stats
   const pendingCount = intelligences.filter((i) => i.status === "pending").length;
   const approvedCount = intelligences.filter((i) => i.status === "approved").length;
-  const totalActionItems = intelligences.reduce((sum, i) => sum + i.actionItems.length, 0);
+  const totalActionItems = intelligences.reduce((sum, i) => sum + (i.actionItems?.length || 0), 0);
 
   return (
     <TooltipProvider delayDuration={0}>
