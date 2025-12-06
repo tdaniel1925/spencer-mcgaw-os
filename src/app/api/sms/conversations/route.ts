@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
   const status = searchParams.get("status") || "active";
   const assignedTo = searchParams.get("assigned_to");
   const unreadOnly = searchParams.get("unread_only") === "true";
+  const clientId = searchParams.get("client_id");
   const search = searchParams.get("search");
   const limit = parseInt(searchParams.get("limit") || "50");
   const offset = parseInt(searchParams.get("offset") || "0");
@@ -50,6 +51,10 @@ export async function GET(request: NextRequest) {
 
     if (unreadOnly) {
       query = query.gt("unread_count", 0);
+    }
+
+    if (clientId) {
+      query = query.eq("client_id", clientId);
     }
 
     const { data: conversations, error } = await query;

@@ -176,6 +176,13 @@ const adminNavItems: NavItem[] = [
     permission: "system:view_audit_logs",
     adminOnly: true,
   },
+  {
+    title: "SMS Settings",
+    href: "/admin/sms-settings",
+    icon: MessageSquare,
+    permission: "system:view_audit_logs",
+    adminOnly: true,
+  },
 ];
 
 export function Sidebar() {

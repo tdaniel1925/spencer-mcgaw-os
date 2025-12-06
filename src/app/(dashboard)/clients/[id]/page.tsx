@@ -84,6 +84,7 @@ import {
   Search,
   RefreshCw,
   Loader2,
+  CheckCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow, isToday, isYesterday, parseISO } from "date-fns";
@@ -230,6 +231,34 @@ interface Activity {
   metadata?: Record<string, unknown>;
 }
 
+interface SMSConversation {
+  id: string;
+  contact_id: string;
+  phone_number: string;
+  status: string;
+  last_message_at: string | null;
+  last_message_preview: string | null;
+  unread_count: number;
+  contact: {
+    id: string;
+    first_name: string;
+    last_name: string;
+  };
+}
+
+interface SMSMessage {
+  id: string;
+  conversation_id: string;
+  direction: "inbound" | "outbound";
+  from_number: string;
+  to_number: string;
+  body: string;
+  status: string;
+  sent_at?: string;
+  delivered_at?: string;
+  created_at: string;
+}
+
 // Note types configuration
 const noteTypes = [
   { value: "general", label: "General", icon: StickyNote, color: "bg-slate-100 text-slate-700" },
@@ -295,6 +324,9 @@ export default function ClientDetailPage() {
   const [taxFilings, setTaxFilings] = useState<ClientTaxFiling[]>([]);
   const [deadlines, setDeadlines] = useState<ClientDeadline[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
+  const [smsConversations, setSmsConversations] = useState<SMSConversation[]>([]);
+  const [smsMessages, setSmsMessages] = useState<Record<string, SMSMessage[]>>({});
+  const [loadingSms, setLoadingSms] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("overview");
@@ -464,6 +496,33 @@ export default function ClientDetailPage() {
       }
     } catch (error) {
       console.error("Error loading activity:", error);
+    }
+  }, [clientId]);
+
+  // Load SMS conversations for this client
+  const loadSmsConversations = useCallback(async () => {
+    setLoadingSms(true);
+    try {
+      const res = await fetch(`/api/sms/conversations?client_id=${clientId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setSmsConversations(data.conversations || []);
+
+        // Load messages for each conversation
+        const messagesMap: Record<string, SMSMessage[]> = {};
+        for (const conv of data.conversations || []) {
+          const msgRes = await fetch(`/api/sms/conversations/${conv.id}`);
+          if (msgRes.ok) {
+            const msgData = await msgRes.json();
+            messagesMap[conv.id] = msgData.messages || [];
+          }
+        }
+        setSmsMessages(messagesMap);
+      }
+    } catch (error) {
+      console.error("Error loading SMS conversations:", error);
+    } finally {
+      setLoadingSms(false);
     }
   }, [clientId]);
 
@@ -1091,6 +1150,14 @@ export default function ClientDetailPage() {
                   )}
                 </TabsTrigger>
                 <TabsTrigger value="activity" className="data-[state=active]:bg-background">Activity</TabsTrigger>
+                <TabsTrigger value="sms" className="data-[state=active]:bg-background" onClick={() => !smsConversations.length && loadSmsConversations()}>
+                  SMS
+                  {smsConversations.reduce((acc, c) => acc + c.unread_count, 0) > 0 && (
+                    <Badge variant="destructive" className="ml-1.5 text-[10px] px-1.5">
+                      {smsConversations.reduce((acc, c) => acc + c.unread_count, 0)}
+                    </Badge>
+                  )}
+                </TabsTrigger>
               </TabsList>
             </div>
 
@@ -1956,6 +2023,146 @@ export default function ClientDetailPage() {
                             </p>
                           </div>
                         </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </TabsContent>
+
+              {/* SMS Tab */}
+              <TabsContent value="sms" className="m-0 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold">SMS Communications</h2>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={loadSmsConversations}>
+                      <RefreshCw className="h-4 w-4 mr-1.5" />
+                      Refresh
+                    </Button>
+                    <Button size="sm" onClick={() => router.push('/sms')}>
+                      <MessageSquare className="h-4 w-4 mr-1.5" />
+                      Open SMS Hub
+                    </Button>
+                  </div>
+                </div>
+
+                {loadingSms ? (
+                  <div className="space-y-4">
+                    {[1, 2, 3].map(i => (
+                      <Card key={i}>
+                        <CardContent className="p-4">
+                          <div className="flex items-center gap-3">
+                            <Skeleton className="h-10 w-10 rounded-full" />
+                            <div className="flex-1">
+                              <Skeleton className="h-4 w-32 mb-2" />
+                              <Skeleton className="h-3 w-48" />
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                ) : smsConversations.length === 0 ? (
+                  <Card className="p-8 text-center">
+                    <MessageSquare className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                    <h3 className="font-medium mb-2">No SMS conversations yet</h3>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Start messaging by clicking &quot;Send SMS&quot; on any contact with a phone number.
+                    </p>
+                  </Card>
+                ) : (
+                  <div className="space-y-4">
+                    {smsConversations.map(conversation => {
+                      const messages = smsMessages[conversation.id] || [];
+                      const contact = contacts.find(c => c.id === conversation.contact_id);
+
+                      return (
+                        <Card key={conversation.id} className="overflow-hidden">
+                          <CardHeader className="pb-2 bg-muted/30">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <Avatar className="h-10 w-10">
+                                  <AvatarFallback className="bg-primary/10 text-primary">
+                                    {conversation.contact.first_name[0]}{conversation.contact.last_name[0]}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div>
+                                  <CardTitle className="text-base">
+                                    {conversation.contact.first_name} {conversation.contact.last_name}
+                                    {conversation.unread_count > 0 && (
+                                      <Badge variant="destructive" className="ml-2 text-[10px]">
+                                        {conversation.unread_count} new
+                                      </Badge>
+                                    )}
+                                  </CardTitle>
+                                  <p className="text-sm text-muted-foreground flex items-center gap-1">
+                                    <Phone className="h-3 w-3" />
+                                    {conversation.phone_number}
+                                  </p>
+                                </div>
+                              </div>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => contact && handleSendSMS(contact)}
+                              >
+                                <MessageSquare className="h-4 w-4 mr-1.5" />
+                                Reply
+                              </Button>
+                            </div>
+                          </CardHeader>
+                          <CardContent className="p-4">
+                            {messages.length === 0 ? (
+                              <p className="text-sm text-muted-foreground text-center py-4">
+                                No messages in this conversation yet.
+                              </p>
+                            ) : (
+                              <div className="space-y-3 max-h-80 overflow-y-auto">
+                                {messages.slice(-10).map(message => (
+                                  <div
+                                    key={message.id}
+                                    className={cn(
+                                      "flex",
+                                      message.direction === "outbound" ? "justify-end" : "justify-start"
+                                    )}
+                                  >
+                                    <div
+                                      className={cn(
+                                        "max-w-[80%] rounded-lg px-3 py-2",
+                                        message.direction === "outbound"
+                                          ? "bg-primary text-primary-foreground"
+                                          : "bg-muted"
+                                      )}
+                                    >
+                                      <p className="text-sm">{message.body}</p>
+                                      <p className={cn(
+                                        "text-[10px] mt-1",
+                                        message.direction === "outbound"
+                                          ? "text-primary-foreground/70"
+                                          : "text-muted-foreground"
+                                      )}>
+                                        {format(parseISO(message.created_at), "MMM d, h:mm a")}
+                                        {message.direction === "outbound" && message.status === "delivered" && (
+                                          <CheckCheck className="h-3 w-3 inline ml-1" />
+                                        )}
+                                      </p>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            {messages.length > 10 && (
+                              <div className="text-center mt-3">
+                                <Button
+                                  variant="link"
+                                  size="sm"
+                                  onClick={() => contact && handleSendSMS(contact)}
+                                >
+                                  View all {messages.length} messages →
+                                </Button>
+                              </div>
+                            )}
+                          </CardContent>
+                        </Card>
                       );
                     })}
                   </div>
