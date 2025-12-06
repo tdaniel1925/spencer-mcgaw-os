@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Header } from "@/components/layout/header";
 import { useAudit } from "@/lib/audit";
@@ -282,6 +282,7 @@ const filingStatuses = [
 
 export default function ClientDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const clientId = params.id as string;
   const { user } = useAuth();
   const { log } = useAudit();
@@ -777,6 +778,35 @@ export default function ClientDetailPage() {
       }
     } catch (error) {
       toast.error("Failed to update contact");
+    }
+  };
+
+  // Start SMS conversation with contact
+  const handleSendSMS = async (contact: ClientContact) => {
+    const phoneNumber = contact.mobile || contact.phone;
+    if (!phoneNumber) {
+      toast.error("Contact has no phone number");
+      return;
+    }
+
+    try {
+      // Create or get existing conversation
+      const res = await fetch("/api/sms/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contact_id: contact.id }),
+      });
+
+      if (res.ok) {
+        const conversation = await res.json();
+        // Navigate to SMS page with this conversation selected
+        router.push(`/sms?conversation=${conversation.id}`);
+      } else {
+        const error = await res.json();
+        toast.error(error.error || "Failed to start conversation");
+      }
+    } catch (error) {
+      toast.error("Failed to start conversation");
     }
   };
 
@@ -1537,6 +1567,19 @@ export default function ClientDetailPage() {
                               <Badge variant="outline" className="text-[10px]">Invoices</Badge>
                             )}
                           </div>
+                          {(contact.phone || contact.mobile) && (
+                            <div className="mt-3 pt-3 border-t">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="w-full"
+                                onClick={() => handleSendSMS(contact)}
+                              >
+                                <MessageSquare className="h-4 w-4 mr-2" />
+                                Send SMS
+                              </Button>
+                            </div>
+                          )}
                         </CardContent>
                       </Card>
                     ))}

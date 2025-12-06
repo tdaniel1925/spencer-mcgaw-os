@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { Header } from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -133,7 +134,10 @@ interface CannedResponse {
   category: string;
 }
 
-export default function SMSPage() {
+function SMSPageContent() {
+  const searchParams = useSearchParams();
+  const conversationIdFromUrl = searchParams.get("conversation");
+
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -251,6 +255,16 @@ export default function SMSPage() {
     loadTemplates();
     loadCannedResponses();
   }, [loadConversations, loadTemplates, loadCannedResponses]);
+
+  // Auto-select conversation from URL parameter
+  useEffect(() => {
+    if (conversationIdFromUrl && conversations.length > 0 && !selectedConversation) {
+      const conversation = conversations.find(c => c.id === conversationIdFromUrl);
+      if (conversation) {
+        loadMessages(conversation.id);
+      }
+    }
+  }, [conversationIdFromUrl, conversations, selectedConversation, loadMessages]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -866,5 +880,20 @@ export default function SMSPage() {
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+export default function SMSPage() {
+  return (
+    <Suspense fallback={
+      <>
+        <Header title="SMS Messages" />
+        <main className="flex-1 overflow-hidden flex items-center justify-center">
+          <div className="text-muted-foreground">Loading...</div>
+        </main>
+      </>
+    }>
+      <SMSPageContent />
+    </Suspense>
   );
 }
