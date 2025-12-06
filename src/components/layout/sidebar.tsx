@@ -26,6 +26,7 @@ import {
   X,
   Webhook,
   Sparkles,
+  MessageSquare,
 } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -91,6 +92,12 @@ const mainNavItems: NavItem[] = [
     href: "/calls",
     icon: Phone,
     permission: "calls:view",
+  },
+  {
+    title: "SMS Messaging",
+    href: "/sms",
+    icon: MessageSquare,
+    permission: "clients:view",
   },
   {
     title: "Clients",
