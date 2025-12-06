@@ -1,13 +1,20 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useParams } from "next/navigation";
+import Link from "next/link";
 import { Header } from "@/components/layout/header";
 import { useAudit } from "@/lib/audit";
+import { useAuth } from "@/lib/supabase/auth-context";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Table,
   TableBody,
@@ -26,6 +33,21 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
   Phone,
   Mail,
   MapPin,
@@ -40,715 +62,2211 @@ import {
   Plus,
   Trash2,
   User,
+  Users,
+  Briefcase,
+  Receipt,
+  AlertCircle,
+  ChevronRight,
+  MoreVertical,
+  Pin,
+  PinOff,
+  ExternalLink,
+  ArrowLeft,
+  Globe,
+  DollarSign,
+  TrendingUp,
+  CalendarDays,
+  PhoneCall,
+  MailOpen,
+  Video,
+  StickyNote,
+  Filter,
+  Search,
+  RefreshCw,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { format } from "date-fns";
+import { format, formatDistanceToNow, isToday, isYesterday, parseISO } from "date-fns";
+import { toast } from "sonner";
 
-// Note type
-interface ClientNote {
+// Types
+interface Client {
   id: string;
-  content: string;
-  createdAt: Date;
-  createdBy: {
-    name: string;
-    avatar?: string;
-  };
-  updatedAt?: Date;
+  name: string;
+  email: string;
+  phone: string;
+  address: string;
+  city: string;
+  state: string;
+  zip_code: string;
+  status: string;
+  client_type: string;
+  business_structure: string;
+  industry: string;
+  ein_tin: string;
+  fiscal_year_end: string;
+  acquisition_source: string;
+  referred_by_client_id: string;
+  assigned_accountant_id: string;
+  billing_rate: number;
+  retainer_amount: number;
+  tags: string[];
+  client_since: string;
+  website: string;
+  notes: string;
+  created_at: string;
+  updated_at: string;
 }
 
-// Mock client data
-const mockClient = {
-  id: "CL001",
-  firstName: "John",
-  lastName: "Smith",
-  email: "john.smith@email.com",
-  phone: "555-0101",
-  alternatePhone: "555-0199",
-  companyName: "",
-  address: "123 Main Street",
-  city: "Austin",
-  state: "TX",
-  zipCode: "78701",
-  taxId: "***-**-1234",
-  serviceTypes: ["Tax Preparation", "Consulting"],
-  assignee: { name: "Hunter McGaw", avatar: "" },
-  isActive: true,
-  createdAt: new Date("2022-03-15"),
-};
+interface ClientContact {
+  id: string;
+  client_id: string;
+  first_name: string;
+  last_name: string;
+  title: string;
+  email: string;
+  phone: string;
+  mobile: string;
+  is_primary: boolean;
+  is_authorized_signer: boolean;
+  receives_tax_docs: boolean;
+  receives_invoices: boolean;
+  birthday: string;
+  notes: string;
+  created_at: string;
+}
 
-// Mock notes with timestamps
-const mockNotes: ClientNote[] = [
-  {
-    id: "note-1",
-    content: "Long-term client, prefers email communication. Tax returns typically complex due to multiple investment accounts.",
-    createdAt: new Date("2022-03-15T09:30:00"),
-    createdBy: { name: "Hunter McGaw" },
-  },
-  {
-    id: "note-2",
-    content: "Client called asking about quarterly estimated payments. Explained the process and sent them the vouchers for Q4.",
-    createdAt: new Date("2024-03-10T14:22:00"),
-    createdBy: { name: "Tyler Daniel" },
-  },
-  {
-    id: "note-3",
-    content: "Received all W-2s and 1099s for 2023 tax year. Missing investment summary from Schwab - client will send by end of week.",
-    createdAt: new Date("2024-03-12T11:45:00"),
-    createdBy: { name: "Sarah Johnson" },
-  },
-  {
-    id: "note-4",
-    content: "Follow-up: Client sent Schwab statement. All documents now received. Ready to begin tax preparation.",
-    createdAt: new Date("2024-03-14T16:08:00"),
-    createdBy: { name: "Sarah Johnson" },
-  },
+interface ClientNote {
+  id: string;
+  client_id: string;
+  contact_id: string | null;
+  user_id: string;
+  note_type: string;
+  subject: string;
+  content: string;
+  is_pinned: boolean;
+  is_private: boolean;
+  follow_up_date: string | null;
+  follow_up_assigned_to: string | null;
+  follow_up_completed: boolean;
+  created_at: string;
+  updated_at: string;
+  user?: {
+    full_name: string;
+    avatar_url: string;
+  };
+  contact?: {
+    id: string;
+    first_name: string;
+    last_name: string;
+  };
+}
+
+interface ClientService {
+  id: string;
+  client_id: string;
+  service_type: string;
+  service_name: string;
+  description: string;
+  frequency: string;
+  status: string;
+  start_date: string;
+  end_date: string;
+  fee_type: string;
+  fee_amount: number;
+  assigned_to: string;
+  tax_year: number;
+  notes: string;
+  created_at: string;
+}
+
+interface ClientTaxFiling {
+  id: string;
+  client_id: string;
+  tax_year: number;
+  filing_type: string;
+  status: string;
+  due_date: string;
+  extended_due_date: string;
+  filed_date: string;
+  accepted_date: string;
+  refund_amount: number;
+  amount_owed: number;
+  preparer_id: string;
+  reviewer_id: string;
+  notes: string;
+  efile_status: string;
+  document_progress?: {
+    received: number;
+    total: number;
+  };
+  created_at: string;
+}
+
+interface ClientDeadline {
+  id: string;
+  client_id: string;
+  deadline_type: string;
+  title: string;
+  description: string;
+  due_date: string;
+  reminder_days: number[];
+  status: string;
+  assigned_to: string;
+  tax_year: number;
+  created_at: string;
+}
+
+interface Activity {
+  id: string;
+  type: string;
+  title: string;
+  description?: string;
+  user?: {
+    full_name: string;
+    avatar_url: string;
+  };
+  timestamp: string;
+  metadata?: Record<string, unknown>;
+}
+
+// Note types configuration
+const noteTypes = [
+  { value: "general", label: "General", icon: StickyNote, color: "bg-slate-100 text-slate-700" },
+  { value: "call", label: "Call", icon: PhoneCall, color: "bg-green-100 text-green-700" },
+  { value: "meeting", label: "Meeting", icon: Video, color: "bg-blue-100 text-blue-700" },
+  { value: "email", label: "Email", icon: MailOpen, color: "bg-purple-100 text-purple-700" },
+  { value: "document", label: "Document", icon: FileText, color: "bg-amber-100 text-amber-700" },
+  { value: "billing", label: "Billing", icon: Receipt, color: "bg-emerald-100 text-emerald-700" },
+  { value: "tax", label: "Tax", icon: DollarSign, color: "bg-red-100 text-red-700" },
+  { value: "compliance", label: "Compliance", icon: AlertCircle, color: "bg-orange-100 text-orange-700" },
 ];
 
-const mockTasks = [
-  {
-    id: "TSK001",
-    title: "Send 2023 tax return copy",
-    status: "pending",
-    priority: "high",
-    dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24),
-    createdAt: new Date(),
-  },
-  {
-    id: "TSK002",
-    title: "Schedule annual review meeting",
-    status: "completed",
-    priority: "medium",
-    dueDate: new Date(Date.now() - 1000 * 60 * 60 * 24 * 5),
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 10),
-  },
-  {
-    id: "TSK003",
-    title: "Process Q4 estimated payments",
-    status: "in_progress",
-    priority: "high",
-    dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7),
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 3),
-  },
+// Service types
+const serviceTypes = [
+  { value: "tax_prep_individual", label: "Individual Tax Preparation" },
+  { value: "tax_prep_business", label: "Business Tax Preparation" },
+  { value: "bookkeeping", label: "Bookkeeping" },
+  { value: "payroll", label: "Payroll Services" },
+  { value: "audit", label: "Audit & Assurance" },
+  { value: "consulting", label: "Tax Consulting" },
+  { value: "estate_planning", label: "Estate Planning" },
+  { value: "irs_representation", label: "IRS Representation" },
+  { value: "other", label: "Other" },
 ];
 
-const mockCalls = [
-  {
-    id: "CALL001",
-    direction: "inbound",
-    duration: 180,
-    summary: "Client called requesting copy of 2023 tax return",
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2),
-  },
-  {
-    id: "CALL002",
-    direction: "outbound",
-    duration: 420,
-    summary: "Follow-up call regarding quarterly estimates",
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24 * 3),
-  },
+// Filing types
+const filingTypes = [
+  { value: "1040", label: "Form 1040 (Individual)" },
+  { value: "1120", label: "Form 1120 (C-Corp)" },
+  { value: "1120S", label: "Form 1120S (S-Corp)" },
+  { value: "1065", label: "Form 1065 (Partnership)" },
+  { value: "990", label: "Form 990 (Nonprofit)" },
+  { value: "941", label: "Form 941 (Payroll)" },
+  { value: "state", label: "State Return" },
+  { value: "local", label: "Local Return" },
 ];
 
-const mockDocuments = [
-  {
-    id: "DOC001",
-    name: "2023 Tax Return",
-    type: "tax_return",
-    status: "filed",
-    uploadedAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 30),
-  },
-  {
-    id: "DOC002",
-    name: "W-2 Forms 2023",
-    type: "w2",
-    status: "received",
-    uploadedAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 60),
-  },
-  {
-    id: "DOC003",
-    name: "Investment Summary",
-    type: "other",
-    status: "processing",
-    uploadedAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 5),
-  },
+// Filing status pipeline
+const filingStatuses = [
+  { value: "not_started", label: "Not Started", color: "bg-slate-100 text-slate-700" },
+  { value: "documents_requested", label: "Docs Requested", color: "bg-yellow-100 text-yellow-700" },
+  { value: "in_progress", label: "In Progress", color: "bg-blue-100 text-blue-700" },
+  { value: "review", label: "Review", color: "bg-purple-100 text-purple-700" },
+  { value: "client_review", label: "Client Review", color: "bg-cyan-100 text-cyan-700" },
+  { value: "ready_to_file", label: "Ready to File", color: "bg-indigo-100 text-indigo-700" },
+  { value: "filed", label: "Filed", color: "bg-green-100 text-green-700" },
+  { value: "accepted", label: "Accepted", color: "bg-emerald-100 text-emerald-700" },
+  { value: "rejected", label: "Rejected", color: "bg-red-100 text-red-700" },
 ];
 
-const statusConfig = {
-  pending: { label: "Pending", className: "bg-yellow-100 text-yellow-700" },
-  in_progress: { label: "In Progress", className: "bg-blue-100 text-blue-700" },
-  completed: { label: "Completed", className: "bg-green-100 text-green-700" },
-};
-
-export default function ClientDetailPage({
-  params,
-}: {
-  params: { id: string };
-}) {
-  const client = mockClient;
-  const displayName = client.companyName
-    ? client.companyName
-    : `${client.firstName} ${client.lastName}`;
+export default function ClientDetailPage() {
+  const params = useParams();
+  const clientId = params.id as string;
+  const { user } = useAuth();
   const { log } = useAudit();
 
-  // Notes state
-  const [notes, setNotes] = useState<ClientNote[]>(mockNotes);
+  // State
+  const [client, setClient] = useState<Client | null>(null);
+  const [contacts, setContacts] = useState<ClientContact[]>([]);
+  const [notes, setNotes] = useState<ClientNote[]>([]);
+  const [services, setServices] = useState<ClientService[]>([]);
+  const [taxFilings, setTaxFilings] = useState<ClientTaxFiling[]>([]);
+  const [deadlines, setDeadlines] = useState<ClientDeadline[]>([]);
+  const [activities, setActivities] = useState<Activity[]>([]);
+
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("overview");
+
+  // Modal states
   const [showAddNote, setShowAddNote] = useState(false);
-  const [newNoteContent, setNewNoteContent] = useState("");
+  const [showAddContact, setShowAddContact] = useState(false);
+  const [showAddService, setShowAddService] = useState(false);
+  const [showAddFiling, setShowAddFiling] = useState(false);
+  const [showAddDeadline, setShowAddDeadline] = useState(false);
 
-  // Log client view on mount
+  // Note form state
+  const [noteForm, setNoteForm] = useState({
+    note_type: "general",
+    subject: "",
+    content: "",
+    is_pinned: false,
+    is_private: false,
+    follow_up_date: "",
+    follow_up_assigned_to: "",
+  });
+
+  // Contact form state
+  const [contactForm, setContactForm] = useState({
+    first_name: "",
+    last_name: "",
+    title: "",
+    email: "",
+    phone: "",
+    mobile: "",
+    is_primary: false,
+    is_authorized_signer: false,
+    receives_tax_docs: true,
+    receives_invoices: false,
+    notes: "",
+  });
+
+  // Service form state
+  const [serviceForm, setServiceForm] = useState({
+    service_type: "tax_preparation",
+    service_name: "",
+    description: "",
+    frequency: "annual",
+    status: "active",
+    start_date: "",
+    fee_type: "fixed",
+    fee_amount: "",
+    tax_year: new Date().getFullYear().toString(),
+  });
+
+  // Filing form state
+  const [filingForm, setFilingForm] = useState({
+    tax_year: new Date().getFullYear().toString(),
+    filing_type: "1040",
+    status: "not_started",
+    due_date: "",
+    notes: "",
+  });
+
+  // Deadline form state
+  const [deadlineForm, setDeadlineForm] = useState({
+    deadline_type: "tax_filing",
+    title: "",
+    description: "",
+    due_date: "",
+    tax_year: new Date().getFullYear().toString(),
+  });
+
+  // Form submission loading states
+  const [submittingContact, setSubmittingContact] = useState(false);
+  const [submittingService, setSubmittingService] = useState(false);
+  const [submittingFiling, setSubmittingFiling] = useState(false);
+  const [submittingDeadline, setSubmittingDeadline] = useState(false);
+
+  // Filter states
+  const [noteTypeFilter, setNoteTypeFilter] = useState("all");
+
+  // Load client data
+  const loadClient = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/clients/${clientId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setClient(data);
+      }
+    } catch (error) {
+      console.error("Error loading client:", error);
+      toast.error("Failed to load client");
+    }
+  }, [clientId]);
+
+  // Load contacts
+  const loadContacts = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/crm/clients/${clientId}/contacts`);
+      if (res.ok) {
+        const data = await res.json();
+        setContacts(data.contacts || []);
+      }
+    } catch (error) {
+      console.error("Error loading contacts:", error);
+    }
+  }, [clientId]);
+
+  // Load notes
+  const loadNotes = useCallback(async () => {
+    try {
+      const params = new URLSearchParams();
+      if (noteTypeFilter !== "all") params.set("type", noteTypeFilter);
+
+      const res = await fetch(`/api/crm/clients/${clientId}/notes?${params}`);
+      if (res.ok) {
+        const data = await res.json();
+        setNotes(data.notes || []);
+      }
+    } catch (error) {
+      console.error("Error loading notes:", error);
+    }
+  }, [clientId, noteTypeFilter]);
+
+  // Load services
+  const loadServices = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/crm/clients/${clientId}/services`);
+      if (res.ok) {
+        const data = await res.json();
+        setServices(data.services || []);
+      }
+    } catch (error) {
+      console.error("Error loading services:", error);
+    }
+  }, [clientId]);
+
+  // Load tax filings
+  const loadTaxFilings = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/crm/clients/${clientId}/tax-filings`);
+      if (res.ok) {
+        const data = await res.json();
+        setTaxFilings(data.filings || []);
+      }
+    } catch (error) {
+      console.error("Error loading tax filings:", error);
+    }
+  }, [clientId]);
+
+  // Load deadlines
+  const loadDeadlines = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/crm/clients/${clientId}/deadlines?upcoming=true`);
+      if (res.ok) {
+        const data = await res.json();
+        setDeadlines(data.deadlines || []);
+      }
+    } catch (error) {
+      console.error("Error loading deadlines:", error);
+    }
+  }, [clientId]);
+
+  // Load activity
+  const loadActivity = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/crm/clients/${clientId}/activity?limit=20`);
+      if (res.ok) {
+        const data = await res.json();
+        setActivities(data.activities || []);
+      }
+    } catch (error) {
+      console.error("Error loading activity:", error);
+    }
+  }, [clientId]);
+
+  // Initial load
   useEffect(() => {
-    log({
-      category: "client",
-      action: "client_view",
-      resource: {
-        type: "client",
-        id: client.id,
-        name: displayName,
-      },
-    });
-  }, [client.id, displayName, log]);
-
-  // Add new note
-  const handleAddNote = () => {
-    if (!newNoteContent.trim()) return;
-
-    const newNote: ClientNote = {
-      id: `note-${Date.now()}`,
-      content: newNoteContent,
-      createdAt: new Date(),
-      createdBy: { name: "Tyler Daniel" }, // Would come from auth context
+    const loadAll = async () => {
+      setLoading(true);
+      await Promise.all([
+        loadClient(),
+        loadContacts(),
+        loadNotes(),
+        loadServices(),
+        loadTaxFilings(),
+        loadDeadlines(),
+        loadActivity(),
+      ]);
+      setLoading(false);
     };
+    loadAll();
+  }, [loadClient, loadContacts, loadNotes, loadServices, loadTaxFilings, loadDeadlines, loadActivity]);
 
-    setNotes([newNote, ...notes]);
-    setNewNoteContent("");
-    setShowAddNote(false);
+  // Reload notes when filter changes
+  useEffect(() => {
+    if (!loading) {
+      loadNotes();
+    }
+  }, [noteTypeFilter, loadNotes, loading]);
 
-    // Log note addition
-    log({
-      category: "client",
-      action: "client_note_add",
-      resource: {
-        type: "client",
-        id: client.id,
-        name: displayName,
-      },
-      metadata: {
-        noteId: newNote.id,
-        noteLength: newNoteContent.length,
-      },
-    });
+  // Log client view
+  useEffect(() => {
+    if (client) {
+      log({
+        category: "client",
+        action: "client_view",
+        resource: {
+          type: "client",
+          id: client.id,
+          name: client.name,
+        },
+      });
+    }
+  }, [client, log]);
+
+  // Add note handler
+  const handleAddNote = async () => {
+    if (!noteForm.content.trim()) return;
+
+    try {
+      const res = await fetch(`/api/crm/clients/${clientId}/notes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(noteForm),
+      });
+
+      if (res.ok) {
+        toast.success("Note added");
+        setShowAddNote(false);
+        setNoteForm({
+          note_type: "general",
+          subject: "",
+          content: "",
+          is_pinned: false,
+          is_private: false,
+          follow_up_date: "",
+          follow_up_assigned_to: "",
+        });
+        loadNotes();
+        loadActivity();
+      } else {
+        toast.error("Failed to add note");
+      }
+    } catch (error) {
+      toast.error("Failed to add note");
+    }
+  };
+
+  // Toggle note pin
+  const handleTogglePin = async (noteId: string, isPinned: boolean) => {
+    try {
+      const res = await fetch(`/api/crm/clients/${clientId}/notes/${noteId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_pinned: !isPinned }),
+      });
+
+      if (res.ok) {
+        toast.success(isPinned ? "Note unpinned" : "Note pinned");
+        loadNotes();
+      }
+    } catch (error) {
+      toast.error("Failed to update note");
+    }
   };
 
   // Delete note
-  const handleDeleteNote = (noteId: string) => {
-    setNotes(notes.filter((n) => n.id !== noteId));
+  const handleDeleteNote = async (noteId: string) => {
+    try {
+      const res = await fetch(`/api/crm/clients/${clientId}/notes/${noteId}`, {
+        method: "DELETE",
+      });
 
-    // Log note deletion
-    log({
-      category: "client",
-      action: "client_note_delete",
-      resource: {
-        type: "client",
-        id: client.id,
-        name: displayName,
-      },
-      metadata: { noteId },
-    });
+      if (res.ok) {
+        toast.success("Note deleted");
+        loadNotes();
+      }
+    } catch (error) {
+      toast.error("Failed to delete note");
+    }
   };
+
+  // Add contact handler
+  const handleAddContact = async () => {
+    if (!contactForm.first_name.trim() || !contactForm.last_name.trim()) {
+      toast.error("First and last name are required");
+      return;
+    }
+
+    setSubmittingContact(true);
+    try {
+      const res = await fetch(`/api/crm/clients/${clientId}/contacts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(contactForm),
+      });
+
+      if (res.ok) {
+        toast.success("Contact added");
+        setShowAddContact(false);
+        setContactForm({
+          first_name: "",
+          last_name: "",
+          title: "",
+          email: "",
+          phone: "",
+          mobile: "",
+          is_primary: false,
+          is_authorized_signer: false,
+          receives_tax_docs: true,
+          receives_invoices: false,
+          notes: "",
+        });
+        loadContacts();
+      } else {
+        toast.error("Failed to add contact");
+      }
+    } catch (error) {
+      toast.error("Failed to add contact");
+    } finally {
+      setSubmittingContact(false);
+    }
+  };
+
+  // Add service handler
+  const handleAddService = async () => {
+    if (!serviceForm.service_name.trim()) {
+      toast.error("Service name is required");
+      return;
+    }
+
+    setSubmittingService(true);
+    try {
+      const res = await fetch(`/api/crm/clients/${clientId}/services`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...serviceForm,
+          fee_amount: serviceForm.fee_amount ? parseFloat(serviceForm.fee_amount) : null,
+          tax_year: serviceForm.tax_year ? parseInt(serviceForm.tax_year) : null,
+        }),
+      });
+
+      if (res.ok) {
+        toast.success("Service added");
+        setShowAddService(false);
+        setServiceForm({
+          service_type: "tax_preparation",
+          service_name: "",
+          description: "",
+          frequency: "annual",
+          status: "active",
+          start_date: "",
+          fee_type: "fixed",
+          fee_amount: "",
+          tax_year: new Date().getFullYear().toString(),
+        });
+        loadServices();
+        loadActivity();
+      } else {
+        toast.error("Failed to add service");
+      }
+    } catch (error) {
+      toast.error("Failed to add service");
+    } finally {
+      setSubmittingService(false);
+    }
+  };
+
+  // Add filing handler
+  const handleAddFiling = async () => {
+    if (!filingForm.filing_type) {
+      toast.error("Filing type is required");
+      return;
+    }
+
+    setSubmittingFiling(true);
+    try {
+      const res = await fetch(`/api/crm/clients/${clientId}/tax-filings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...filingForm,
+          tax_year: parseInt(filingForm.tax_year),
+        }),
+      });
+
+      if (res.ok) {
+        toast.success("Tax filing added");
+        setShowAddFiling(false);
+        setFilingForm({
+          tax_year: new Date().getFullYear().toString(),
+          filing_type: "1040",
+          status: "not_started",
+          due_date: "",
+          notes: "",
+        });
+        loadTaxFilings();
+        loadDeadlines();
+        loadActivity();
+      } else {
+        toast.error("Failed to add tax filing");
+      }
+    } catch (error) {
+      toast.error("Failed to add tax filing");
+    } finally {
+      setSubmittingFiling(false);
+    }
+  };
+
+  // Add deadline handler
+  const handleAddDeadline = async () => {
+    if (!deadlineForm.title.trim() || !deadlineForm.due_date) {
+      toast.error("Title and due date are required");
+      return;
+    }
+
+    setSubmittingDeadline(true);
+    try {
+      const res = await fetch(`/api/crm/clients/${clientId}/deadlines`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...deadlineForm,
+          tax_year: deadlineForm.tax_year ? parseInt(deadlineForm.tax_year) : null,
+        }),
+      });
+
+      if (res.ok) {
+        toast.success("Deadline added");
+        setShowAddDeadline(false);
+        setDeadlineForm({
+          deadline_type: "tax_filing",
+          title: "",
+          description: "",
+          due_date: "",
+          tax_year: new Date().getFullYear().toString(),
+        });
+        loadDeadlines();
+      } else {
+        toast.error("Failed to add deadline");
+      }
+    } catch (error) {
+      toast.error("Failed to add deadline");
+    } finally {
+      setSubmittingDeadline(false);
+    }
+  };
+
+  // Group notes by date for timeline
+  const groupNotesByDate = (notes: ClientNote[]) => {
+    const groups: { label: string; notes: ClientNote[] }[] = [];
+    let currentLabel = "";
+
+    const pinnedNotes = notes.filter(n => n.is_pinned);
+    const unpinnedNotes = notes.filter(n => !n.is_pinned);
+
+    if (pinnedNotes.length > 0) {
+      groups.push({ label: "PINNED", notes: pinnedNotes });
+    }
+
+    unpinnedNotes.forEach(note => {
+      const noteDate = parseISO(note.created_at);
+      let label = "";
+
+      if (isToday(noteDate)) {
+        label = "TODAY";
+      } else if (isYesterday(noteDate)) {
+        label = "YESTERDAY";
+      } else {
+        label = format(noteDate, "MMMM d, yyyy").toUpperCase();
+      }
+
+      if (label !== currentLabel) {
+        groups.push({ label, notes: [note] });
+        currentLabel = label;
+      } else {
+        groups[groups.length - 1].notes.push(note);
+      }
+    });
+
+    return groups;
+  };
+
+  if (loading) {
+    return (
+      <>
+        <Header title="Client Detail" />
+        <main className="p-6 space-y-6">
+          <div className="flex items-center gap-4">
+            <Skeleton className="h-16 w-16 rounded-full" />
+            <div className="space-y-2">
+              <Skeleton className="h-6 w-48" />
+              <Skeleton className="h-4 w-32" />
+            </div>
+          </div>
+          <Skeleton className="h-96 w-full" />
+        </main>
+      </>
+    );
+  }
+
+  if (!client) {
+    return (
+      <>
+        <Header title="Client Not Found" />
+        <main className="p-6">
+          <Card className="p-8 text-center">
+            <AlertCircle className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+            <h2 className="text-xl font-semibold mb-2">Client Not Found</h2>
+            <p className="text-muted-foreground mb-4">The client you&apos;re looking for doesn&apos;t exist.</p>
+            <Button asChild>
+              <Link href="/clients">Back to Clients</Link>
+            </Button>
+          </Card>
+        </main>
+      </>
+    );
+  }
+
+  const primaryContact = contacts.find(c => c.is_primary);
+  const noteGroups = groupNotesByDate(notes);
+  const activeServices = services.filter(s => s.status === "active");
+  const upcomingDeadlines = deadlines.slice(0, 5);
 
   return (
     <>
-      <Header title="Client Detail" />
-      <main className="p-6 space-y-6">
-        {/* Client Header Card */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Client ID Banner */}
-          <Card className="bg-gradient-to-r from-accent/90 to-accent text-accent-foreground overflow-hidden">
-            <CardContent className="p-6 flex items-center justify-between">
-              <div>
-                <p className="text-sm opacity-80">Client ID</p>
-                <h2 className="text-3xl font-bold">#{client.id}</h2>
-              </div>
-              <div className="opacity-20">
-                <Building className="h-20 w-20" />
-              </div>
-            </CardContent>
-          </Card>
+      <Header title={client.name} />
+      <main className="flex flex-col h-[calc(100vh-64px)] overflow-hidden">
+        {/* Top Bar */}
+        <div className="h-14 border-b bg-card flex items-center px-4 gap-3 flex-shrink-0">
+          <Link href="/clients" className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
+            <ArrowLeft className="h-4 w-4" />
+            <span className="text-sm">Back to Clients</span>
+          </Link>
 
-          {/* Client Info */}
-          <Card className="lg:col-span-2">
-            <CardContent className="p-6">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-4">
-                  <Avatar className="h-16 w-16 border-2 border-accent">
-                    <AvatarFallback className="text-xl bg-primary text-primary-foreground">
-                      {client.firstName[0]}
-                      {client.lastName[0]}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <h2 className="text-2xl font-bold">{displayName}</h2>
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "mt-1",
-                        client.isActive
-                          ? "bg-green-100 text-green-700 border-green-200"
-                          : "bg-gray-100 text-gray-600"
-                      )}
-                    >
-                      {client.isActive ? "Active Client" : "Inactive"}
-                    </Badge>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" size="icon" title="Call Client">
-                    <Phone className="h-4 w-4" />
-                  </Button>
-                  <Button variant="outline" size="icon" title="Send Email">
-                    <Mail className="h-4 w-4" />
-                  </Button>
-                  <Button variant="outline">
-                    <Edit className="h-4 w-4 mr-2" />
-                    Edit
-                  </Button>
-                  <Button variant="outline" size="icon" className="text-destructive hover:text-destructive" title="Delete Client">
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
+          <div className="h-6 w-px bg-border mx-2" />
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
-                <div className="flex items-center gap-2">
-                  <Phone className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm">{client.phone}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Mail className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-primary">{client.email}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <MapPin className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm">
-                    {client.city}, {client.state}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm">
-                    Since {format(client.createdAt, "MMM yyyy")}
-                  </span>
-                </div>
+          <div className="flex items-center gap-3 flex-1">
+            <Avatar className="h-10 w-10 border-2 border-primary/20">
+              <AvatarFallback className="bg-primary text-primary-foreground">
+                {client.name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            <div>
+              <h1 className="font-semibold">{client.name}</h1>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Badge variant="outline" className={cn(
+                  "text-[10px] px-1.5 py-0",
+                  client.status === "active" ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-700"
+                )}>
+                  {client.status || "Active"}
+                </Badge>
+                {client.client_type && (
+                  <span className="capitalize">{client.client_type.replace("_", " ")}</span>
+                )}
+                {client.client_since && (
+                  <span>Client since {format(parseISO(client.client_since), "MMM yyyy")}</span>
+                )}
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="h-8">
+              <Phone className="h-4 w-4 mr-1.5" />
+              Call
+            </Button>
+            <Button variant="outline" size="sm" className="h-8">
+              <Mail className="h-4 w-4 mr-1.5" />
+              Email
+            </Button>
+            <Button variant="outline" size="sm" className="h-8">
+              <Edit className="h-4 w-4 mr-1.5" />
+              Edit
+            </Button>
+          </div>
         </div>
 
-        {/* Tabs Section */}
-        <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList>
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="tasks">Tasks</TabsTrigger>
-            <TabsTrigger value="documents">Documents</TabsTrigger>
-            <TabsTrigger value="calls">Call History</TabsTrigger>
-            <TabsTrigger value="notes">Notes</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="overview" className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Contact Info */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Contact Information</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Full Name</p>
-                      <p className="font-medium">
-                        {client.firstName} {client.lastName}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Company</p>
-                      <p className="font-medium">
-                        {client.companyName || "N/A"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">
-                        Primary Phone
-                      </p>
-                      <p className="font-medium">{client.phone}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">
-                        Alternate Phone
-                      </p>
-                      <p className="font-medium">
-                        {client.alternatePhone || "N/A"}
-                      </p>
-                    </div>
-                    <div className="col-span-2">
-                      <p className="text-sm text-muted-foreground">Address</p>
-                      <p className="font-medium">
-                        {client.address}, {client.city}, {client.state}{" "}
-                        {client.zipCode}
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Services & Assignment */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Services & Assignment</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-2">
-                      Active Services
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {client.serviceTypes.map((service) => (
-                        <Badge
-                          key={service}
-                          className="bg-accent text-accent-foreground"
-                        >
-                          {service}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-2">
-                      Assigned To
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <Avatar className="h-8 w-8">
-                        <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-                          {client.assignee.name
-                            .split(" ")
-                            .map((n) => n[0])
-                            .join("")}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="font-medium">{client.assignee.name}</span>
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Tax ID</p>
-                    <p className="font-medium font-mono">{client.taxId}</p>
-                  </div>
-                </CardContent>
-              </Card>
+        {/* Content with Tabs */}
+        <div className="flex-1 overflow-hidden">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
+            <div className="border-b bg-card/50 px-4">
+              <TabsList className="h-12 bg-transparent gap-1">
+                <TabsTrigger value="overview" className="data-[state=active]:bg-background">Overview</TabsTrigger>
+                <TabsTrigger value="notes" className="data-[state=active]:bg-background">
+                  Notes
+                  {notes.length > 0 && (
+                    <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5">{notes.length}</Badge>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="contacts" className="data-[state=active]:bg-background">
+                  Contacts
+                  {contacts.length > 0 && (
+                    <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5">{contacts.length}</Badge>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="services" className="data-[state=active]:bg-background">Services</TabsTrigger>
+                <TabsTrigger value="tax-history" className="data-[state=active]:bg-background">Tax History</TabsTrigger>
+                <TabsTrigger value="deadlines" className="data-[state=active]:bg-background">
+                  Deadlines
+                  {upcomingDeadlines.length > 0 && (
+                    <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5">{upcomingDeadlines.length}</Badge>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="activity" className="data-[state=active]:bg-background">Activity</TabsTrigger>
+              </TabsList>
             </div>
 
-            {/* Recent Activity */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Recent Tasks</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Task</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Due Date</TableHead>
-                      <TableHead>Action</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {mockTasks.map((task) => (
-                      <TableRow key={task.id}>
-                        <TableCell className="font-medium">{task.title}</TableCell>
-                        <TableCell>
-                          <Badge
-                            variant="secondary"
-                            className={cn(
-                              "font-normal",
-                              statusConfig[task.status as keyof typeof statusConfig]
-                                .className
-                            )}
-                          >
-                            {
-                              statusConfig[task.status as keyof typeof statusConfig]
-                                .label
-                            }
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {format(task.dueDate, "MMM d, yyyy")}
-                        </TableCell>
-                        <TableCell>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </TabsContent>
+            <ScrollArea className="flex-1">
+              {/* Overview Tab */}
+              <TabsContent value="overview" className="m-0 p-6 space-y-6">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* Contact Info */}
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base">Contact Information</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {client.email && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <Mail className="h-4 w-4 text-muted-foreground" />
+                          <a href={`mailto:${client.email}`} className="text-primary hover:underline">{client.email}</a>
+                        </div>
+                      )}
+                      {client.phone && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <Phone className="h-4 w-4 text-muted-foreground" />
+                          <span>{client.phone}</span>
+                        </div>
+                      )}
+                      {(client.address || client.city) && (
+                        <div className="flex items-start gap-2 text-sm">
+                          <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
+                          <span>
+                            {client.address && <>{client.address}<br /></>}
+                            {client.city}, {client.state} {client.zip_code}
+                          </span>
+                        </div>
+                      )}
+                      {client.website && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <Globe className="h-4 w-4 text-muted-foreground" />
+                          <a href={client.website} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                            {client.website}
+                          </a>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
 
-          <TabsContent value="tasks">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="text-lg">All Tasks</CardTitle>
-                <Button className="bg-primary">Add Task</Button>
-              </CardHeader>
-              <CardContent className="p-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Task ID</TableHead>
-                      <TableHead>Task</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Priority</TableHead>
-                      <TableHead>Due Date</TableHead>
-                      <TableHead>Action</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {mockTasks.map((task) => (
-                      <TableRow key={task.id}>
-                        <TableCell className="font-medium text-primary">
-                          #{task.id}
-                        </TableCell>
-                        <TableCell>{task.title}</TableCell>
-                        <TableCell>
-                          <Badge
-                            variant="secondary"
-                            className={cn(
-                              "font-normal",
-                              statusConfig[task.status as keyof typeof statusConfig]
-                                .className
+                  {/* Primary Contact */}
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base">Primary Contact</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {primaryContact ? (
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-10 w-10">
+                            <AvatarFallback className="bg-primary/10 text-primary">
+                              {primaryContact.first_name[0]}{primaryContact.last_name[0]}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <p className="font-medium">{primaryContact.first_name} {primaryContact.last_name}</p>
+                            {primaryContact.title && (
+                              <p className="text-sm text-muted-foreground">{primaryContact.title}</p>
                             )}
-                          >
-                            {
-                              statusConfig[task.status as keyof typeof statusConfig]
-                                .label
-                            }
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{task.priority}</Badge>
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {format(task.dueDate, "MMM d, yyyy")}
-                        </TableCell>
-                        <TableCell>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="documents">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="text-lg">Documents</CardTitle>
-                <Button className="bg-primary">Upload Document</Button>
-              </CardHeader>
-              <CardContent className="p-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Document</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Uploaded</TableHead>
-                      <TableHead>Action</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {mockDocuments.map((doc) => (
-                      <TableRow key={doc.id}>
-                        <TableCell className="font-medium">
-                          <div className="flex items-center gap-2">
-                            <FileText className="h-4 w-4 text-muted-foreground" />
-                            {doc.name}
+                            {primaryContact.email && (
+                              <p className="text-sm text-primary">{primaryContact.email}</p>
+                            )}
                           </div>
-                        </TableCell>
-                        <TableCell className="capitalize">
-                          {doc.type.replace("_", " ")}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="capitalize">
-                            {doc.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {format(doc.uploadedAt, "MMM d, yyyy")}
-                        </TableCell>
-                        <TableCell>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="calls">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Call History</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Direction</TableHead>
-                      <TableHead>Summary</TableHead>
-                      <TableHead>Duration</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Action</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {mockCalls.map((call) => (
-                      <TableRow key={call.id}>
-                        <TableCell>
-                          <Badge
-                            variant="outline"
-                            className={cn(
-                              call.direction === "inbound"
-                                ? "bg-green-100 text-green-700"
-                                : "bg-blue-100 text-blue-700"
-                            )}
-                          >
-                            {call.direction === "inbound" ? "Inbound" : "Outbound"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="max-w-[300px] truncate">
-                          {call.summary}
-                        </TableCell>
-                        <TableCell>
-                          {Math.floor(call.duration / 60)}:
-                          {String(call.duration % 60).padStart(2, "0")}
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {format(call.timestamp, "MMM d, yyyy h:mm a")}
-                        </TableCell>
-                        <TableCell>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="notes">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="text-lg">Notes ({notes.length})</CardTitle>
-                <Button className="bg-primary" onClick={() => setShowAddNote(true)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Note
-                </Button>
-              </CardHeader>
-              <CardContent>
-                {notes.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <MessageSquare className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                    <p>No notes yet</p>
-                    <p className="text-sm">Add a note to keep track of important information</p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {notes.map((note) => (
-                      <div
-                        key={note.id}
-                        className="border rounded-lg p-4 hover:bg-muted/30 transition-colors"
-                      >
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex-1">
-                            <p className="text-sm whitespace-pre-wrap">{note.content}</p>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                            onClick={() => handleDeleteNote(note.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
+                        </div>
+                      ) : (
+                        <div className="text-sm text-muted-foreground">
+                          <p>No primary contact set</p>
+                          <Button variant="link" className="p-0 h-auto text-primary" onClick={() => setShowAddContact(true)}>
+                            Add a contact
                           </Button>
                         </div>
-                        <div className="flex items-center gap-4 mt-3 pt-3 border-t text-xs text-muted-foreground">
-                          <div className="flex items-center gap-1.5">
-                            <User className="h-3.5 w-3.5" />
-                            <span>{note.createdBy.name}</span>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Business Info */}
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base">Business Details</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2 text-sm">
+                      {client.business_structure && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Structure</span>
+                          <span className="font-medium capitalize">{client.business_structure.replace("_", " ")}</span>
+                        </div>
+                      )}
+                      {client.industry && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Industry</span>
+                          <span className="font-medium">{client.industry}</span>
+                        </div>
+                      )}
+                      {client.ein_tin && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">EIN/TIN</span>
+                          <span className="font-medium font-mono">***-**-{client.ein_tin.slice(-4)}</span>
+                        </div>
+                      )}
+                      {client.fiscal_year_end && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Fiscal Year End</span>
+                          <span className="font-medium">{format(parseISO(client.fiscal_year_end), "MMMM d")}</span>
+                        </div>
+                      )}
+                      {client.billing_rate && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Billing Rate</span>
+                          <span className="font-medium">${client.billing_rate}/hr</span>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Active Services */}
+                <Card>
+                  <CardHeader className="pb-3 flex flex-row items-center justify-between">
+                    <CardTitle className="text-base">Active Services</CardTitle>
+                    <Button variant="outline" size="sm" onClick={() => setShowAddService(true)}>
+                      <Plus className="h-4 w-4 mr-1.5" />
+                      Add Service
+                    </Button>
+                  </CardHeader>
+                  <CardContent>
+                    {activeServices.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {activeServices.map(service => (
+                          <Badge key={service.id} variant="secondary" className="px-3 py-1.5">
+                            <Briefcase className="h-3.5 w-3.5 mr-1.5" />
+                            {service.service_name}
+                            {service.fee_amount && (
+                              <span className="ml-2 text-muted-foreground">
+                                ${service.fee_amount.toLocaleString()}
+                                {service.fee_type === "hourly" && "/hr"}
+                              </span>
+                            )}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No active services</p>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Upcoming Deadlines */}
+                <Card>
+                  <CardHeader className="pb-3 flex flex-row items-center justify-between">
+                    <CardTitle className="text-base">Upcoming Deadlines</CardTitle>
+                    <Button variant="link" size="sm" onClick={() => setActiveTab("deadlines")}>
+                      View All
+                      <ChevronRight className="h-4 w-4 ml-1" />
+                    </Button>
+                  </CardHeader>
+                  <CardContent>
+                    {upcomingDeadlines.length > 0 ? (
+                      <div className="space-y-2">
+                        {upcomingDeadlines.map(deadline => (
+                          <div key={deadline.id} className="flex items-center justify-between p-2 rounded-lg bg-muted/50">
+                            <div className="flex items-center gap-3">
+                              <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                              <div>
+                                <p className="text-sm font-medium">{deadline.title}</p>
+                                <p className="text-xs text-muted-foreground">{deadline.deadline_type}</p>
+                              </div>
+                            </div>
+                            <Badge
+                              variant={new Date(deadline.due_date) < new Date() ? "destructive" : "secondary"}
+                              className={
+                                new Date(deadline.due_date) >= new Date() &&
+                                new Date(deadline.due_date) < new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+                                  ? "bg-yellow-100 text-yellow-800 border-yellow-300"
+                                  : ""
+                              }
+                            >
+                              {format(parseISO(deadline.due_date), "MMM d, yyyy")}
+                            </Badge>
                           </div>
-                          <div className="flex items-center gap-1.5">
-                            <Calendar className="h-3.5 w-3.5" />
-                            <span>{format(note.createdAt, "MMM d, yyyy")}</span>
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <Clock className="h-3.5 w-3.5" />
-                            <span>{format(note.createdAt, "h:mm a")}</span>
-                          </div>
-                          {note.updatedAt && (
-                            <span className="text-muted-foreground/70">
-                              (edited {format(note.updatedAt, "MMM d, yyyy 'at' h:mm a")})
-                            </span>
-                          )}
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No upcoming deadlines</p>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Recent Notes */}
+                <Card>
+                  <CardHeader className="pb-3 flex flex-row items-center justify-between">
+                    <CardTitle className="text-base">Recent Notes</CardTitle>
+                    <Button variant="link" size="sm" onClick={() => setActiveTab("notes")}>
+                      View All
+                      <ChevronRight className="h-4 w-4 ml-1" />
+                    </Button>
+                  </CardHeader>
+                  <CardContent>
+                    {notes.slice(0, 3).length > 0 ? (
+                      <div className="space-y-3">
+                        {notes.slice(0, 3).map(note => {
+                          const noteType = noteTypes.find(t => t.value === note.note_type);
+                          const NoteIcon = noteType?.icon || StickyNote;
+                          return (
+                            <div key={note.id} className="flex items-start gap-3 p-2 rounded-lg hover:bg-muted/50">
+                              <div className={cn("p-1.5 rounded", noteType?.color || "bg-slate-100")}>
+                                <NoteIcon className="h-3.5 w-3.5" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                {note.subject && <p className="text-sm font-medium">{note.subject}</p>}
+                                <p className="text-sm text-muted-foreground line-clamp-2">{note.content}</p>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  {note.user?.full_name} • {formatDistanceToNow(parseISO(note.created_at), { addSuffix: true })}
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No notes yet</p>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              {/* Notes Tab */}
+              <TabsContent value="notes" className="m-0 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <h2 className="text-lg font-semibold">Notes Timeline</h2>
+                    <Select value={noteTypeFilter} onValueChange={setNoteTypeFilter}>
+                      <SelectTrigger className="w-[150px] h-8">
+                        <Filter className="h-3.5 w-3.5 mr-2" />
+                        <SelectValue placeholder="Filter type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Types</SelectItem>
+                        {noteTypes.map(type => (
+                          <SelectItem key={type.value} value={type.value}>
+                            <div className="flex items-center gap-2">
+                              <type.icon className="h-3.5 w-3.5" />
+                              {type.label}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button onClick={() => setShowAddNote(true)}>
+                    <Plus className="h-4 w-4 mr-1.5" />
+                    Add Note
+                  </Button>
+                </div>
+
+                {notes.length === 0 ? (
+                  <Card className="p-8 text-center">
+                    <MessageSquare className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                    <h3 className="font-medium mb-2">No notes yet</h3>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Add a note to keep track of important information about this client.
+                    </p>
+                    <Button onClick={() => setShowAddNote(true)}>
+                      <Plus className="h-4 w-4 mr-1.5" />
+                      Add First Note
+                    </Button>
+                  </Card>
+                ) : (
+                  <div className="space-y-6">
+                    {noteGroups.map(group => (
+                      <div key={group.label}>
+                        <div className="flex items-center gap-3 mb-3">
+                          <span className="text-xs font-medium text-muted-foreground tracking-wider">
+                            {group.label}
+                          </span>
+                          <div className="flex-1 h-px bg-border" />
+                        </div>
+                        <div className="space-y-3">
+                          {group.notes.map(note => {
+                            const noteType = noteTypes.find(t => t.value === note.note_type);
+                            const NoteIcon = noteType?.icon || StickyNote;
+                            return (
+                              <Card key={note.id} className={cn(
+                                "transition-colors",
+                                note.is_pinned && "border-primary/30 bg-primary/5"
+                              )}>
+                                <CardContent className="p-4">
+                                  <div className="flex items-start gap-3">
+                                    <div className={cn("p-2 rounded-lg", noteType?.color || "bg-slate-100")}>
+                                      <NoteIcon className="h-4 w-4" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-start justify-between gap-2">
+                                        <div>
+                                          {note.subject && (
+                                            <h4 className="font-medium">{note.subject}</h4>
+                                          )}
+                                          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                                            <span>{note.user?.full_name || "Unknown"}</span>
+                                            <span>•</span>
+                                            <span>{format(parseISO(note.created_at), "MMM d, yyyy 'at' h:mm a")}</span>
+                                            {note.is_pinned && (
+                                              <>
+                                                <span>•</span>
+                                                <Pin className="h-3 w-3 text-primary" />
+                                              </>
+                                            )}
+                                            {note.is_private && (
+                                              <>
+                                                <span>•</span>
+                                                <Badge variant="outline" className="text-[10px] px-1">Private</Badge>
+                                              </>
+                                            )}
+                                          </div>
+                                        </div>
+                                        <DropdownMenu>
+                                          <DropdownMenuTrigger asChild>
+                                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                                              <MoreVertical className="h-4 w-4" />
+                                            </Button>
+                                          </DropdownMenuTrigger>
+                                          <DropdownMenuContent align="end">
+                                            <DropdownMenuItem onClick={() => handleTogglePin(note.id, note.is_pinned)}>
+                                              {note.is_pinned ? (
+                                                <>
+                                                  <PinOff className="h-4 w-4 mr-2" />
+                                                  Unpin
+                                                </>
+                                              ) : (
+                                                <>
+                                                  <Pin className="h-4 w-4 mr-2" />
+                                                  Pin
+                                                </>
+                                              )}
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem>
+                                              <Edit className="h-4 w-4 mr-2" />
+                                              Edit
+                                            </DropdownMenuItem>
+                                            <DropdownMenuSeparator />
+                                            <DropdownMenuItem
+                                              className="text-destructive"
+                                              onClick={() => handleDeleteNote(note.id)}
+                                            >
+                                              <Trash2 className="h-4 w-4 mr-2" />
+                                              Delete
+                                            </DropdownMenuItem>
+                                          </DropdownMenuContent>
+                                        </DropdownMenu>
+                                      </div>
+                                      <p className="text-sm mt-2 whitespace-pre-wrap">{note.content}</p>
+                                      {note.follow_up_date && !note.follow_up_completed && (
+                                        <div className="mt-3 p-2 rounded bg-amber-50 border border-amber-200 text-amber-700 text-xs flex items-center gap-2">
+                                          <Clock className="h-3.5 w-3.5" />
+                                          Follow-up: {format(parseISO(note.follow_up_date), "MMM d, yyyy")}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </CardContent>
+                              </Card>
+                            );
+                          })}
                         </div>
                       </div>
                     ))}
                   </div>
                 )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+              </TabsContent>
+
+              {/* Contacts Tab */}
+              <TabsContent value="contacts" className="m-0 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold">Contacts ({contacts.length})</h2>
+                  <Button onClick={() => setShowAddContact(true)}>
+                    <Plus className="h-4 w-4 mr-1.5" />
+                    Add Contact
+                  </Button>
+                </div>
+
+                {contacts.length === 0 ? (
+                  <Card className="p-8 text-center">
+                    <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                    <h3 className="font-medium mb-2">No contacts yet</h3>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Add contacts to keep track of people associated with this client.
+                    </p>
+                    <Button onClick={() => setShowAddContact(true)}>
+                      <Plus className="h-4 w-4 mr-1.5" />
+                      Add First Contact
+                    </Button>
+                  </Card>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {contacts.map(contact => (
+                      <Card key={contact.id} className={cn(
+                        contact.is_primary && "border-primary/30"
+                      )}>
+                        <CardContent className="p-4">
+                          <div className="flex items-start justify-between">
+                            <div className="flex items-center gap-3">
+                              <Avatar className="h-10 w-10">
+                                <AvatarFallback className="bg-primary/10 text-primary">
+                                  {contact.first_name[0]}{contact.last_name[0]}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <p className="font-medium">
+                                  {contact.first_name} {contact.last_name}
+                                  {contact.is_primary && (
+                                    <Badge variant="secondary" className="ml-2 text-[10px]">Primary</Badge>
+                                  )}
+                                </p>
+                                {contact.title && (
+                                  <p className="text-sm text-muted-foreground">{contact.title}</p>
+                                )}
+                              </div>
+                            </div>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem>
+                                  <Edit className="h-4 w-4 mr-2" />
+                                  Edit
+                                </DropdownMenuItem>
+                                {!contact.is_primary && (
+                                  <DropdownMenuItem>
+                                    <CheckCircle className="h-4 w-4 mr-2" />
+                                    Set as Primary
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem className="text-destructive">
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Delete
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                          <div className="mt-3 space-y-1.5 text-sm">
+                            {contact.email && (
+                              <div className="flex items-center gap-2">
+                                <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+                                <a href={`mailto:${contact.email}`} className="text-primary hover:underline">{contact.email}</a>
+                              </div>
+                            )}
+                            {contact.phone && (
+                              <div className="flex items-center gap-2">
+                                <Phone className="h-3.5 w-3.5 text-muted-foreground" />
+                                <span>{contact.phone}</span>
+                              </div>
+                            )}
+                            {contact.mobile && (
+                              <div className="flex items-center gap-2">
+                                <Phone className="h-3.5 w-3.5 text-muted-foreground" />
+                                <span>{contact.mobile} (mobile)</span>
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap gap-1.5 mt-3">
+                            {contact.is_authorized_signer && (
+                              <Badge variant="outline" className="text-[10px]">Authorized Signer</Badge>
+                            )}
+                            {contact.receives_tax_docs && (
+                              <Badge variant="outline" className="text-[10px]">Tax Docs</Badge>
+                            )}
+                            {contact.receives_invoices && (
+                              <Badge variant="outline" className="text-[10px]">Invoices</Badge>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </TabsContent>
+
+              {/* Services Tab */}
+              <TabsContent value="services" className="m-0 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold">Services ({services.length})</h2>
+                  <Button onClick={() => setShowAddService(true)}>
+                    <Plus className="h-4 w-4 mr-1.5" />
+                    Add Service
+                  </Button>
+                </div>
+
+                {services.length === 0 ? (
+                  <Card className="p-8 text-center">
+                    <Briefcase className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                    <h3 className="font-medium mb-2">No services yet</h3>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Add services to track what you provide to this client.
+                    </p>
+                    <Button onClick={() => setShowAddService(true)}>
+                      <Plus className="h-4 w-4 mr-1.5" />
+                      Add First Service
+                    </Button>
+                  </Card>
+                ) : (
+                  <div className="space-y-4">
+                    {services.map(service => (
+                      <Card key={service.id}>
+                        <CardContent className="p-4">
+                          <div className="flex items-start justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="p-2 rounded-lg bg-primary/10">
+                                <Briefcase className="h-5 w-5 text-primary" />
+                              </div>
+                              <div>
+                                <h3 className="font-medium">{service.service_name}</h3>
+                                <p className="text-sm text-muted-foreground capitalize">
+                                  {service.service_type.replace(/_/g, " ")}
+                                  {service.frequency !== "one_time" && ` • ${service.frequency}`}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Badge variant={service.status === "active" ? "default" : "secondary"} className="capitalize">
+                                {service.status}
+                              </Badge>
+                              {service.fee_amount && (
+                                <span className="text-sm font-medium">
+                                  ${service.fee_amount.toLocaleString()}
+                                  {service.fee_type === "hourly" && "/hr"}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          {service.description && (
+                            <p className="text-sm text-muted-foreground mt-3">{service.description}</p>
+                          )}
+                          {(service.start_date || service.tax_year) && (
+                            <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
+                              {service.start_date && (
+                                <span>Started: {format(parseISO(service.start_date), "MMM d, yyyy")}</span>
+                              )}
+                              {service.tax_year && (
+                                <span>Tax Year: {service.tax_year}</span>
+                              )}
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </TabsContent>
+
+              {/* Tax History Tab */}
+              <TabsContent value="tax-history" className="m-0 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold">Tax Filing History</h2>
+                  <Button onClick={() => setShowAddFiling(true)}>
+                    <Plus className="h-4 w-4 mr-1.5" />
+                    Add Filing
+                  </Button>
+                </div>
+
+                {taxFilings.length === 0 ? (
+                  <Card className="p-8 text-center">
+                    <Receipt className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                    <h3 className="font-medium mb-2">No tax filings yet</h3>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Track tax returns and their status for this client.
+                    </p>
+                    <Button onClick={() => setShowAddFiling(true)}>
+                      <Plus className="h-4 w-4 mr-1.5" />
+                      Add First Filing
+                    </Button>
+                  </Card>
+                ) : (
+                  <div className="space-y-4">
+                    {/* Group by tax year */}
+                    {Array.from(new Set(taxFilings.map(f => f.tax_year))).sort((a, b) => b - a).map(year => (
+                      <div key={year}>
+                        <h3 className="text-sm font-medium text-muted-foreground mb-3">Tax Year {year}</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {taxFilings.filter(f => f.tax_year === year).map(filing => {
+                            const statusConfig = filingStatuses.find(s => s.value === filing.status);
+                            return (
+                              <Card key={filing.id}>
+                                <CardContent className="p-4">
+                                  <div className="flex items-start justify-between">
+                                    <div>
+                                      <h4 className="font-medium">{filing.filing_type}</h4>
+                                      <Badge variant="secondary" className={cn("mt-1", statusConfig?.color)}>
+                                        {statusConfig?.label || filing.status}
+                                      </Badge>
+                                    </div>
+                                    <DropdownMenu>
+                                      <DropdownMenuTrigger asChild>
+                                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                                          <MoreVertical className="h-4 w-4" />
+                                        </Button>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent align="end">
+                                        <DropdownMenuItem>
+                                          <Edit className="h-4 w-4 mr-2" />
+                                          Update Status
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem>
+                                          <FileText className="h-4 w-4 mr-2" />
+                                          View Documents
+                                        </DropdownMenuItem>
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-2 mt-3 text-sm">
+                                    {filing.due_date && (
+                                      <div>
+                                        <span className="text-muted-foreground">Due: </span>
+                                        <span>{format(parseISO(filing.due_date), "MMM d, yyyy")}</span>
+                                      </div>
+                                    )}
+                                    {filing.filed_date && (
+                                      <div>
+                                        <span className="text-muted-foreground">Filed: </span>
+                                        <span>{format(parseISO(filing.filed_date), "MMM d, yyyy")}</span>
+                                      </div>
+                                    )}
+                                    {filing.refund_amount && (
+                                      <div className="text-green-600">
+                                        Refund: ${filing.refund_amount.toLocaleString()}
+                                      </div>
+                                    )}
+                                    {filing.amount_owed && (
+                                      <div className="text-red-600">
+                                        Owed: ${filing.amount_owed.toLocaleString()}
+                                      </div>
+                                    )}
+                                  </div>
+                                  {filing.document_progress && filing.document_progress.total > 0 && (
+                                    <div className="mt-3">
+                                      <div className="flex items-center justify-between text-xs mb-1">
+                                        <span className="text-muted-foreground">Documents</span>
+                                        <span>{filing.document_progress.received}/{filing.document_progress.total}</span>
+                                      </div>
+                                      <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                                        <div
+                                          className="h-full bg-primary rounded-full transition-all"
+                                          style={{ width: `${(filing.document_progress.received / filing.document_progress.total) * 100}%` }}
+                                        />
+                                      </div>
+                                    </div>
+                                  )}
+                                </CardContent>
+                              </Card>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </TabsContent>
+
+              {/* Deadlines Tab */}
+              <TabsContent value="deadlines" className="m-0 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold">Deadlines</h2>
+                  <Button onClick={() => setShowAddDeadline(true)}>
+                    <Plus className="h-4 w-4 mr-1.5" />
+                    Add Deadline
+                  </Button>
+                </div>
+
+                {deadlines.length === 0 ? (
+                  <Card className="p-8 text-center">
+                    <CalendarDays className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                    <h3 className="font-medium mb-2">No deadlines</h3>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Add deadlines to track important dates for this client.
+                    </p>
+                    <Button onClick={() => setShowAddDeadline(true)}>
+                      <Plus className="h-4 w-4 mr-1.5" />
+                      Add First Deadline
+                    </Button>
+                  </Card>
+                ) : (
+                  <div className="space-y-3">
+                    {deadlines.map(deadline => {
+                      const dueDate = parseISO(deadline.due_date);
+                      const isPast = dueDate < new Date();
+                      const isUrgent = dueDate < new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+                      return (
+                        <Card key={deadline.id} className={cn(
+                          isPast && deadline.status !== "completed" && "border-red-200 bg-red-50"
+                        )}>
+                          <CardContent className="p-4">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <div className={cn(
+                                  "p-2 rounded-lg",
+                                  isPast && deadline.status !== "completed" ? "bg-red-100" :
+                                  isUrgent ? "bg-amber-100" : "bg-slate-100"
+                                )}>
+                                  <CalendarDays className={cn(
+                                    "h-5 w-5",
+                                    isPast && deadline.status !== "completed" ? "text-red-600" :
+                                    isUrgent ? "text-amber-600" : "text-slate-600"
+                                  )} />
+                                </div>
+                                <div>
+                                  <h4 className="font-medium">{deadline.title}</h4>
+                                  <p className="text-sm text-muted-foreground">
+                                    {deadline.deadline_type}
+                                    {deadline.tax_year && ` • Tax Year ${deadline.tax_year}`}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <Badge
+                                  variant={
+                                    deadline.status === "completed" ? "default" :
+                                    isPast ? "destructive" : "secondary"
+                                  }
+                                  className={
+                                    deadline.status !== "completed" && !isPast && isUrgent
+                                      ? "bg-yellow-100 text-yellow-800 border-yellow-300"
+                                      : ""
+                                  }
+                                >
+                                  {format(dueDate, "MMM d, yyyy")}
+                                </Badge>
+                                <Checkbox checked={deadline.status === "completed"} />
+                              </div>
+                            </div>
+                            {deadline.description && (
+                              <p className="text-sm text-muted-foreground mt-2">{deadline.description}</p>
+                            )}
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                )}
+              </TabsContent>
+
+              {/* Activity Tab */}
+              <TabsContent value="activity" className="m-0 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold">Activity Timeline</h2>
+                  <Button variant="outline" size="sm" onClick={loadActivity}>
+                    <RefreshCw className="h-4 w-4 mr-1.5" />
+                    Refresh
+                  </Button>
+                </div>
+
+                {activities.length === 0 ? (
+                  <Card className="p-8 text-center">
+                    <Clock className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                    <h3 className="font-medium mb-2">No activity yet</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Activity will appear here as you interact with this client.
+                    </p>
+                  </Card>
+                ) : (
+                  <div className="space-y-3">
+                    {activities.map(activity => {
+                      const activityIcons: Record<string, typeof StickyNote> = {
+                        note: StickyNote,
+                        call: PhoneCall,
+                        meeting: Video,
+                        email_sent: MailOpen,
+                        email_received: Mail,
+                        service: Briefcase,
+                        tax_filing: Receipt,
+                      };
+                      const ActivityIcon = activityIcons[activity.type] || Clock;
+                      return (
+                        <div key={activity.id} className="flex items-start gap-3 p-3 rounded-lg hover:bg-muted/50">
+                          <div className="p-1.5 rounded bg-muted">
+                            <ActivityIcon className="h-4 w-4 text-muted-foreground" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium">{activity.title}</p>
+                            {activity.description && (
+                              <p className="text-sm text-muted-foreground line-clamp-2">{activity.description}</p>
+                            )}
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {activity.user?.full_name && `${activity.user.full_name} • `}
+                              {formatDistanceToNow(parseISO(activity.timestamp), { addSuffix: true })}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </TabsContent>
+            </ScrollArea>
+          </Tabs>
+        </div>
       </main>
 
       {/* Add Note Dialog */}
       <Dialog open={showAddNote} onOpenChange={setShowAddNote}>
-        <DialogContent>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Add Note</DialogTitle>
             <DialogDescription>
-              Add a note for {displayName}. Notes are timestamped and visible to all team members.
+              Add a note for {client.name}. Notes are timestamped and visible to team members.
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4">
-            <Textarea
-              placeholder="Enter your note here..."
-              className="min-h-[120px]"
-              value={newNoteContent}
-              onChange={(e) => setNewNoteContent(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground mt-2">
-              This note will be saved with your name and the current date/time.
-            </p>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium mb-1.5 block">Note Type</label>
+                <Select
+                  value={noteForm.note_type}
+                  onValueChange={(value) => setNoteForm({ ...noteForm, note_type: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {noteTypes.map(type => (
+                      <SelectItem key={type.value} value={type.value}>
+                        <div className="flex items-center gap-2">
+                          <type.icon className="h-4 w-4" />
+                          {type.label}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-1.5 block">Subject (optional)</label>
+                <Input
+                  placeholder="Brief subject..."
+                  value={noteForm.subject}
+                  onChange={(e) => setNoteForm({ ...noteForm, subject: e.target.value })}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1.5 block">Note</label>
+              <Textarea
+                placeholder="Enter your note here..."
+                className="min-h-[120px]"
+                value={noteForm.content}
+                onChange={(e) => setNoteForm({ ...noteForm, content: e.target.value })}
+              />
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="pin-note"
+                  checked={noteForm.is_pinned}
+                  onCheckedChange={(checked) => setNoteForm({ ...noteForm, is_pinned: !!checked })}
+                />
+                <label htmlFor="pin-note" className="text-sm">Pin this note</label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="private-note"
+                  checked={noteForm.is_private}
+                  onCheckedChange={(checked) => setNoteForm({ ...noteForm, is_private: !!checked })}
+                />
+                <label htmlFor="private-note" className="text-sm">Private (only visible to me)</label>
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1.5 block">Follow-up Date (optional)</label>
+              <Input
+                type="date"
+                value={noteForm.follow_up_date}
+                onChange={(e) => setNoteForm({ ...noteForm, follow_up_date: e.target.value })}
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowAddNote(false)}>
               Cancel
             </Button>
-            <Button onClick={handleAddNote} disabled={!newNoteContent.trim()}>
-              <Plus className="h-4 w-4 mr-2" />
+            <Button onClick={handleAddNote} disabled={!noteForm.content.trim()}>
+              <Plus className="h-4 w-4 mr-1.5" />
               Add Note
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Contact Dialog */}
+      <Dialog open={showAddContact} onOpenChange={setShowAddContact}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Add Contact</DialogTitle>
+            <DialogDescription>
+              Add a new contact for {client.name}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2 max-h-[60vh] overflow-y-auto">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="contact-first-name">First Name *</Label>
+                <Input
+                  id="contact-first-name"
+                  placeholder="First name"
+                  value={contactForm.first_name}
+                  onChange={(e) => setContactForm({ ...contactForm, first_name: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="contact-last-name">Last Name *</Label>
+                <Input
+                  id="contact-last-name"
+                  placeholder="Last name"
+                  value={contactForm.last_name}
+                  onChange={(e) => setContactForm({ ...contactForm, last_name: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="contact-title">Title/Position</Label>
+              <Input
+                id="contact-title"
+                placeholder="e.g., Owner, CFO, Accountant"
+                value={contactForm.title}
+                onChange={(e) => setContactForm({ ...contactForm, title: e.target.value })}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="contact-email">Email</Label>
+              <Input
+                id="contact-email"
+                type="email"
+                placeholder="email@example.com"
+                value={contactForm.email}
+                onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="contact-phone">Phone</Label>
+                <Input
+                  id="contact-phone"
+                  placeholder="(555) 123-4567"
+                  value={contactForm.phone}
+                  onChange={(e) => setContactForm({ ...contactForm, phone: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="contact-mobile">Mobile</Label>
+                <Input
+                  id="contact-mobile"
+                  placeholder="(555) 123-4567"
+                  value={contactForm.mobile}
+                  onChange={(e) => setContactForm({ ...contactForm, mobile: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-3 pt-2 border-t">
+              <Label className="text-sm text-muted-foreground">Contact Settings</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="contact-primary" className="text-sm font-normal">Primary Contact</Label>
+                <Checkbox
+                  id="contact-primary"
+                  checked={contactForm.is_primary}
+                  onCheckedChange={(checked) => setContactForm({ ...contactForm, is_primary: !!checked })}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="contact-signer" className="text-sm font-normal">Authorized Signer</Label>
+                <Checkbox
+                  id="contact-signer"
+                  checked={contactForm.is_authorized_signer}
+                  onCheckedChange={(checked) => setContactForm({ ...contactForm, is_authorized_signer: !!checked })}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="contact-tax-docs" className="text-sm font-normal">Receives Tax Documents</Label>
+                <Checkbox
+                  id="contact-tax-docs"
+                  checked={contactForm.receives_tax_docs}
+                  onCheckedChange={(checked) => setContactForm({ ...contactForm, receives_tax_docs: !!checked })}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="contact-invoices" className="text-sm font-normal">Receives Invoices</Label>
+                <Checkbox
+                  id="contact-invoices"
+                  checked={contactForm.receives_invoices}
+                  onCheckedChange={(checked) => setContactForm({ ...contactForm, receives_invoices: !!checked })}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="contact-notes">Notes</Label>
+              <Textarea
+                id="contact-notes"
+                placeholder="Additional notes about this contact..."
+                rows={2}
+                value={contactForm.notes}
+                onChange={(e) => setContactForm({ ...contactForm, notes: e.target.value })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddContact(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAddContact}
+              disabled={submittingContact || !contactForm.first_name.trim() || !contactForm.last_name.trim()}
+            >
+              {submittingContact ? "Adding..." : "Add Contact"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Service Dialog */}
+      <Dialog open={showAddService} onOpenChange={setShowAddService}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Add Service</DialogTitle>
+            <DialogDescription>
+              Add a new service for {client.name}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2 max-h-[60vh] overflow-y-auto">
+            <div className="space-y-2">
+              <Label htmlFor="service-type">Service Type</Label>
+              <Select
+                value={serviceForm.service_type}
+                onValueChange={(value) => setServiceForm({ ...serviceForm, service_type: value })}
+              >
+                <SelectTrigger id="service-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="tax_preparation">Tax Preparation</SelectItem>
+                  <SelectItem value="bookkeeping">Bookkeeping</SelectItem>
+                  <SelectItem value="payroll">Payroll</SelectItem>
+                  <SelectItem value="consulting">Consulting</SelectItem>
+                  <SelectItem value="audit">Audit</SelectItem>
+                  <SelectItem value="planning">Tax Planning</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="service-name">Service Name *</Label>
+              <Input
+                id="service-name"
+                placeholder="e.g., 2024 Personal Tax Return"
+                value={serviceForm.service_name}
+                onChange={(e) => setServiceForm({ ...serviceForm, service_name: e.target.value })}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="service-description">Description</Label>
+              <Textarea
+                id="service-description"
+                placeholder="Details about this service..."
+                rows={2}
+                value={serviceForm.description}
+                onChange={(e) => setServiceForm({ ...serviceForm, description: e.target.value })}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="service-frequency">Frequency</Label>
+                <Select
+                  value={serviceForm.frequency}
+                  onValueChange={(value) => setServiceForm({ ...serviceForm, frequency: value })}
+                >
+                  <SelectTrigger id="service-frequency">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="one_time">One Time</SelectItem>
+                    <SelectItem value="monthly">Monthly</SelectItem>
+                    <SelectItem value="quarterly">Quarterly</SelectItem>
+                    <SelectItem value="annual">Annual</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="service-status">Status</Label>
+                <Select
+                  value={serviceForm.status}
+                  onValueChange={(value) => setServiceForm({ ...serviceForm, status: value })}
+                >
+                  <SelectTrigger id="service-status">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="completed">Completed</SelectItem>
+                    <SelectItem value="cancelled">Cancelled</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="service-fee-type">Fee Type</Label>
+                <Select
+                  value={serviceForm.fee_type}
+                  onValueChange={(value) => setServiceForm({ ...serviceForm, fee_type: value })}
+                >
+                  <SelectTrigger id="service-fee-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="fixed">Fixed</SelectItem>
+                    <SelectItem value="hourly">Hourly</SelectItem>
+                    <SelectItem value="retainer">Retainer</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="service-fee-amount">Fee Amount ($)</Label>
+                <Input
+                  id="service-fee-amount"
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={serviceForm.fee_amount}
+                  onChange={(e) => setServiceForm({ ...serviceForm, fee_amount: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="service-start-date">Start Date</Label>
+                <Input
+                  id="service-start-date"
+                  type="date"
+                  value={serviceForm.start_date}
+                  onChange={(e) => setServiceForm({ ...serviceForm, start_date: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="service-tax-year">Tax Year</Label>
+                <Input
+                  id="service-tax-year"
+                  type="number"
+                  placeholder="2024"
+                  value={serviceForm.tax_year}
+                  onChange={(e) => setServiceForm({ ...serviceForm, tax_year: e.target.value })}
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddService(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAddService}
+              disabled={submittingService || !serviceForm.service_name.trim()}
+            >
+              {submittingService ? "Adding..." : "Add Service"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Filing Dialog */}
+      <Dialog open={showAddFiling} onOpenChange={setShowAddFiling}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Add Tax Filing</DialogTitle>
+            <DialogDescription>
+              Add a tax filing for {client.name}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="filing-tax-year">Tax Year *</Label>
+                <Input
+                  id="filing-tax-year"
+                  type="number"
+                  placeholder="2024"
+                  value={filingForm.tax_year}
+                  onChange={(e) => setFilingForm({ ...filingForm, tax_year: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="filing-type">Filing Type *</Label>
+                <Select
+                  value={filingForm.filing_type}
+                  onValueChange={(value) => setFilingForm({ ...filingForm, filing_type: value })}
+                >
+                  <SelectTrigger id="filing-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1040">1040 - Personal</SelectItem>
+                    <SelectItem value="1120">1120 - C Corporation</SelectItem>
+                    <SelectItem value="1120S">1120S - S Corporation</SelectItem>
+                    <SelectItem value="1065">1065 - Partnership</SelectItem>
+                    <SelectItem value="990">990 - Non-Profit</SelectItem>
+                    <SelectItem value="941">941 - Quarterly Payroll</SelectItem>
+                    <SelectItem value="940">940 - Annual FUTA</SelectItem>
+                    <SelectItem value="state">State Return</SelectItem>
+                    <SelectItem value="extension">Extension</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="filing-status">Status</Label>
+                <Select
+                  value={filingForm.status}
+                  onValueChange={(value) => setFilingForm({ ...filingForm, status: value })}
+                >
+                  <SelectTrigger id="filing-status">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="not_started">Not Started</SelectItem>
+                    <SelectItem value="docs_requested">Documents Requested</SelectItem>
+                    <SelectItem value="docs_received">Documents Received</SelectItem>
+                    <SelectItem value="in_progress">In Progress</SelectItem>
+                    <SelectItem value="in_review">In Review</SelectItem>
+                    <SelectItem value="ready_to_file">Ready to File</SelectItem>
+                    <SelectItem value="filed">Filed</SelectItem>
+                    <SelectItem value="accepted">Accepted</SelectItem>
+                    <SelectItem value="rejected">Rejected</SelectItem>
+                    <SelectItem value="amended">Amended</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="filing-due-date">Due Date</Label>
+                <Input
+                  id="filing-due-date"
+                  type="date"
+                  value={filingForm.due_date}
+                  onChange={(e) => setFilingForm({ ...filingForm, due_date: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="filing-notes">Notes</Label>
+              <Textarea
+                id="filing-notes"
+                placeholder="Additional notes about this filing..."
+                rows={3}
+                value={filingForm.notes}
+                onChange={(e) => setFilingForm({ ...filingForm, notes: e.target.value })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddFiling(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAddFiling}
+              disabled={submittingFiling || !filingForm.filing_type}
+            >
+              {submittingFiling ? "Adding..." : "Add Tax Filing"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Deadline Dialog */}
+      <Dialog open={showAddDeadline} onOpenChange={setShowAddDeadline}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Add Deadline</DialogTitle>
+            <DialogDescription>
+              Add a deadline for {client.name}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="deadline-type">Deadline Type</Label>
+              <Select
+                value={deadlineForm.deadline_type}
+                onValueChange={(value) => setDeadlineForm({ ...deadlineForm, deadline_type: value })}
+              >
+                <SelectTrigger id="deadline-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="tax_filing">Tax Filing</SelectItem>
+                  <SelectItem value="document_request">Document Request</SelectItem>
+                  <SelectItem value="payment">Payment Due</SelectItem>
+                  <SelectItem value="extension">Extension</SelectItem>
+                  <SelectItem value="estimated_payment">Estimated Payment</SelectItem>
+                  <SelectItem value="meeting">Meeting/Appointment</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="deadline-title">Title *</Label>
+              <Input
+                id="deadline-title"
+                placeholder="e.g., 2024 Tax Return Due"
+                value={deadlineForm.title}
+                onChange={(e) => setDeadlineForm({ ...deadlineForm, title: e.target.value })}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="deadline-due-date">Due Date *</Label>
+                <Input
+                  id="deadline-due-date"
+                  type="date"
+                  value={deadlineForm.due_date}
+                  onChange={(e) => setDeadlineForm({ ...deadlineForm, due_date: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="deadline-tax-year">Tax Year</Label>
+                <Input
+                  id="deadline-tax-year"
+                  type="number"
+                  placeholder="2024"
+                  value={deadlineForm.tax_year}
+                  onChange={(e) => setDeadlineForm({ ...deadlineForm, tax_year: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="deadline-description">Description</Label>
+              <Textarea
+                id="deadline-description"
+                placeholder="Additional details about this deadline..."
+                rows={3}
+                value={deadlineForm.description}
+                onChange={(e) => setDeadlineForm({ ...deadlineForm, description: e.target.value })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddDeadline(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAddDeadline}
+              disabled={submittingDeadline || !deadlineForm.title.trim() || !deadlineForm.due_date}
+            >
+              {submittingDeadline ? "Adding..." : "Add Deadline"}
             </Button>
           </DialogFooter>
         </DialogContent>
