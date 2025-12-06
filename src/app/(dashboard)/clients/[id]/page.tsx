@@ -740,6 +740,170 @@ export default function ClientDetailPage() {
     }
   };
 
+  // Delete contact handler
+  const handleDeleteContact = async (contactId: string) => {
+    if (!confirm("Are you sure you want to delete this contact?")) return;
+
+    try {
+      const res = await fetch(`/api/crm/clients/${clientId}/contacts/${contactId}`, {
+        method: "DELETE",
+      });
+
+      if (res.ok) {
+        toast.success("Contact deleted");
+        loadContacts();
+      } else {
+        toast.error("Failed to delete contact");
+      }
+    } catch (error) {
+      toast.error("Failed to delete contact");
+    }
+  };
+
+  // Set primary contact handler
+  const handleSetPrimaryContact = async (contactId: string) => {
+    try {
+      const res = await fetch(`/api/crm/clients/${clientId}/contacts/${contactId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_primary: true }),
+      });
+
+      if (res.ok) {
+        toast.success("Primary contact updated");
+        loadContacts();
+      } else {
+        toast.error("Failed to update contact");
+      }
+    } catch (error) {
+      toast.error("Failed to update contact");
+    }
+  };
+
+  // Delete service handler
+  const handleDeleteService = async (serviceId: string) => {
+    if (!confirm("Are you sure you want to delete this service?")) return;
+
+    try {
+      const res = await fetch(`/api/crm/clients/${clientId}/services/${serviceId}`, {
+        method: "DELETE",
+      });
+
+      if (res.ok) {
+        toast.success("Service deleted");
+        loadServices();
+        loadActivity();
+      } else {
+        toast.error("Failed to delete service");
+      }
+    } catch (error) {
+      toast.error("Failed to delete service");
+    }
+  };
+
+  // Update service status handler
+  const handleUpdateServiceStatus = async (serviceId: string, status: string) => {
+    try {
+      const res = await fetch(`/api/crm/clients/${clientId}/services/${serviceId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+
+      if (res.ok) {
+        toast.success("Service status updated");
+        loadServices();
+      } else {
+        toast.error("Failed to update service");
+      }
+    } catch (error) {
+      toast.error("Failed to update service");
+    }
+  };
+
+  // Delete tax filing handler
+  const handleDeleteFiling = async (filingId: string) => {
+    if (!confirm("Are you sure you want to delete this tax filing?")) return;
+
+    try {
+      const res = await fetch(`/api/crm/clients/${clientId}/tax-filings/${filingId}`, {
+        method: "DELETE",
+      });
+
+      if (res.ok) {
+        toast.success("Tax filing deleted");
+        loadTaxFilings();
+        loadActivity();
+      } else {
+        toast.error("Failed to delete filing");
+      }
+    } catch (error) {
+      toast.error("Failed to delete filing");
+    }
+  };
+
+  // Update tax filing status handler
+  const handleUpdateFilingStatus = async (filingId: string, status: string) => {
+    try {
+      const res = await fetch(`/api/crm/clients/${clientId}/tax-filings/${filingId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+
+      if (res.ok) {
+        toast.success("Filing status updated");
+        loadTaxFilings();
+      } else {
+        toast.error("Failed to update filing");
+      }
+    } catch (error) {
+      toast.error("Failed to update filing");
+    }
+  };
+
+  // Delete deadline handler
+  const handleDeleteDeadline = async (deadlineId: string) => {
+    if (!confirm("Are you sure you want to delete this deadline?")) return;
+
+    try {
+      const res = await fetch(`/api/crm/clients/${clientId}/deadlines/${deadlineId}`, {
+        method: "DELETE",
+      });
+
+      if (res.ok) {
+        toast.success("Deadline deleted");
+        loadDeadlines();
+      } else {
+        toast.error("Failed to delete deadline");
+      }
+    } catch (error) {
+      toast.error("Failed to delete deadline");
+    }
+  };
+
+  // Toggle deadline completion handler
+  const handleToggleDeadline = async (deadlineId: string, currentStatus: string) => {
+    const newStatus = currentStatus === "completed" ? "upcoming" : "completed";
+
+    try {
+      const res = await fetch(`/api/crm/clients/${clientId}/deadlines/${deadlineId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (res.ok) {
+        toast.success(newStatus === "completed" ? "Deadline completed" : "Deadline reopened");
+        loadDeadlines();
+      } else {
+        toast.error("Failed to update deadline");
+      }
+    } catch (error) {
+      toast.error("Failed to update deadline");
+    }
+  };
+
   // Group notes by date for timeline
   const groupNotesByDate = (notes: ClientNote[]) => {
     const groups: { label: string; notes: ClientNote[] }[] = [];
@@ -1325,18 +1489,17 @@ export default function ClientDetailPage() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem>
-                                  <Edit className="h-4 w-4 mr-2" />
-                                  Edit
-                                </DropdownMenuItem>
                                 {!contact.is_primary && (
-                                  <DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => handleSetPrimaryContact(contact.id)}>
                                     <CheckCircle className="h-4 w-4 mr-2" />
                                     Set as Primary
                                   </DropdownMenuItem>
                                 )}
                                 <DropdownMenuSeparator />
-                                <DropdownMenuItem className="text-destructive">
+                                <DropdownMenuItem
+                                  className="text-destructive"
+                                  onClick={() => handleDeleteContact(contact.id)}
+                                >
                                   <Trash2 className="h-4 w-4 mr-2" />
                                   Delete
                                 </DropdownMenuItem>
@@ -1431,6 +1594,35 @@ export default function ClientDetailPage() {
                                   {service.fee_type === "hourly" && "/hr"}
                                 </span>
                               )}
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                                    <MoreVertical className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  {service.status === "active" && (
+                                    <DropdownMenuItem onClick={() => handleUpdateServiceStatus(service.id, "completed")}>
+                                      <CheckCircle className="h-4 w-4 mr-2" />
+                                      Mark Completed
+                                    </DropdownMenuItem>
+                                  )}
+                                  {service.status === "completed" && (
+                                    <DropdownMenuItem onClick={() => handleUpdateServiceStatus(service.id, "active")}>
+                                      <Clock className="h-4 w-4 mr-2" />
+                                      Reactivate
+                                    </DropdownMenuItem>
+                                  )}
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    className="text-destructive"
+                                    onClick={() => handleDeleteService(service.id)}
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                    Delete
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
                             </div>
                           </div>
                           {service.description && (
@@ -1501,13 +1693,25 @@ export default function ClientDetailPage() {
                                         </Button>
                                       </DropdownMenuTrigger>
                                       <DropdownMenuContent align="end">
-                                        <DropdownMenuItem>
-                                          <Edit className="h-4 w-4 mr-2" />
-                                          Update Status
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem>
-                                          <FileText className="h-4 w-4 mr-2" />
-                                          View Documents
+                                        {filing.status !== "filed" && filing.status !== "accepted" && (
+                                          <DropdownMenuItem onClick={() => handleUpdateFilingStatus(filing.id, "in_progress")}>
+                                            <Clock className="h-4 w-4 mr-2" />
+                                            Mark In Progress
+                                          </DropdownMenuItem>
+                                        )}
+                                        {filing.status === "in_progress" && (
+                                          <DropdownMenuItem onClick={() => handleUpdateFilingStatus(filing.id, "filed")}>
+                                            <CheckCircle className="h-4 w-4 mr-2" />
+                                            Mark as Filed
+                                          </DropdownMenuItem>
+                                        )}
+                                        <DropdownMenuSeparator />
+                                        <DropdownMenuItem
+                                          className="text-destructive"
+                                          onClick={() => handleDeleteFiling(filing.id)}
+                                        >
+                                          <Trash2 className="h-4 w-4 mr-2" />
+                                          Delete
                                         </DropdownMenuItem>
                                       </DropdownMenuContent>
                                     </DropdownMenu>
@@ -1629,7 +1833,26 @@ export default function ClientDetailPage() {
                                 >
                                   {format(dueDate, "MMM d, yyyy")}
                                 </Badge>
-                                <Checkbox checked={deadline.status === "completed"} />
+                                <Checkbox
+                                  checked={deadline.status === "completed"}
+                                  onCheckedChange={() => handleToggleDeadline(deadline.id, deadline.status)}
+                                />
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                                      <MoreVertical className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem
+                                      className="text-destructive"
+                                      onClick={() => handleDeleteDeadline(deadline.id)}
+                                    >
+                                      <Trash2 className="h-4 w-4 mr-2" />
+                                      Delete
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
                               </div>
                             </div>
                             {deadline.description && (
