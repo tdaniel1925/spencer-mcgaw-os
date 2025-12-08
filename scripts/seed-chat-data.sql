@@ -1,75 +1,111 @@
 -- Seed Chat Data for Spencer McGaw Hub
--- Run this in Supabase Dashboard SQL Editor after creating the chat tables
+-- Run this in Supabase Dashboard SQL Editor
 
--- First check users
-SELECT id, email, full_name FROM users LIMIT 5;
+-- Step 1: Check existing users
+SELECT id, email, full_name FROM users;
 
--- Create General community room
-INSERT INTO chat_rooms (id, name, type, description)
-VALUES (
-  'a1b2c3d4-e5f6-7890-abcd-ef1234567890'::uuid,
-  'General',
-  'community',
-  'General discussion for all team members'
-)
-ON CONFLICT (id) DO NOTHING;
+-- Step 2: Create community rooms (no foreign key constraint)
+INSERT INTO chat_rooms (id, name, type, description, is_archived)
+VALUES
+  ('a1b2c3d4-e5f6-7890-abcd-ef1234567890', 'General', 'community', 'General discussion for all team members', false),
+  ('b2c3d4e5-f6a7-8901-bcde-f23456789012', 'Announcements', 'community', 'Important team announcements', false)
+ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
 
--- Create Announcements room
-INSERT INTO chat_rooms (id, name, type, description)
-VALUES (
-  'b2c3d4e5-f6a7-8901-bcde-f23456789012'::uuid,
-  'Announcements',
-  'community',
-  'Important team announcements'
-)
-ON CONFLICT (id) DO NOTHING;
-
--- Add all existing users as members of community rooms
+-- Step 3: Get your user ID and add as member
 INSERT INTO chat_room_members (room_id, user_id, role)
-SELECT r.id, u.id, 'member'
-FROM chat_rooms r
-CROSS JOIN users u
-WHERE r.type = 'community'
+SELECT 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'::uuid, id, 'member' FROM users
 ON CONFLICT (room_id, user_id) DO NOTHING;
 
--- Get first user for messages (works even with just 1 user)
-DO $$
-DECLARE
-  first_user_id UUID;
-  general_room_id UUID := 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'::uuid;
-  announcements_room_id UUID := 'b2c3d4e5-f6a7-8901-bcde-f23456789012'::uuid;
-BEGIN
-  -- Get first user
-  SELECT id INTO first_user_id FROM users LIMIT 1;
+INSERT INTO chat_room_members (room_id, user_id, role)
+SELECT 'b2c3d4e5-f6a7-8901-bcde-f23456789012'::uuid, id, 'member' FROM users
+ON CONFLICT (room_id, user_id) DO NOTHING;
 
-  IF first_user_id IS NULL THEN
-    RAISE NOTICE 'No users found in database';
-    RETURN;
-  END IF;
+-- Step 4: Add messages using the first user found
+INSERT INTO chat_messages (room_id, user_id, content, message_type, created_at)
+SELECT
+  'a1b2c3d4-e5f6-7890-abcd-ef1234567890'::uuid,
+  (SELECT id FROM users LIMIT 1),
+  'Welcome to the General chat! This is where we discuss day-to-day topics.',
+  'text',
+  NOW() - INTERVAL '2 hours'
+WHERE EXISTS (SELECT 1 FROM users LIMIT 1);
 
-  RAISE NOTICE 'Found user: %', first_user_id;
+INSERT INTO chat_messages (room_id, user_id, content, message_type, created_at)
+SELECT
+  'a1b2c3d4-e5f6-7890-abcd-ef1234567890'::uuid,
+  (SELECT id FROM users LIMIT 1),
+  'Feel free to start conversations here.',
+  'text',
+  NOW() - INTERVAL '90 minutes'
+WHERE EXISTS (SELECT 1 FROM users LIMIT 1);
 
-  -- Insert General room messages
-  INSERT INTO chat_messages (room_id, user_id, content, message_type, created_at) VALUES
-    (general_room_id, first_user_id, 'Welcome to the General chat! This is where we discuss day-to-day topics.', 'text', NOW() - INTERVAL '2 hours'),
-    (general_room_id, first_user_id, 'Feel free to start conversations here.', 'text', NOW() - INTERVAL '90 minutes'),
-    (general_room_id, first_user_id, 'The chat supports real-time updates - try opening in two tabs!', 'text', NOW() - INTERVAL '60 minutes'),
-    (general_room_id, first_user_id, 'You can also create private DMs with the + button.', 'text', NOW() - INTERVAL '30 minutes'),
-    (general_room_id, first_user_id, 'Looking forward to chatting with the team!', 'text', NOW() - INTERVAL '10 minutes');
+INSERT INTO chat_messages (room_id, user_id, content, message_type, created_at)
+SELECT
+  'a1b2c3d4-e5f6-7890-abcd-ef1234567890'::uuid,
+  (SELECT id FROM users LIMIT 1),
+  'The chat supports real-time updates - try opening in two tabs!',
+  'text',
+  NOW() - INTERVAL '60 minutes'
+WHERE EXISTS (SELECT 1 FROM users LIMIT 1);
 
-  -- Insert Announcements room messages
-  INSERT INTO chat_messages (room_id, user_id, content, message_type, created_at) VALUES
-    (announcements_room_id, first_user_id, 'Welcome to Spencer McGaw Business OS!', 'text', NOW() - INTERVAL '3 hours'),
-    (announcements_room_id, first_user_id, 'This channel is for important team announcements.', 'text', NOW() - INTERVAL '2 hours'),
-    (announcements_room_id, first_user_id, 'New chat feature is now live - enjoy real-time messaging!', 'text', NOW() - INTERVAL '30 minutes');
+INSERT INTO chat_messages (room_id, user_id, content, message_type, created_at)
+SELECT
+  'a1b2c3d4-e5f6-7890-abcd-ef1234567890'::uuid,
+  (SELECT id FROM users LIMIT 1),
+  'You can also create private DMs with the + button.',
+  'text',
+  NOW() - INTERVAL '30 minutes'
+WHERE EXISTS (SELECT 1 FROM users LIMIT 1);
 
-  RAISE NOTICE 'Chat data seeded successfully!';
-END $$;
+INSERT INTO chat_messages (room_id, user_id, content, message_type, created_at)
+SELECT
+  'a1b2c3d4-e5f6-7890-abcd-ef1234567890'::uuid,
+  (SELECT id FROM users LIMIT 1),
+  'Looking forward to chatting with the team!',
+  'text',
+  NOW() - INTERVAL '10 minutes'
+WHERE EXISTS (SELECT 1 FROM users LIMIT 1);
 
--- Verify data was created
-SELECT 'Rooms:' as info, COUNT(*) as count FROM chat_rooms;
-SELECT 'Members:' as info, COUNT(*) as count FROM chat_room_members;
-SELECT 'Messages:' as info, COUNT(*) as count FROM chat_messages;
+-- Announcements messages
+INSERT INTO chat_messages (room_id, user_id, content, message_type, created_at)
+SELECT
+  'b2c3d4e5-f6a7-8901-bcde-f23456789012'::uuid,
+  (SELECT id FROM users LIMIT 1),
+  'Welcome to Spencer McGaw Business OS!',
+  'text',
+  NOW() - INTERVAL '3 hours'
+WHERE EXISTS (SELECT 1 FROM users LIMIT 1);
 
--- Show the rooms
-SELECT id, name, type, description FROM chat_rooms;
+INSERT INTO chat_messages (room_id, user_id, content, message_type, created_at)
+SELECT
+  'b2c3d4e5-f6a7-8901-bcde-f23456789012'::uuid,
+  (SELECT id FROM users LIMIT 1),
+  'This channel is for important team announcements.',
+  'text',
+  NOW() - INTERVAL '2 hours'
+WHERE EXISTS (SELECT 1 FROM users LIMIT 1);
+
+INSERT INTO chat_messages (room_id, user_id, content, message_type, created_at)
+SELECT
+  'b2c3d4e5-f6a7-8901-bcde-f23456789012'::uuid,
+  (SELECT id FROM users LIMIT 1),
+  'New chat feature is now live - enjoy real-time messaging!',
+  'text',
+  NOW() - INTERVAL '30 minutes'
+WHERE EXISTS (SELECT 1 FROM users LIMIT 1);
+
+-- Step 5: Verify
+SELECT 'chat_rooms' as tbl, COUNT(*) as cnt FROM chat_rooms
+UNION ALL
+SELECT 'chat_room_members', COUNT(*) FROM chat_room_members
+UNION ALL
+SELECT 'chat_messages', COUNT(*) FROM chat_messages;
+
+-- Show rooms
+SELECT * FROM chat_rooms;
+
+-- Show messages
+SELECT m.content, m.created_at, u.full_name
+FROM chat_messages m
+JOIN users u ON m.user_id = u.id
+ORDER BY m.created_at;
