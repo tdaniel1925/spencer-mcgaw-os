@@ -76,7 +76,7 @@ export async function POST(
         .select(`
           *,
           action_type:task_action_types!tasks_action_type_id_fkey(*),
-          client:client_contacts(id, first_name, last_name, company)
+          client:client_contacts(id, first_name, last_name, email, phone)
         `)
         .single();
 

@@ -21,7 +21,7 @@ export async function GET(
         *,
         action_type:task_action_types!tasks_action_type_id_fkey(*),
         next_action_type:task_action_types!tasks_next_action_type_id_fkey(*),
-        client:client_contacts(id, first_name, last_name, company, email, phone),
+        client:client_contacts(id, first_name, last_name, email, phone),
         notes:task_notes(*),
         activity:task_activity_log(*),
         attachments:task_attachments(*)
@@ -78,7 +78,7 @@ export async function PUT(
       .select(`
         *,
         action_type:task_action_types!tasks_action_type_id_fkey(*),
-        client:client_contacts(id, first_name, last_name, company)
+        client:client_contacts(id, first_name, last_name, email, phone)
       `)
       .single();
 
@@ -144,7 +144,7 @@ export async function PATCH(
       .select(`
         *,
         action_type:task_action_types!tasks_action_type_id_fkey(*),
-        client:client_contacts(id, first_name, last_name, company)
+        client:client_contacts(id, first_name, last_name, email, phone)
       `)
       .single();
 
