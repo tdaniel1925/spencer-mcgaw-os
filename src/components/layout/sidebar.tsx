@@ -63,94 +63,124 @@ interface NavItem {
   adminOnly?: boolean; // Only show to admin/owner
 }
 
-// Define navigation with permissions
-const mainNavItems: NavItem[] = [
+// Define navigation with permissions - organized by category
+interface NavSection {
+  label?: string;
+  items: NavItem[];
+}
+
+const navSections: NavSection[] = [
   {
-    title: "Dashboard",
-    href: "/dashboard",
-    icon: LayoutDashboard,
-    permission: "dashboard:view",
-  },
-  {
-    title: "TaskPool",
-    href: "/taskpool-board",
-    icon: Layers,
-    permission: "tasks:view",
-  },
-  {
-    title: "Kanban Board",
-    href: "/kanban",
-    icon: Kanban,
-    permission: "tasks:view",
-  },
-  {
-    title: "AI Email Tasks",
-    href: "/email",
-    icon: Mail,
-    permission: "email:view",
-  },
-  {
-    title: "Email Intelligence",
-    href: "/email-intelligence",
-    icon: Sparkles,
-    permission: "email:view",
-  },
-  {
-    title: "AI Phone Agent",
-    href: "/calls",
-    icon: Phone,
-    permission: "calls:view",
-  },
-  {
-    title: "SMS Messaging",
-    href: "/sms",
-    icon: MessageSquare,
-    permission: "clients:view",
-  },
-  {
-    title: "Clients",
-    href: "/clients",
-    icon: Users,
-    permission: "clients:view",
-    children: [
-      { title: "Client List", href: "/clients", permission: "clients:view" },
-      { title: "Add Client", href: "/clients/new", permission: "clients:create" },
+    // Core section (no label, always visible at top)
+    items: [
+      {
+        title: "Dashboard",
+        href: "/dashboard",
+        icon: LayoutDashboard,
+        permission: "dashboard:view",
+      },
     ],
   },
   {
-    title: "Files",
-    href: "/files",
-    icon: FolderOpen,
-    permission: "documents:view",
+    label: "Tasks",
+    items: [
+      {
+        title: "TaskPool",
+        href: "/taskpool-board",
+        icon: Layers,
+        permission: "tasks:view",
+      },
+      {
+        title: "Kanban Board",
+        href: "/kanban",
+        icon: Kanban,
+        permission: "tasks:view",
+      },
+    ],
   },
   {
-    title: "AI Documents",
-    href: "/documents",
-    icon: FileText,
-    permission: "documents:view",
+    label: "Communication",
+    items: [
+      {
+        title: "Email Tasks",
+        href: "/email",
+        icon: Mail,
+        permission: "email:view",
+      },
+      {
+        title: "Email Intelligence",
+        href: "/email-intelligence",
+        icon: Sparkles,
+        permission: "email:view",
+      },
+      {
+        title: "Phone Agent",
+        href: "/calls",
+        icon: Phone,
+        permission: "calls:view",
+      },
+      {
+        title: "SMS",
+        href: "/sms",
+        icon: MessageSquare,
+        permission: "clients:view",
+      },
+    ],
   },
   {
-    title: "Analytics",
-    href: "/analytics",
-    icon: BarChart3,
-    permission: "analytics:view",
+    label: "Business",
+    items: [
+      {
+        title: "Clients",
+        href: "/clients",
+        icon: Users,
+        permission: "clients:view",
+      },
+      {
+        title: "Files",
+        href: "/files",
+        icon: FolderOpen,
+        permission: "documents:view",
+      },
+      {
+        title: "Documents",
+        href: "/documents",
+        icon: FileText,
+        permission: "documents:view",
+      },
+    ],
   },
   {
-    title: "Calendar",
-    href: "/calendar",
-    icon: Calendar,
-    permission: "calendar:view",
+    label: "Insights",
+    items: [
+      {
+        title: "Analytics",
+        href: "/analytics",
+        icon: BarChart3,
+        permission: "analytics:view",
+      },
+      {
+        title: "Calendar",
+        href: "/calendar",
+        icon: Calendar,
+        permission: "calendar:view",
+      },
+      {
+        title: "Activity",
+        href: "/activity",
+        icon: Activity,
+        permission: "activity:view",
+      },
+    ],
   },
   {
-    title: "Activity Log",
-    href: "/activity",
-    icon: Activity,
-    permission: "activity:view",
-  },
-  {
-    title: "Help & Guides",
-    href: "/help",
-    icon: HelpCircle,
+    items: [
+      {
+        title: "Help",
+        href: "/help",
+        icon: HelpCircle,
+      },
+    ],
   },
 ];
 
@@ -206,28 +236,30 @@ export function Sidebar() {
     setMounted(true);
   }, []);
 
-  // Filter nav items based on permissions - include user?.role in deps to ensure recalculation
-  const filteredMainNav = useMemo(() => {
-    return mainNavItems
-      .filter((item) => {
-        // If no permission required, show to all
-        if (!item.permission) return true;
-        // Check if user has permission
-        return can(item.permission);
-      })
-      .map((item) => {
-        // Filter children based on permissions
-        if (item.children) {
-          return {
-            ...item,
-            children: item.children.filter((child) => {
-              if (!child.permission) return true;
-              return can(child.permission);
-            }),
-          };
-        }
-        return item;
-      });
+  // Filter nav sections based on permissions - include user?.role in deps to ensure recalculation
+  const filteredNavSections = useMemo(() => {
+    return navSections
+      .map((section) => ({
+        ...section,
+        items: section.items
+          .filter((item) => {
+            if (!item.permission) return true;
+            return can(item.permission);
+          })
+          .map((item) => {
+            if (item.children) {
+              return {
+                ...item,
+                children: item.children.filter((child) => {
+                  if (!child.permission) return true;
+                  return can(child.permission);
+                }),
+              };
+            }
+            return item;
+          }),
+      }))
+      .filter((section) => section.items.length > 0);
   }, [can, user?.role]);
 
   // Filter admin nav items - include user?.role in deps to ensure recalculation
@@ -390,7 +422,18 @@ export function Sidebar() {
       {/* Navigation */}
       <ScrollArea className="flex-1 min-h-0 py-4 px-3">
         <nav className="space-y-1">
-          {filteredMainNav.map(renderNavItem)}
+          {filteredNavSections.map((section, sectionIdx) => (
+            <div key={sectionIdx}>
+              {section.label && (
+                <div className="pt-3 pb-1.5 first:pt-0">
+                  <span className="text-[10px] font-semibold text-sidebar-foreground/40 uppercase tracking-wider px-3">
+                    {section.label}
+                  </span>
+                </div>
+              )}
+              {section.items.map(renderNavItem)}
+            </div>
+          ))}
 
           {/* Admin Section Divider */}
           {filteredAdminNav.length > 0 && (
@@ -398,7 +441,7 @@ export function Sidebar() {
               <div className="pt-4 pb-2">
                 <div className="flex items-center gap-2 px-3">
                   <div className="h-px flex-1 bg-sidebar-border" />
-                  <span className="text-[10px] font-medium text-sidebar-foreground/50 uppercase tracking-wider">
+                  <span className="text-[10px] font-semibold text-sidebar-foreground/40 uppercase tracking-wider">
                     Admin
                   </span>
                   <div className="h-px flex-1 bg-sidebar-border" />
