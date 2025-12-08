@@ -432,15 +432,21 @@ export default function TaskPoolBoardPage() {
     setDraggedTask(task);
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", task.id);
-    // Add a slight delay to allow the drag image to be set
-    if (e.currentTarget instanceof HTMLElement) {
-      e.currentTarget.style.opacity = "0.5";
+    e.dataTransfer.setData("application/json", JSON.stringify({ taskId: task.id, source: "taskpool" }));
+    // Visual feedback
+    const target = e.currentTarget as HTMLElement;
+    if (target) {
+      target.classList.add("dragging");
+      setTimeout(() => {
+        target.style.opacity = "0.5";
+      }, 0);
     }
   };
 
   const handleDragEnd = (e: React.DragEvent) => {
     if (e.currentTarget instanceof HTMLElement) {
       e.currentTarget.style.opacity = "1";
+      e.currentTarget.classList.remove("dragging");
     }
     setDraggedTask(null);
     setDragOverColumn(null);
@@ -477,22 +483,28 @@ export default function TaskPoolBoardPage() {
     e.stopPropagation();
     setDragOverColumn(null);
 
-    if (!draggedTask) {
-      console.log("No dragged task found");
+    // Get task from drag data or state
+    let taskToMove = draggedTask;
+    if (!taskToMove) {
+      const taskId = e.dataTransfer.getData("text/plain");
+      if (taskId) {
+        taskToMove = tasks.find(t => t.id === taskId) || null;
+      }
+    }
+
+    if (!taskToMove) {
       return;
     }
 
-    console.log("Dropping task", draggedTask.id, "to", columnId, columnType);
-
     if (columnType === "action") {
       // Moving to action type column
-      if (draggedTask.action_type_id !== columnId) {
-        await handleChangeActionType(draggedTask.id, columnId);
+      if (taskToMove.action_type_id !== columnId) {
+        await handleChangeActionType(taskToMove.id, columnId);
       }
     } else if (columnType === "user") {
       // Assigning to user
-      if (draggedTask.assigned_to !== columnId) {
-        await handleAssignTask(draggedTask.id, columnId);
+      if (taskToMove.assigned_to !== columnId) {
+        await handleAssignTask(taskToMove.id, columnId);
       }
     }
 

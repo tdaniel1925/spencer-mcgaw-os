@@ -26,7 +26,21 @@ import {
   Circle,
   PlayCircle,
   Archive,
+  Trash2,
+  Edit,
+  X,
+  Loader2,
+  PauseCircle,
+  AlertCircle,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -107,13 +121,40 @@ interface Task {
   activity: { count: number }[];
 }
 
-// Kanban status columns
-const statusColumns = [
-  { id: "open", label: "To Do", icon: Circle, color: "text-gray-500", bgColor: "bg-gray-100" },
-  { id: "in_progress", label: "In Progress", icon: PlayCircle, color: "text-blue-500", bgColor: "bg-blue-100" },
-  { id: "review", label: "Review", icon: Eye, color: "text-orange-500", bgColor: "bg-orange-100" },
-  { id: "completed", label: "Done", icon: CheckCircle, color: "text-green-500", bgColor: "bg-green-100" },
-];
+// Kanban column from database
+interface KanbanColumn {
+  id: string;
+  code: string;
+  label: string;
+  icon: string;
+  color: string;
+  sort_order: number;
+  is_default: boolean;
+}
+
+// Icon mapping
+const iconMap: Record<string, React.ElementType> = {
+  "circle": Circle,
+  "play-circle": PlayCircle,
+  "eye": Eye,
+  "check-circle": CheckCircle,
+  "pause-circle": PauseCircle,
+  "alert-circle": AlertCircle,
+  "archive": Archive,
+  "clock": Clock,
+};
+
+// Color mapping
+const colorMap: Record<string, { text: string; bg: string }> = {
+  "gray": { text: "text-gray-500", bg: "bg-gray-100" },
+  "blue": { text: "text-blue-500", bg: "bg-blue-100" },
+  "orange": { text: "text-orange-500", bg: "bg-orange-100" },
+  "green": { text: "text-green-500", bg: "bg-green-100" },
+  "red": { text: "text-red-500", bg: "bg-red-100" },
+  "purple": { text: "text-purple-500", bg: "bg-purple-100" },
+  "yellow": { text: "text-yellow-500", bg: "bg-yellow-100" },
+  "pink": { text: "text-pink-500", bg: "bg-pink-100" },
+};
 
 const priorityColors: Record<string, string> = {
   urgent: "bg-red-100 text-red-700 border-red-200",
@@ -134,6 +175,7 @@ export default function KanbanBoardPage() {
   const [actionTypes, setActionTypes] = useState<ActionType[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
+  const [columns, setColumns] = useState<KanbanColumn[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -141,10 +183,17 @@ export default function KanbanBoardPage() {
   const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showSettingsDialog, setShowSettingsDialog] = useState(false);
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
+
+  // Column settings state
+  const [newColumnLabel, setNewColumnLabel] = useState("");
+  const [newColumnColor, setNewColumnColor] = useState("gray");
+  const [newColumnIcon, setNewColumnIcon] = useState("circle");
+  const [savingColumn, setSavingColumn] = useState(false);
 
   // Check scroll position to show/hide arrow buttons
   const updateScrollButtons = useCallback(() => {
@@ -248,10 +297,78 @@ export default function KanbanBoardPage() {
     }
   }, []);
 
+  const loadColumns = useCallback(async () => {
+    try {
+      const response = await fetch("/api/kanban/columns");
+      if (response.ok) {
+        const data = await response.json();
+        setColumns(data.columns || []);
+      }
+    } catch (error) {
+      console.error("Error loading columns:", error);
+    }
+  }, []);
+
+  const handleAddColumn = async () => {
+    if (!newColumnLabel.trim()) {
+      toast.error("Column label is required");
+      return;
+    }
+
+    setSavingColumn(true);
+    try {
+      const response = await fetch("/api/kanban/columns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label: newColumnLabel,
+          color: newColumnColor,
+          icon: newColumnIcon,
+        }),
+      });
+
+      if (response.ok) {
+        toast.success("Column added successfully");
+        setNewColumnLabel("");
+        setNewColumnColor("gray");
+        setNewColumnIcon("circle");
+        loadColumns();
+      } else {
+        const data = await response.json();
+        toast.error(data.error || "Failed to add column");
+      }
+    } catch (error) {
+      console.error("Error adding column:", error);
+      toast.error("Failed to add column");
+    } finally {
+      setSavingColumn(false);
+    }
+  };
+
+  const handleDeleteColumn = async (columnId: string) => {
+    try {
+      const response = await fetch(`/api/kanban/columns/${columnId}`, {
+        method: "DELETE",
+      });
+
+      if (response.ok) {
+        toast.success("Column removed successfully");
+        loadColumns();
+      } else {
+        const data = await response.json();
+        toast.error(data.error || "Failed to remove column");
+      }
+    } catch (error) {
+      console.error("Error removing column:", error);
+      toast.error("Failed to remove column");
+    }
+  };
+
   useEffect(() => {
     loadActionTypes();
     loadUsers();
-  }, [loadActionTypes, loadUsers]);
+    loadColumns();
+  }, [loadActionTypes, loadUsers, loadColumns]);
 
   useEffect(() => {
     loadTasks();
@@ -321,14 +438,21 @@ export default function KanbanBoardPage() {
     setDraggedTask(task);
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", task.id);
-    if (e.currentTarget instanceof HTMLElement) {
-      e.currentTarget.style.opacity = "0.5";
+    e.dataTransfer.setData("application/json", JSON.stringify({ taskId: task.id, source: "kanban" }));
+    // Visual feedback
+    const target = e.currentTarget as HTMLElement;
+    if (target) {
+      target.classList.add("dragging");
+      setTimeout(() => {
+        target.style.opacity = "0.5";
+      }, 0);
     }
   };
 
   const handleDragEnd = (e: React.DragEvent) => {
     if (e.currentTarget instanceof HTMLElement) {
       e.currentTarget.style.opacity = "1";
+      e.currentTarget.classList.remove("dragging");
     }
     setDraggedTask(null);
     setDragOverColumn(null);
@@ -364,10 +488,19 @@ export default function KanbanBoardPage() {
     e.stopPropagation();
     setDragOverColumn(null);
 
-    if (!draggedTask) return;
+    // Get task from drag data or state
+    let taskToMove = draggedTask;
+    if (!taskToMove) {
+      const taskId = e.dataTransfer.getData("text/plain");
+      if (taskId) {
+        taskToMove = tasks.find(t => t.id === taskId) || null;
+      }
+    }
 
-    if (draggedTask.status !== statusId) {
-      await handleChangeStatus(draggedTask.id, statusId);
+    if (!taskToMove) return;
+
+    if (taskToMove.status !== statusId) {
+      await handleChangeStatus(taskToMove.id, statusId);
     }
 
     setDraggedTask(null);
@@ -601,6 +734,14 @@ export default function KanbanBoardPage() {
                 TaskPool
               </Button>
             </Link>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowSettingsDialog(true)}
+              className="h-9"
+            >
+              <Settings className="h-4 w-4" />
+            </Button>
           </div>
         </div>
       </div>
@@ -646,10 +787,11 @@ export default function KanbanBoardPage() {
           ) : (
             <div className="flex gap-4 h-full">
               {/* Status Columns */}
-              {statusColumns.map((column) => {
-                const Icon = column.icon;
-                const columnTasks = filterTasks(getTasksByStatus(column.id));
-                const isDropTarget = dragOverColumn === column.id;
+              {columns.map((column) => {
+                const Icon = iconMap[column.icon] || Circle;
+                const colors = colorMap[column.color] || colorMap.gray;
+                const columnTasks = filterTasks(getTasksByStatus(column.code));
+                const isDropTarget = dragOverColumn === column.code;
 
                 return (
                   <div
@@ -658,17 +800,17 @@ export default function KanbanBoardPage() {
                       "w-80 flex-shrink-0 flex flex-col bg-card rounded-xl shadow-sm border overflow-hidden transition-all",
                       isDropTarget && "ring-2 ring-blue-500 ring-offset-2"
                     )}
-                    onDragOver={(e) => handleDragOver(e, column.id)}
-                    onDragEnter={(e) => handleDragEnter(e, column.id)}
+                    onDragOver={(e) => handleDragOver(e, column.code)}
+                    onDragEnter={(e) => handleDragEnter(e, column.code)}
                     onDragLeave={(e) => handleDragLeave(e)}
-                    onDrop={(e) => handleDrop(e, column.id)}
+                    onDrop={(e) => handleDrop(e, column.code)}
                   >
                     {/* Column Header */}
                     <div className={cn(
                       "flex items-center gap-2 px-3 py-2.5 border-b",
-                      column.bgColor
+                      colors.bg
                     )}>
-                      <Icon className={cn("h-4 w-4", column.color)} />
+                      <Icon className={cn("h-4 w-4", colors.text)} />
                       <span className="font-semibold text-sm text-foreground flex-1">
                         {column.label}
                       </span>
@@ -684,7 +826,7 @@ export default function KanbanBoardPage() {
                     >
                       {columnTasks.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-                          <Icon className={cn("h-6 w-6 opacity-30 mb-2", column.color)} />
+                          <Icon className={cn("h-6 w-6 opacity-30 mb-2", colors.text)} />
                           <p className="text-xs">No tasks</p>
                         </div>
                       ) : (
@@ -725,6 +867,141 @@ export default function KanbanBoardPage() {
           setShowCreateDialog(false);
         }}
       />
+
+      {/* Column Settings Dialog */}
+      <Dialog open={showSettingsDialog} onOpenChange={setShowSettingsDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings className="h-5 w-5" />
+              Kanban Column Settings
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-6 py-4">
+            {/* Existing Columns */}
+            <div>
+              <Label className="text-sm font-medium mb-3 block">Current Columns</Label>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {columns.map((column) => {
+                  const Icon = iconMap[column.icon] || Circle;
+                  const colors = colorMap[column.color] || colorMap.gray;
+                  const taskCount = tasks.filter(t => t.status === column.code).length;
+
+                  return (
+                    <div
+                      key={column.id}
+                      className={cn(
+                        "flex items-center gap-3 p-2.5 rounded-lg border",
+                        colors.bg
+                      )}
+                    >
+                      <Icon className={cn("h-4 w-4", colors.text)} />
+                      <span className="text-sm font-medium flex-1">{column.label}</span>
+                      <Badge variant="secondary" className="text-xs">
+                        {taskCount} tasks
+                      </Badge>
+                      {!column.is_default && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0 text-muted-foreground hover:text-red-600"
+                          onClick={() => handleDeleteColumn(column.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                      {column.is_default && (
+                        <span className="text-[10px] text-muted-foreground">Default</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Add New Column */}
+            <div className="border-t pt-4">
+              <Label className="text-sm font-medium mb-3 block">Add New Column</Label>
+              <div className="space-y-3">
+                <div>
+                  <Label className="text-xs text-muted-foreground mb-1 block">Label</Label>
+                  <Input
+                    placeholder="e.g., Waiting for Client"
+                    value={newColumnLabel}
+                    onChange={(e) => setNewColumnLabel(e.target.value)}
+                    className="h-9"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs text-muted-foreground mb-1 block">Icon</Label>
+                    <Select value={newColumnIcon} onValueChange={setNewColumnIcon}>
+                      <SelectTrigger className="h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(iconMap).map(([key, IconComponent]) => (
+                          <SelectItem key={key} value={key}>
+                            <div className="flex items-center gap-2">
+                              <IconComponent className="h-4 w-4" />
+                              <span className="capitalize">{key.replace("-", " ")}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <Label className="text-xs text-muted-foreground mb-1 block">Color</Label>
+                    <Select value={newColumnColor} onValueChange={setNewColumnColor}>
+                      <SelectTrigger className="h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(colorMap).map(([key, colors]) => (
+                          <SelectItem key={key} value={key}>
+                            <div className="flex items-center gap-2">
+                              <div className={cn("h-3 w-3 rounded-full", colors.bg, "border")} />
+                              <span className="capitalize">{key}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <Button
+                  onClick={handleAddColumn}
+                  disabled={savingColumn || !newColumnLabel.trim()}
+                  className="w-full"
+                >
+                  {savingColumn ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Adding...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Column
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSettingsDialog(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
