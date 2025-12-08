@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
             content,
             created_at,
             user_id,
-            profiles:user_id (
+            users:user_id (
               full_name,
               email
             )
@@ -91,7 +91,7 @@ export async function GET(request: NextRequest) {
             .from("chat_room_members")
             .select(`
               user_id,
-              profiles:user_id (
+              users:user_id (
                 id,
                 full_name,
                 email,
@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
             .neq("user_id", user.id)
             .single();
 
-          otherUser = members?.profiles;
+          otherUser = members?.users;
         }
 
         return {

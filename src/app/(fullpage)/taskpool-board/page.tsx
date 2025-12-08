@@ -473,8 +473,8 @@ export default function TaskPoolBoardPage() {
     setDraggedTask(task);
     draggedTaskIdRef.current = task.id;
 
-    // Set drag data
-    e.dataTransfer.effectAllowed = "move";
+    // Set drag data - use "copyMove" to allow both effects
+    e.dataTransfer.effectAllowed = "copyMove";
     e.dataTransfer.setData("text/plain", task.id);
     e.dataTransfer.setData("application/x-task-id", task.id);
 
@@ -1110,12 +1110,12 @@ export default function TaskPoolBoardPage() {
                     isDropTarget
                       ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30 scale-110 shadow-lg border-solid"
                       : "border-border border-dashed bg-card hover:border-muted-foreground/50 hover:bg-muted/30",
-                    draggedTask && "cursor-copy"
+                    draggedTask && "cursor-move"
                   )}
                   onDragOver={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    e.dataTransfer.dropEffect = "copy";
+                    e.dataTransfer.dropEffect = "move";
                     setDragOverColumn(`user-${user.id}`);
                   }}
                   onDragEnter={(e) => {

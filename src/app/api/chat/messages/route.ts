@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
         created_at,
         updated_at,
         metadata,
-        profiles:user_id (
+        users:user_id (
           id,
           full_name,
           email,
@@ -173,7 +173,7 @@ export async function POST(request: NextRequest) {
         is_deleted,
         created_at,
         updated_at,
-        profiles:user_id (
+        users:user_id (
           id,
           full_name,
           email,

@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
       .select(`
         user_id,
         started_at,
-        profiles:user_id (
+        users:user_id (
           id,
           full_name,
           email
@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       typing: typing?.map(t => ({
         user_id: t.user_id,
-        user: t.profiles
+        user: t.users
       })) || []
     });
   } catch (error) {

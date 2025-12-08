@@ -286,7 +286,7 @@ export default function ChatPage() {
                       </div>
                       {room.last_message && (
                         <p className="text-xs text-muted-foreground truncate">
-                          {room.last_message.profiles?.full_name?.split(" ")[0] || "User"}:{" "}
+                          {room.last_message.users?.full_name?.split(" ")[0] || "User"}:{" "}
                           {room.last_message.content}
                         </p>
                       )}
@@ -366,16 +366,16 @@ export default function ChatPage() {
                             >
                               {showAvatar && !isOwn && (
                                 <Avatar className="h-8 w-8 mt-0.5">
-                                  <AvatarImage src={msg.profiles?.avatar_url || undefined} />
+                                  <AvatarImage src={msg.users?.avatar_url || undefined} />
                                   <AvatarFallback className="text-xs">
-                                    {getInitials(msg.profiles?.full_name || null, msg.profiles?.email || "")}
+                                    {getInitials(msg.users?.full_name || null, msg.users?.email || "")}
                                   </AvatarFallback>
                                 </Avatar>
                               )}
                               <div className={cn("max-w-[70%]", isOwn && "text-right")}>
                                 {showAvatar && !isOwn && (
                                   <span className="text-xs font-medium text-muted-foreground">
-                                    {msg.profiles?.full_name || msg.profiles?.email}
+                                    {msg.users?.full_name || msg.users?.email}
                                   </span>
                                 )}
                                 <div

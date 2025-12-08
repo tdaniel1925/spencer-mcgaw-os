@@ -22,7 +22,7 @@ interface Message {
   is_deleted: boolean;
   created_at: string;
   updated_at: string;
-  profiles: User | null;
+  users: User | null;
 }
 
 interface Room {
@@ -228,7 +228,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
             .from("chat_messages")
             .select(`
               *,
-              profiles:user_id (
+              users:user_id (
                 id,
                 full_name,
                 email,
@@ -282,7 +282,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
           } else {
             // Fetch user info
             const { data: userProfile } = await supabase
-              .from("profiles")
+              .from("users")
               .select("id, full_name, email, avatar_url")
               .eq("id", record.user_id)
               .single();
