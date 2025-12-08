@@ -24,10 +24,7 @@ export async function GET(request: NextRequest) {
       .from("tasks")
       .select(`
         *,
-        action_type:task_action_types(*),
-        client:client_contacts(id, first_name, last_name, company),
-        notes:task_notes(count),
-        activity:task_activity_log(count)
+        action_type:task_action_types(id, code, label, color, icon)
       `)
       .order("created_at", { ascending: false });
 
@@ -131,8 +128,7 @@ export async function POST(request: NextRequest) {
       })
       .select(`
         *,
-        action_type:task_action_types(*),
-        client:client_contacts(id, first_name, last_name, company)
+        action_type:task_action_types(id, code, label, color, icon)
       `)
       .single();
 

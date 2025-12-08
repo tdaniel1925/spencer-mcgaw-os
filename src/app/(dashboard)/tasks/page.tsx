@@ -604,7 +604,7 @@ export default function TasksPage() {
                           <div className="flex items-center gap-1.5">
                             <SourceIcon className="h-4 w-4 text-muted-foreground" />
                             <span className="text-xs text-muted-foreground capitalize">
-                              {task.source.replace(/_/g, " ")}
+                              {(task.source || "manual").replace(/_/g, " ")}
                             </span>
                           </div>
                         </TableCell>
@@ -1070,7 +1070,7 @@ export default function TasksPage() {
                 </div>
                 <div>
                   <Label className="text-muted-foreground">Source</Label>
-                  <p className="capitalize">{selectedTask.source.replace(/_/g, " ")}</p>
+                  <p className="capitalize">{(selectedTask.source || "manual").replace(/_/g, " ")}</p>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">

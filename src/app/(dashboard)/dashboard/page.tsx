@@ -496,7 +496,7 @@ export default function DashboardPage() {
                               "bg-slate-100 text-slate-700"
                             )}
                           >
-                            {call.status.replace(/_/g, " ")}
+                            {(call.status || "unknown").replace(/_/g, " ")}
                           </Badge>
                         </div>
                       </div>
