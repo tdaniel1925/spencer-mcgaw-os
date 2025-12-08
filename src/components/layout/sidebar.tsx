@@ -27,6 +27,7 @@ import {
   Webhook,
   Sparkles,
   MessageSquare,
+  Layers,
 } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -73,6 +74,12 @@ const mainNavItems: NavItem[] = [
     title: "Tasks",
     href: "/tasks",
     icon: ClipboardList,
+    permission: "tasks:view",
+  },
+  {
+    title: "TaskPool",
+    href: "/taskpool",
+    icon: Layers,
     permission: "tasks:view",
   },
   {
