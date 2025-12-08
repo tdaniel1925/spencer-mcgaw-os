@@ -21,6 +21,7 @@ import {
   GripVertical,
   ChevronRight,
   MoreHorizontal,
+  UserPlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -74,6 +75,8 @@ interface Task {
   due_date: string | null;
   claimed_by: string | null;
   claimed_at: string | null;
+  assigned_to: string | null;
+  assigned_at: string | null;
   created_at: string;
   ai_confidence: number | null;
   ai_extracted_data: Record<string, any>;
@@ -383,15 +386,15 @@ export default function TaskPoolPage() {
         <TabsList>
           <TabsTrigger value="pool" className="flex items-center gap-2">
             <Layers className="h-4 w-4" />
-            Pool View
+            Pool
+          </TabsTrigger>
+          <TabsTrigger value="my_assigned" className="flex items-center gap-2">
+            <UserPlus className="h-4 w-4" />
+            My Assigned
           </TabsTrigger>
           <TabsTrigger value="my_claimed" className="flex items-center gap-2">
             <User className="h-4 w-4" />
             My Claimed
-          </TabsTrigger>
-          <TabsTrigger value="my_clients" className="flex items-center gap-2">
-            <User className="h-4 w-4" />
-            My Clients
           </TabsTrigger>
           <TabsTrigger value="overdue" className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4" />

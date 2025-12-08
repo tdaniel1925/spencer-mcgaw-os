@@ -30,8 +30,11 @@ export async function GET(request: NextRequest) {
 
     // Apply filters based on view
     if (view === "pool") {
-      // Pool view: unclaimed, open tasks
-      query = query.is("claimed_by", null).eq("status", "open");
+      // Pool view: unclaimed AND unassigned, open tasks
+      query = query.is("claimed_by", null).is("assigned_to", null).eq("status", "open");
+    } else if (view === "my_assigned") {
+      // Tasks assigned to current user
+      query = query.eq("assigned_to", user.id).neq("status", "completed");
     } else if (view === "my_claimed") {
       // My claimed tasks
       query = query.eq("claimed_by", user.id).neq("status", "completed");

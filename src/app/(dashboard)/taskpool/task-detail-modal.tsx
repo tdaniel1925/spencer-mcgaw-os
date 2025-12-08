@@ -23,6 +23,19 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
   Hand,
   Undo2,
   Check,
@@ -39,6 +52,9 @@ import {
   Sparkles,
   Trash2,
   Edit,
+  UserPlus,
+  X,
+  ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -73,12 +89,21 @@ interface Task {
   due_date: string | null;
   claimed_by: string | null;
   claimed_at: string | null;
+  assigned_to: string | null;
+  assigned_at: string | null;
   created_at: string;
   ai_confidence: number | null;
   ai_extracted_data: Record<string, any>;
   source_type: string;
   action_type: ActionType | null;
   client: Client | null;
+}
+
+interface UserProfile {
+  id: string;
+  email: string;
+  full_name: string | null;
+  avatar_url: string | null;
 }
 
 interface Note {
@@ -121,6 +146,8 @@ const activityIcons: Record<string, React.ElementType> = {
   updated: Edit,
   note_added: MessageSquare,
   routed: ArrowRight,
+  assigned: UserPlus,
+  unassigned: X,
 };
 
 export function TaskDetailModal({
@@ -149,6 +176,13 @@ export function TaskDetailModal({
     due_date: task.due_date || "",
     action_type_id: task.action_type_id,
   });
+
+  // User assignment state
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [userSearch, setUserSearch] = useState("");
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [assignPopoverOpen, setAssignPopoverOpen] = useState(false);
+  const [assigning, setAssigning] = useState(false);
 
   const loadNotesAndActivity = useCallback(async () => {
     setLoadingNotes(true);
@@ -287,73 +321,208 @@ export function TaskDetailModal({
     }
   };
 
+  // Load users for assignment dropdown
+  const loadUsers = useCallback(async (search: string = "") => {
+    setLoadingUsers(true);
+    try {
+      const params = new URLSearchParams();
+      if (search) params.append("search", search);
+      const response = await fetch(`/api/users?${params}`);
+      if (response.ok) {
+        const data = await response.json();
+        setUsers(data.users || []);
+      }
+    } catch (error) {
+      console.error("Error loading users:", error);
+    } finally {
+      setLoadingUsers(false);
+    }
+  }, []);
+
+  // Load users when popover opens
+  useEffect(() => {
+    if (assignPopoverOpen) {
+      loadUsers(userSearch);
+    }
+  }, [assignPopoverOpen, userSearch, loadUsers]);
+
+  const handleAssignTask = async (userId: string) => {
+    setAssigning(true);
+    try {
+      const response = await fetch(`/api/taskpool/tasks/${task.id}/assign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assigned_to: userId }),
+      });
+
+      if (response.ok) {
+        const selectedUser = users.find(u => u.id === userId);
+        toast.success(`Task assigned to ${selectedUser?.full_name || selectedUser?.email || "user"}`);
+        setAssignPopoverOpen(false);
+        onUpdate();
+      } else {
+        toast.error("Failed to assign task");
+      }
+    } catch (error) {
+      console.error("Error assigning task:", error);
+      toast.error("Failed to assign task");
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  const handleUnassignTask = async () => {
+    setAssigning(true);
+    try {
+      const response = await fetch(`/api/taskpool/tasks/${task.id}/assign`, {
+        method: "DELETE",
+      });
+
+      if (response.ok) {
+        toast.success("Task unassigned");
+        onUpdate();
+      } else {
+        toast.error("Failed to unassign task");
+      }
+    } catch (error) {
+      console.error("Error unassigning task:", error);
+      toast.error("Failed to unassign task");
+    } finally {
+      setAssigning(false);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <div className="flex items-start justify-between">
-            <div className="flex items-start gap-3">
-              {task.action_type && (
-                <div
-                  className="p-2 rounded-lg"
-                  style={{ backgroundColor: task.action_type.color }}
-                >
-                  <FileText className="h-5 w-5 text-white" />
-                </div>
-              )}
-              <div>
-                <DialogTitle className="text-xl">{task.title}</DialogTitle>
-                <div className="flex items-center gap-2 mt-1">
-                  <Badge variant="outline">{task.action_type?.label}</Badge>
-                  <Badge className={cn(priorityColors[task.priority], "text-white")}>
-                    {task.priority}
+        <DialogHeader className="pr-8">
+          {/* Title and badges row */}
+          <div className="flex items-start gap-3">
+            {task.action_type && (
+              <div
+                className="p-2 rounded-lg shrink-0"
+                style={{ backgroundColor: task.action_type.color }}
+              >
+                <FileText className="h-5 w-5 text-white" />
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <DialogTitle className="text-xl leading-tight">{task.title}</DialogTitle>
+              <div className="flex flex-wrap items-center gap-2 mt-1">
+                <Badge variant="outline">{task.action_type?.label}</Badge>
+                <Badge className={cn(priorityColors[task.priority], "text-white")}>
+                  {task.priority}
+                </Badge>
+                <Badge variant="secondary">{task.status}</Badge>
+                {task.ai_confidence && (
+                  <Badge variant="outline" className="flex items-center gap-1">
+                    <Sparkles className="h-3 w-3" />
+                    AI {Math.round(task.ai_confidence * 100)}%
                   </Badge>
-                  <Badge variant="secondary">{task.status}</Badge>
-                  {task.ai_confidence && (
-                    <Badge variant="outline" className="flex items-center gap-1">
-                      <Sparkles className="h-3 w-3" />
-                      AI {Math.round(task.ai_confidence * 100)}%
-                    </Badge>
-                  )}
-                </div>
+                )}
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              {task.status !== "completed" && (
-                <>
-                  {!task.claimed_by ? (
-                    <Button
-                      size="sm"
-                      onClick={() => onClaim(task.id)}
-                      className="flex items-center gap-1"
-                    >
-                      <Hand className="h-4 w-4" />
-                      Claim
-                    </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => onRelease(task.id)}
-                      className="flex items-center gap-1"
-                    >
-                      <Undo2 className="h-4 w-4" />
-                      Release
-                    </Button>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="default"
-                    onClick={() => setShowCompleteDialog(true)}
-                    className="flex items-center gap-1"
-                  >
-                    <Check className="h-4 w-4" />
-                    Complete
-                  </Button>
-                </>
-              )}
-            </div>
           </div>
+
+          {/* Action buttons row - separate from title */}
+          {task.status !== "completed" && (
+            <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t">
+              {/* Assign dropdown */}
+              <Popover open={assignPopoverOpen} onOpenChange={setAssignPopoverOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex items-center gap-1"
+                    disabled={assigning}
+                  >
+                    <UserPlus className="h-4 w-4" />
+                    {task.assigned_to ? "Reassign" : "Assign"}
+                    <ChevronDown className="h-3 w-3 ml-1" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 p-0" align="start">
+                  <Command>
+                    <CommandInput
+                      placeholder="Search users..."
+                      value={userSearch}
+                      onValueChange={setUserSearch}
+                    />
+                    <CommandList>
+                      <CommandEmpty>
+                        {loadingUsers ? "Loading..." : "No users found"}
+                      </CommandEmpty>
+                      <CommandGroup>
+                        {users.map((user) => (
+                          <CommandItem
+                            key={user.id}
+                            value={user.id}
+                            onSelect={() => handleAssignTask(user.id)}
+                            className="cursor-pointer"
+                          >
+                            <User className="h-4 w-4 mr-2" />
+                            <div className="flex flex-col">
+                              <span className="text-sm">{user.full_name || "Unnamed"}</span>
+                              <span className="text-xs text-muted-foreground">{user.email}</span>
+                            </div>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+
+              {/* Show current assignee with unassign option */}
+              {task.assigned_to && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleUnassignTask}
+                  disabled={assigning}
+                  className="text-muted-foreground"
+                >
+                  <X className="h-3 w-3 mr-1" />
+                  Unassign
+                </Button>
+              )}
+
+              <div className="flex-1" />
+
+              {/* Claim/Release button */}
+              {!task.claimed_by ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onClaim(task.id)}
+                  className="flex items-center gap-1"
+                >
+                  <Hand className="h-4 w-4" />
+                  Claim
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => onRelease(task.id)}
+                  className="flex items-center gap-1"
+                >
+                  <Undo2 className="h-4 w-4" />
+                  Release
+                </Button>
+              )}
+
+              {/* Complete button */}
+              <Button
+                size="sm"
+                onClick={() => setShowCompleteDialog(true)}
+                className="flex items-center gap-1"
+              >
+                <Check className="h-4 w-4" />
+                Complete
+              </Button>
+            </div>
+          )}
         </DialogHeader>
 
         <Tabs defaultValue="details" className="flex-1 overflow-hidden flex flex-col">
@@ -510,8 +679,20 @@ export function TaskDetailModal({
                       </p>
                     </div>
                     <div>
+                      <h4 className="text-sm font-medium mb-1">Assigned</h4>
+                      <p className="text-sm text-muted-foreground flex items-center gap-1">
+                        <UserPlus className="h-3 w-3" />
+                        {task.assigned_at
+                          ? formatDistanceToNow(new Date(task.assigned_at), {
+                              addSuffix: true,
+                            })
+                          : "Not assigned"}
+                      </p>
+                    </div>
+                    <div>
                       <h4 className="text-sm font-medium mb-1">Claimed</h4>
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-sm text-muted-foreground flex items-center gap-1">
+                        <Hand className="h-3 w-3" />
                         {task.claimed_at
                           ? formatDistanceToNow(new Date(task.claimed_at), {
                               addSuffix: true,
