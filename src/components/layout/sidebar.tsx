@@ -28,6 +28,7 @@ import {
   Sparkles,
   MessageSquare,
   Layers,
+  Kanban,
 } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -71,15 +72,15 @@ const mainNavItems: NavItem[] = [
     permission: "dashboard:view",
   },
   {
-    title: "Tasks",
-    href: "/tasks",
-    icon: ClipboardList,
+    title: "TaskPool",
+    href: "/taskpool-board",
+    icon: Layers,
     permission: "tasks:view",
   },
   {
-    title: "TaskPool",
-    href: "/taskpool",
-    icon: Layers,
+    title: "Kanban Board",
+    href: "/kanban",
+    icon: Kanban,
     permission: "tasks:view",
   },
   {
