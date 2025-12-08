@@ -102,6 +102,13 @@ const priorityColors: Record<string, string> = {
   low: "bg-green-500 text-white",
 };
 
+const priorityBorderColors: Record<string, string> = {
+  urgent: "border-l-red-500",
+  high: "border-l-orange-500",
+  medium: "border-l-yellow-500",
+  low: "border-l-green-500",
+};
+
 export default function TaskPoolPage() {
   const router = useRouter();
   const [actionTypes, setActionTypes] = useState<ActionType[]>([]);
@@ -228,28 +235,38 @@ export default function TaskPoolPage() {
 
   const renderTaskCard = (task: Task) => {
     const Icon = task.action_type ? getActionIcon(task.action_type.icon) : FileText;
+    const isOverdue = task.due_date && new Date(task.due_date) < new Date();
+    const createdDate = new Date(task.created_at);
+    const isRecent = (Date.now() - createdDate.getTime()) < 24 * 60 * 60 * 1000; // Less than 24 hours
 
     return (
       <Card
         key={task.id}
-        className="cursor-pointer hover:shadow-md transition-shadow group"
+        className={cn(
+          "cursor-pointer hover:shadow-md transition-shadow group border-l-4",
+          priorityBorderColors[task.priority] || "border-l-gray-300"
+        )}
         onClick={() => setSelectedTask(task)}
       >
         <CardContent className="p-3">
-          <div className="flex items-start gap-2">
-            <div
-              className="p-1.5 rounded-md"
-              style={{ backgroundColor: task.action_type?.color || "#6B7280" }}
-            >
-              <Icon className="h-3.5 w-3.5 text-white" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <h4 className="text-sm font-medium truncate">{task.title}</h4>
-              {task.client && (
-                <p className="text-xs text-muted-foreground truncate">
-                  {task.client.first_name} {task.client.last_name}
-                  {task.client.company && ` - ${task.client.company}`}
-                </p>
+          {/* Header row with priority and actions */}
+          <div className="flex items-start justify-between gap-2 mb-2">
+            <div className="flex items-center gap-2">
+              <Badge
+                variant="secondary"
+                className={cn("text-[10px] px-1.5 py-0", priorityColors[task.priority])}
+              >
+                {task.priority}
+              </Badge>
+              {isRecent && (
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-blue-50 text-blue-700 border-blue-200">
+                  New
+                </Badge>
+              )}
+              {task.source_type === "email" && (
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                  Email
+                </Badge>
               )}
             </div>
             <DropdownMenu>
@@ -257,7 +274,7 @@ export default function TaskPoolPage() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-6 w-6 opacity-0 group-hover:opacity-100"
+                  className="h-6 w-6 opacity-0 group-hover:opacity-100 -mr-1 -mt-1"
                 >
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
@@ -280,30 +297,49 @@ export default function TaskPoolPage() {
             </DropdownMenu>
           </div>
 
-          <div className="flex items-center gap-2 mt-2">
-            <Badge
-              variant="secondary"
-              className={cn("text-[10px] px-1.5", priorityColors[task.priority])}
-            >
-              {task.priority}
-            </Badge>
-            {task.due_date && (
-              <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-                <Clock className="h-3 w-3" />
-                {new Date(task.due_date).toLocaleDateString()}
+          {/* Title - full display, wrap if needed */}
+          <h4 className="text-sm font-semibold leading-tight mb-1">{task.title}</h4>
+
+          {/* Description preview */}
+          {task.description && (
+            <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
+              {task.description}
+            </p>
+          )}
+
+          {/* Client info if available */}
+          {task.client && (
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
+              <User className="h-3 w-3" />
+              <span>
+                {task.client.first_name} {task.client.last_name}
+                {task.client.company && <span className="text-muted-foreground/70"> ({task.client.company})</span>}
               </span>
-            )}
-            {task.ai_confidence && (
-              <Badge variant="outline" className="text-[10px] px-1.5">
-                AI {Math.round(task.ai_confidence * 100)}%
-              </Badge>
-            )}
-            {task.notes && task.notes[0]?.count > 0 && (
-              <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-                <MessageSquare className="h-3 w-3" />
-                {task.notes[0].count}
-              </span>
-            )}
+            </div>
+          )}
+
+          {/* Footer with metadata */}
+          <div className="flex items-center justify-between text-[10px] text-muted-foreground pt-2 border-t">
+            <div className="flex items-center gap-3">
+              {task.due_date && (
+                <span className={cn(
+                  "flex items-center gap-0.5",
+                  isOverdue && "text-red-600 font-medium"
+                )}>
+                  <Clock className="h-3 w-3" />
+                  {isOverdue ? "Overdue: " : "Due: "}
+                  {new Date(task.due_date).toLocaleDateString()}
+                </span>
+              )}
+              {task.ai_confidence && (
+                <span className="flex items-center gap-0.5">
+                  AI {Math.round(task.ai_confidence * 100)}%
+                </span>
+              )}
+            </div>
+            <span className="text-muted-foreground/60">
+              {createdDate.toLocaleDateString()}
+            </span>
           </div>
         </CardContent>
       </Card>
