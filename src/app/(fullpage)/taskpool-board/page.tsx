@@ -386,6 +386,15 @@ export default function TaskPoolBoardPage() {
   };
 
   const handleAssignTask = async (taskId: string, userId: string) => {
+    console.log("handleAssignTask called with taskId:", taskId, "userId:", userId);
+
+    // Validate inputs
+    if (!taskId || !userId) {
+      console.error("handleAssignTask: Missing required params - taskId:", taskId, "userId:", userId);
+      toast.error("Cannot assign task - missing data");
+      return;
+    }
+
     // Optimistic update - immediately update the UI
     const previousTasks = [...tasks];
     setTasks(prev => prev.map(t =>
@@ -393,10 +402,11 @@ export default function TaskPoolBoardPage() {
     ));
 
     const user = users.find(u => u.id === userId);
+    console.log("Found user for toast:", user?.full_name || user?.email);
     toast.success(`Task assigned to ${user?.full_name || user?.email || "user"}`);
 
     try {
-      console.log("Assigning task:", { taskId, userId });
+      console.log("Making API call to assign task...");
       const response = await fetch(`/api/taskpool/tasks/${taskId}/assign`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -404,17 +414,19 @@ export default function TaskPoolBoardPage() {
       });
 
       const data = await response.json();
-      console.log("Assignment response:", { ok: response.ok, data });
+      console.log("Assignment API response - ok:", response.ok, "status:", response.status, "data:", data);
 
       if (!response.ok) {
         // Revert on error
-        console.error("Assignment failed:", data);
+        console.error("Assignment failed, reverting:", data);
         setTasks(previousTasks);
         toast.error(data.error || "Failed to assign task");
+      } else {
+        console.log("Assignment successful!");
       }
     } catch (error) {
       // Revert on error
-      console.error("Error assigning task:", error);
+      console.error("Error assigning task (catch block):", error);
       setTasks(previousTasks);
       toast.error("Failed to assign task");
     }
@@ -566,18 +578,25 @@ export default function TaskPoolBoardPage() {
     }
 
     try {
-      console.log("Drop handler:", { columnId, columnType, taskId, taskToMove: taskToMove.id });
+      console.log("Drop handler - columnId:", columnId, "columnType:", columnType, "taskId:", taskId);
       if (columnType === "action") {
+        console.log("Action column drop - moving task to action type:", columnId);
         if (taskToMove.action_type_id !== columnId) {
           await handleChangeActionType(taskToMove.id, columnId);
+        } else {
+          console.log("Task already in this action type");
         }
       } else if (columnType === "user") {
-        console.log("User drop - current assigned_to:", taskToMove.assigned_to, "target userId:", columnId);
+        console.log("User bucket drop - assigning to user:", columnId, "current assigned_to:", taskToMove.assigned_to);
         if (taskToMove.assigned_to !== columnId) {
+          console.log("Calling handleAssignTask...");
           await handleAssignTask(taskToMove.id, columnId);
+          console.log("handleAssignTask completed");
         } else {
-          console.log("Task already assigned to this user");
+          console.log("Task already assigned to this user, skipping");
         }
+      } else {
+        console.log("Unknown columnType:", columnType);
       }
     } catch (error) {
       console.error("Drop action failed:", error);
