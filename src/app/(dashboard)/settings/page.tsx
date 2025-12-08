@@ -50,6 +50,8 @@ export default function SettingsPage() {
   const [emailAccounts, setEmailAccounts] = useState<EmailAccount[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [connecting, setConnecting] = useState(false);
+  const [orphanedDataCount, setOrphanedDataCount] = useState(0);
+  const [clearingData, setClearingData] = useState(false);
 
   const loadEmailAccounts = useCallback(async () => {
     try {
@@ -57,6 +59,17 @@ export default function SettingsPage() {
       if (response.ok) {
         const data = await response.json();
         setEmailAccounts(data.accounts || []);
+
+        // Check for orphaned data if no accounts connected
+        if (!data.accounts || data.accounts.length === 0) {
+          const emailDataResponse = await fetch("/api/email-intelligence?limit=1");
+          if (emailDataResponse.ok) {
+            const emailData = await emailDataResponse.json();
+            setOrphanedDataCount(emailData.total || 0);
+          }
+        } else {
+          setOrphanedDataCount(0);
+        }
       }
     } catch (error) {
       console.error("Error loading email accounts:", error);
@@ -76,7 +89,15 @@ export default function SettingsPage() {
   };
 
   const handleDisconnectAccount = async (accountId: string) => {
-    if (!confirm("Are you sure you want to disconnect this email account?")) return;
+    if (!confirm(
+      "Are you sure you want to disconnect this email account?\n\n" +
+      "This will permanently delete:\n" +
+      "• All email classifications and AI analysis\n" +
+      "• All extracted action items\n" +
+      "• All tasks created from emails\n" +
+      "• Email training data\n\n" +
+      "This action cannot be undone."
+    )) return;
 
     try {
       const response = await fetch(`/api/email/accounts/${accountId}`, {
@@ -84,7 +105,8 @@ export default function SettingsPage() {
       });
 
       if (response.ok) {
-        toast.success("Email account disconnected");
+        const data = await response.json();
+        toast.success(`Email account disconnected. Cleaned up ${data.cleaned?.classifications || 0} email records.`);
         loadEmailAccounts();
       } else {
         toast.error("Failed to disconnect account");
@@ -92,6 +114,38 @@ export default function SettingsPage() {
     } catch (error) {
       console.error("Error disconnecting account:", error);
       toast.error("Failed to disconnect account");
+    }
+  };
+
+  const handleClearOrphanedData = async () => {
+    if (!confirm(
+      "Are you sure you want to clear all orphaned email data?\n\n" +
+      "This will permanently delete:\n" +
+      "• All email classifications and AI analysis\n" +
+      "• All extracted action items\n" +
+      "• All tasks created from emails\n" +
+      "• Email training data\n\n" +
+      "This action cannot be undone."
+    )) return;
+
+    setClearingData(true);
+    try {
+      const response = await fetch("/api/email/cleanup", {
+        method: "POST",
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        toast.success(`Cleaned up ${data.cleaned?.classifications || 0} orphaned email records.`);
+        setOrphanedDataCount(0);
+      } else {
+        toast.error("Failed to clear orphaned data");
+      }
+    } catch (error) {
+      console.error("Error clearing orphaned data:", error);
+      toast.error("Failed to clear orphaned data");
+    } finally {
+      setClearingData(false);
     }
   };
 
@@ -394,6 +448,40 @@ export default function SettingsPage() {
                       <Mail className="h-12 w-12 mx-auto mb-4 opacity-20" />
                       <p>No email accounts connected</p>
                       <p className="text-sm">Connect your Microsoft 365 account to start syncing emails</p>
+
+                      {/* Warning about orphaned data */}
+                      {orphanedDataCount > 0 && (
+                        <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg text-left">
+                          <div className="flex items-start gap-3">
+                            <XCircle className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
+                            <div className="flex-1">
+                              <p className="text-sm font-medium text-amber-800">
+                                Orphaned Email Data Detected
+                              </p>
+                              <p className="text-sm text-amber-700 mt-1">
+                                There are {orphanedDataCount} email records remaining from a previously disconnected account.
+                                This data is no longer syncing and should be cleaned up.
+                              </p>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="mt-3 border-amber-300 text-amber-800 hover:bg-amber-100"
+                                onClick={handleClearOrphanedData}
+                                disabled={clearingData}
+                              >
+                                {clearingData ? (
+                                  <>
+                                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                                    Clearing...
+                                  </>
+                                ) : (
+                                  "Clear Orphaned Data"
+                                )}
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
