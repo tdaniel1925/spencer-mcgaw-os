@@ -552,7 +552,11 @@ export default function TasksPage() {
                   {tasks.map((task) => {
                     const SourceIcon = sourceIcons[task.source] || ClipboardList;
                     return (
-                      <TableRow key={task.id}>
+                      <TableRow
+                        key={task.id}
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => setSelectedTask(task)}
+                      >
                         <TableCell className="font-medium text-primary">
                           #{task.id.slice(0, 8)}
                         </TableCell>
@@ -635,7 +639,7 @@ export default function TasksPage() {
                             ? format(new Date(task.due_date), "MMM d, yyyy")
                             : "-"}
                         </TableCell>
-                        <TableCell>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="ghost" size="icon" className="h-8 w-8">
