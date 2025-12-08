@@ -233,7 +233,8 @@ export default function TaskPoolBoardPage() {
 
   const loadUsers = useCallback(async () => {
     try {
-      const response = await fetch("/api/users");
+      // Fetch only users who should appear in the TaskPool ribbon
+      const response = await fetch("/api/users?taskpool=true");
       if (response.ok) {
         const data = await response.json();
         setUsers(data.users || []);

@@ -96,6 +96,7 @@ interface TeamMember {
   phone?: string;
   avatar_url?: string;
   is_active: boolean;
+  show_in_taskpool: boolean;
   last_login?: Date;
   created_at: Date;
   invited_by?: string;
@@ -112,6 +113,7 @@ const mockTeamMembers: TeamMember[] = [
     job_title: "Managing Partner",
     phone: "(555) 123-4567",
     is_active: true,
+    show_in_taskpool: true,
     last_login: new Date(Date.now() - 1000 * 60 * 30),
     created_at: new Date(2023, 0, 1),
   },
@@ -124,6 +126,7 @@ const mockTeamMembers: TeamMember[] = [
     job_title: "Partner",
     phone: "(555) 123-4568",
     is_active: true,
+    show_in_taskpool: true,
     last_login: new Date(Date.now() - 1000 * 60 * 60 * 2),
     created_at: new Date(2023, 0, 1),
   },
@@ -136,6 +139,7 @@ const mockTeamMembers: TeamMember[] = [
     job_title: "Tax Manager",
     phone: "(555) 234-5678",
     is_active: true,
+    show_in_taskpool: true,
     last_login: new Date(Date.now() - 1000 * 60 * 60 * 24),
     created_at: new Date(2023, 3, 15),
   },
@@ -148,6 +152,7 @@ const mockTeamMembers: TeamMember[] = [
     job_title: "Senior Accountant",
     phone: "(555) 345-6789",
     is_active: true,
+    show_in_taskpool: true,
     last_login: new Date(Date.now() - 1000 * 60 * 60 * 4),
     created_at: new Date(2023, 6, 1),
   },
@@ -160,6 +165,7 @@ const mockTeamMembers: TeamMember[] = [
     job_title: "Client Coordinator",
     phone: "(555) 456-7890",
     is_active: true,
+    show_in_taskpool: true,
     last_login: new Date(Date.now() - 1000 * 60 * 60 * 48),
     created_at: new Date(2024, 1, 1),
   },
@@ -171,6 +177,7 @@ const mockTeamMembers: TeamMember[] = [
     department: "Tax",
     job_title: "Tax Associate",
     is_active: true,
+    show_in_taskpool: true,
     last_login: new Date(Date.now() - 1000 * 60 * 60 * 12),
     created_at: new Date(2024, 3, 1),
   },
@@ -182,6 +189,7 @@ const mockTeamMembers: TeamMember[] = [
     department: "Audit",
     job_title: "External Auditor",
     is_active: false,
+    show_in_taskpool: false,
     created_at: new Date(2024, 6, 1),
   },
 ];
@@ -232,6 +240,7 @@ export default function UserManagementPage() {
     job_title: "",
     phone: "",
     sendInvite: true,
+    show_in_taskpool: true,
   });
 
   const { can, isAdmin, isOwner } = useAuth();
@@ -274,6 +283,7 @@ export default function UserManagementPage() {
       job_title: newUser.job_title,
       phone: newUser.phone,
       is_active: true,
+      show_in_taskpool: newUser.show_in_taskpool,
       created_at: new Date(),
       invited_by: "Current User",
     };
@@ -287,6 +297,7 @@ export default function UserManagementPage() {
       job_title: "",
       phone: "",
       sendInvite: true,
+      show_in_taskpool: true,
     });
   };
 
@@ -733,6 +744,18 @@ export default function UserManagementPage() {
                 Send email invitation to set up account
               </Label>
             </div>
+            <div className="flex items-center space-x-2 pt-2">
+              <Checkbox
+                id="show_in_taskpool"
+                checked={newUser.show_in_taskpool}
+                onCheckedChange={(checked) =>
+                  setNewUser((prev) => ({ ...prev, show_in_taskpool: !!checked }))
+                }
+              />
+              <Label htmlFor="show_in_taskpool" className="text-sm font-normal">
+                Show in TaskPool assignment ribbon
+              </Label>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddUserOpen(false)}>
@@ -883,6 +906,25 @@ export default function UserManagementPage() {
                   <span className="text-sm text-muted-foreground">
                     {selectedUser.is_active ? "Active" : "Inactive"}
                   </span>
+                </div>
+              </div>
+              <div className="flex items-center justify-between pt-2 border-t">
+                <div>
+                  <Label htmlFor="edit_taskpool">Show in TaskPool</Label>
+                  <p className="text-xs text-muted-foreground">
+                    User appears in task assignment ribbon
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="edit_taskpool"
+                    checked={selectedUser.show_in_taskpool}
+                    onCheckedChange={(checked) =>
+                      setSelectedUser((prev) =>
+                        prev ? { ...prev, show_in_taskpool: !!checked } : null
+                      )
+                    }
+                  />
                 </div>
               </div>
             </div>
