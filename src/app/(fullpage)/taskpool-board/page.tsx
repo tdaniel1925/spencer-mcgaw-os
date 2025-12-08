@@ -387,18 +387,23 @@ export default function TaskPoolBoardPage() {
 
   const handleAssignTask = async (taskId: string, userId: string) => {
     try {
+      console.log("Assigning task:", { taskId, userId });
       const response = await fetch(`/api/taskpool/tasks/${taskId}/assign`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ assigned_to: userId }),
       });
 
+      const data = await response.json();
+      console.log("Assignment response:", { ok: response.ok, data });
+
       if (response.ok) {
         const user = users.find(u => u.id === userId);
         toast.success(`Task assigned to ${user?.full_name || user?.email || "user"}`);
         loadTasks(false);
       } else {
-        toast.error("Failed to assign task");
+        console.error("Assignment failed:", data);
+        toast.error(data.error || "Failed to assign task");
       }
     } catch (error) {
       console.error("Error assigning task:", error);
@@ -440,24 +445,42 @@ export default function TaskPoolBoardPage() {
     e.dataTransfer.setData("text/plain", task.id);
     e.dataTransfer.setData("application/x-task-id", task.id);
 
-    // Create a custom drag image
-    const dragImage = e.currentTarget.cloneNode(true) as HTMLElement;
-    dragImage.style.position = "absolute";
-    dragImage.style.top = "-1000px";
-    dragImage.style.opacity = "0.8";
-    dragImage.style.transform = "rotate(3deg)";
+    // Create a custom drag image that preserves the card's appearance
+    const sourceElement = e.currentTarget as HTMLElement;
+    const rect = sourceElement.getBoundingClientRect();
+    const dragImage = sourceElement.cloneNode(true) as HTMLElement;
+
+    // Set fixed dimensions to match the original card
+    dragImage.style.width = `${rect.width}px`;
+    dragImage.style.height = `${rect.height}px`;
+    dragImage.style.position = "fixed";
+    dragImage.style.top = "-9999px";
+    dragImage.style.left = "-9999px";
+    dragImage.style.opacity = "0.9";
+    dragImage.style.transform = "rotate(2deg)";
+    dragImage.style.pointerEvents = "none";
+    dragImage.style.zIndex = "9999";
+    dragImage.style.boxShadow = "0 8px 16px rgba(0,0,0,0.15)";
+    dragImage.style.borderRadius = "8px";
+    dragImage.style.overflow = "hidden";
+
     document.body.appendChild(dragImage);
-    e.dataTransfer.setDragImage(dragImage, 50, 30);
-    setTimeout(() => document.body.removeChild(dragImage), 0);
+    e.dataTransfer.setDragImage(dragImage, rect.width / 2, 20);
+
+    // Remove after a brief delay
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        if (dragImage.parentNode) {
+          document.body.removeChild(dragImage);
+        }
+      }, 0);
+    });
 
     // Visual feedback on source
-    const target = e.currentTarget as HTMLElement;
-    if (target) {
-      requestAnimationFrame(() => {
-        target.style.opacity = "0.4";
-        target.style.transform = "scale(0.98)";
-      });
-    }
+    requestAnimationFrame(() => {
+      sourceElement.style.opacity = "0.4";
+      sourceElement.style.transform = "scale(0.98)";
+    });
   };
 
   const handleDragEnd = (e: React.DragEvent) => {
@@ -526,13 +549,17 @@ export default function TaskPoolBoardPage() {
     }
 
     try {
+      console.log("Drop handler:", { columnId, columnType, taskId, taskToMove: taskToMove.id });
       if (columnType === "action") {
         if (taskToMove.action_type_id !== columnId) {
           await handleChangeActionType(taskToMove.id, columnId);
         }
       } else if (columnType === "user") {
+        console.log("User drop - current assigned_to:", taskToMove.assigned_to, "target userId:", columnId);
         if (taskToMove.assigned_to !== columnId) {
           await handleAssignTask(taskToMove.id, columnId);
+        } else {
+          console.log("Task already assigned to this user");
         }
       }
     } catch (error) {

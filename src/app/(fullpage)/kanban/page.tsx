@@ -446,24 +446,42 @@ export default function KanbanBoardPage() {
     e.dataTransfer.setData("text/plain", task.id);
     e.dataTransfer.setData("application/x-task-id", task.id);
 
-    // Create a custom drag image
-    const dragImage = e.currentTarget.cloneNode(true) as HTMLElement;
-    dragImage.style.position = "absolute";
-    dragImage.style.top = "-1000px";
-    dragImage.style.opacity = "0.8";
-    dragImage.style.transform = "rotate(3deg)";
+    // Create a custom drag image that preserves the card's appearance
+    const sourceElement = e.currentTarget as HTMLElement;
+    const rect = sourceElement.getBoundingClientRect();
+    const dragImage = sourceElement.cloneNode(true) as HTMLElement;
+
+    // Set fixed dimensions to match the original card
+    dragImage.style.width = `${rect.width}px`;
+    dragImage.style.height = `${rect.height}px`;
+    dragImage.style.position = "fixed";
+    dragImage.style.top = "-9999px";
+    dragImage.style.left = "-9999px";
+    dragImage.style.opacity = "0.9";
+    dragImage.style.transform = "rotate(2deg)";
+    dragImage.style.pointerEvents = "none";
+    dragImage.style.zIndex = "9999";
+    dragImage.style.boxShadow = "0 8px 16px rgba(0,0,0,0.15)";
+    dragImage.style.borderRadius = "8px";
+    dragImage.style.overflow = "hidden";
+
     document.body.appendChild(dragImage);
-    e.dataTransfer.setDragImage(dragImage, 50, 30);
-    setTimeout(() => document.body.removeChild(dragImage), 0);
+    e.dataTransfer.setDragImage(dragImage, rect.width / 2, 20);
+
+    // Remove after a brief delay
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        if (dragImage.parentNode) {
+          document.body.removeChild(dragImage);
+        }
+      }, 0);
+    });
 
     // Visual feedback on source
-    const target = e.currentTarget as HTMLElement;
-    if (target) {
-      requestAnimationFrame(() => {
-        target.style.opacity = "0.4";
-        target.style.transform = "scale(0.98)";
-      });
-    }
+    requestAnimationFrame(() => {
+      sourceElement.style.opacity = "0.4";
+      sourceElement.style.transform = "scale(0.98)";
+    });
   };
 
   const handleDragEnd = (e: React.DragEvent) => {
