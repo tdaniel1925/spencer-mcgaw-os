@@ -413,6 +413,13 @@ export default function KanbanBoardPage() {
   };
 
   const handleChangeStatus = async (taskId: string, status: string) => {
+    // Optimistic update - immediately update the UI
+    const previousTasks = [...tasks];
+    setTasks(prev => prev.map(t =>
+      t.id === taskId ? { ...t, status } : t
+    ));
+    toast.success("Task status updated");
+
     try {
       const response = await fetch(`/api/taskpool/tasks/${taskId}`, {
         method: "PATCH",
@@ -420,14 +427,15 @@ export default function KanbanBoardPage() {
         body: JSON.stringify({ status }),
       });
 
-      if (response.ok) {
-        toast.success("Task status updated");
-        loadTasks(false);
-      } else {
+      if (!response.ok) {
+        // Revert on error
+        setTasks(previousTasks);
         toast.error("Failed to update task");
       }
     } catch (error) {
+      // Revert on error
       console.error("Error updating task:", error);
+      setTasks(previousTasks);
       toast.error("Failed to update task");
     }
   };

@@ -386,6 +386,15 @@ export default function TaskPoolBoardPage() {
   };
 
   const handleAssignTask = async (taskId: string, userId: string) => {
+    // Optimistic update - immediately update the UI
+    const previousTasks = [...tasks];
+    setTasks(prev => prev.map(t =>
+      t.id === taskId ? { ...t, assigned_to: userId } : t
+    ));
+
+    const user = users.find(u => u.id === userId);
+    toast.success(`Task assigned to ${user?.full_name || user?.email || "user"}`);
+
     try {
       console.log("Assigning task:", { taskId, userId });
       const response = await fetch(`/api/taskpool/tasks/${taskId}/assign`, {
@@ -397,21 +406,28 @@ export default function TaskPoolBoardPage() {
       const data = await response.json();
       console.log("Assignment response:", { ok: response.ok, data });
 
-      if (response.ok) {
-        const user = users.find(u => u.id === userId);
-        toast.success(`Task assigned to ${user?.full_name || user?.email || "user"}`);
-        loadTasks(false);
-      } else {
+      if (!response.ok) {
+        // Revert on error
         console.error("Assignment failed:", data);
+        setTasks(previousTasks);
         toast.error(data.error || "Failed to assign task");
       }
     } catch (error) {
+      // Revert on error
       console.error("Error assigning task:", error);
+      setTasks(previousTasks);
       toast.error("Failed to assign task");
     }
   };
 
   const handleChangeActionType = async (taskId: string, actionTypeId: string) => {
+    // Optimistic update - immediately update the UI
+    const previousTasks = [...tasks];
+    setTasks(prev => prev.map(t =>
+      t.id === taskId ? { ...t, action_type_id: actionTypeId } : t
+    ));
+    toast.success("Task moved");
+
     try {
       const response = await fetch(`/api/taskpool/tasks/${taskId}`, {
         method: "PATCH",
@@ -419,14 +435,15 @@ export default function TaskPoolBoardPage() {
         body: JSON.stringify({ action_type_id: actionTypeId }),
       });
 
-      if (response.ok) {
-        toast.success("Task moved");
-        loadTasks(false);
-      } else {
+      if (!response.ok) {
+        // Revert on error
+        setTasks(previousTasks);
         toast.error("Failed to move task");
       }
     } catch (error) {
+      // Revert on error
       console.error("Error moving task:", error);
+      setTasks(previousTasks);
       toast.error("Failed to move task");
     }
   };
