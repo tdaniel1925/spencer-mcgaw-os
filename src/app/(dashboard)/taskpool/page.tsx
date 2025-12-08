@@ -99,17 +99,24 @@ const iconMap: Record<string, React.ElementType> = {
 };
 
 const priorityColors: Record<string, string> = {
-  urgent: "bg-red-500 text-white",
-  high: "bg-orange-500 text-white",
-  medium: "bg-yellow-500 text-black",
-  low: "bg-green-500 text-white",
+  urgent: "bg-red-100 text-red-700 border-red-200",
+  high: "bg-orange-100 text-orange-700 border-orange-200",
+  medium: "bg-yellow-100 text-yellow-700 border-yellow-200",
+  low: "bg-green-100 text-green-700 border-green-200",
+};
+
+const priorityDotColors: Record<string, string> = {
+  urgent: "bg-red-500",
+  high: "bg-orange-500",
+  medium: "bg-yellow-500",
+  low: "bg-green-500",
 };
 
 const priorityBorderColors: Record<string, string> = {
-  urgent: "border-l-red-500",
-  high: "border-l-orange-500",
-  medium: "border-l-yellow-500",
-  low: "border-l-green-500",
+  urgent: "border-l-red-400",
+  high: "border-l-orange-400",
+  medium: "border-l-yellow-400",
+  low: "border-l-green-400",
 };
 
 export default function TaskPoolPage() {
@@ -243,31 +250,49 @@ export default function TaskPoolPage() {
     const isRecent = (Date.now() - createdDate.getTime()) < 24 * 60 * 60 * 1000; // Less than 24 hours
 
     return (
-      <Card
+      <div
         key={task.id}
         className={cn(
-          "cursor-pointer hover:shadow-md transition-shadow group border-l-4",
-          priorityBorderColors[task.priority] || "border-l-gray-300"
+          "bg-background rounded-lg border cursor-pointer transition-all duration-200",
+          "hover:shadow-md hover:border-border/80 hover:-translate-y-0.5",
+          "group relative overflow-hidden"
         )}
         onClick={() => setSelectedTask(task)}
       >
-        <CardContent className="p-3">
-          {/* Header row with priority and actions */}
-          <div className="flex items-start justify-between gap-2 mb-2">
-            <div className="flex items-center gap-2">
+        {/* Priority indicator strip */}
+        <div
+          className={cn(
+            "absolute left-0 top-0 bottom-0 w-1",
+            priorityDotColors[task.priority] || "bg-gray-300"
+          )}
+        />
+
+        <div className="p-3.5 pl-4">
+          {/* Header row with badges and actions */}
+          <div className="flex items-start justify-between gap-2 mb-2.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
               <Badge
                 variant="secondary"
-                className={cn("text-[10px] px-1.5 py-0", priorityColors[task.priority])}
+                className={cn(
+                  "text-[10px] px-2 py-0.5 font-medium capitalize",
+                  priorityColors[task.priority]
+                )}
               >
                 {task.priority}
               </Badge>
               {isRecent && (
-                <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-blue-50 text-blue-700 border-blue-200">
+                <Badge
+                  variant="outline"
+                  className="text-[10px] px-2 py-0.5 bg-blue-50 text-blue-600 border-blue-200 font-medium"
+                >
                   New
                 </Badge>
               )}
               {task.source_type === "email" && (
-                <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                <Badge
+                  variant="outline"
+                  className="text-[10px] px-2 py-0.5 bg-purple-50 text-purple-600 border-purple-200 font-medium"
+                >
                   Email
                 </Badge>
               )}
@@ -277,12 +302,12 @@ export default function TaskPoolPage() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-6 w-6 opacity-0 group-hover:opacity-100 -mr-1 -mt-1"
+                  className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity -mr-1.5 -mt-1"
                 >
-                  <MoreHorizontal className="h-4 w-4" />
+                  <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
+              <DropdownMenuContent align="end" className="w-40">
                 <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setSelectedTask(task); }}>
                   View Details
                 </DropdownMenuItem>
@@ -300,172 +325,198 @@ export default function TaskPoolPage() {
             </DropdownMenu>
           </div>
 
-          {/* Title - full display, wrap if needed */}
-          <h4 className="text-sm font-semibold leading-tight mb-1">{task.title}</h4>
+          {/* Title */}
+          <h4 className="text-sm font-semibold leading-snug text-foreground mb-1.5">
+            {task.title}
+          </h4>
 
           {/* Description preview */}
           {task.description && (
-            <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
+            <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 mb-3">
               {task.description}
             </p>
           )}
 
           {/* Client info if available */}
           {task.client && (
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
-              <User className="h-3 w-3" />
-              <span>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
+              <div className="flex items-center justify-center w-5 h-5 rounded-full bg-muted">
+                <User className="h-3 w-3" />
+              </div>
+              <span className="font-medium text-foreground/80">
                 {task.client.first_name} {task.client.last_name}
-                {task.client.company && <span className="text-muted-foreground/70"> ({task.client.company})</span>}
               </span>
+              {task.client.company && (
+                <span className="text-muted-foreground/60">• {task.client.company}</span>
+              )}
             </div>
           )}
 
           {/* Footer with metadata */}
-          <div className="flex items-center justify-between text-[10px] text-muted-foreground pt-2 border-t">
+          <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-2.5 mt-2 border-t border-border/50">
             <div className="flex items-center gap-3">
               {task.due_date && (
                 <span className={cn(
-                  "flex items-center gap-0.5",
-                  isOverdue && "text-red-600 font-medium"
+                  "flex items-center gap-1",
+                  isOverdue ? "text-red-600 font-semibold" : "text-muted-foreground"
                 )}>
                   <Clock className="h-3 w-3" />
-                  {isOverdue ? "Overdue: " : "Due: "}
-                  {new Date(task.due_date).toLocaleDateString()}
+                  {isOverdue ? "Overdue" : "Due"}: {new Date(task.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                 </span>
               )}
               {task.ai_confidence && (
-                <span className="flex items-center gap-0.5">
-                  AI {Math.round(task.ai_confidence * 100)}%
+                <span className="flex items-center gap-1 text-muted-foreground/70">
+                  <span className="font-medium">AI</span> {Math.round(task.ai_confidence * 100)}%
                 </span>
               )}
             </div>
-            <span className="text-muted-foreground/60">
-              {createdDate.toLocaleDateString()}
+            <span className="text-muted-foreground/50">
+              {createdDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
             </span>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     );
   };
 
   return (
-    <div className="flex-1 p-6">
+    <div className="flex-1 p-6 lg:p-8 bg-muted/20 min-h-screen">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-primary/10 rounded-lg">
+      <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center gap-4">
+          <div className="p-2.5 bg-primary/10 rounded-xl">
             <Layers className="h-6 w-6 text-primary" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold">TaskPool</h1>
-            <p className="text-sm text-muted-foreground">
+            <h1 className="text-2xl font-bold tracking-tight">TaskPool</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
               AI-powered task management by action type
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <Button
             variant="outline"
             size="sm"
             onClick={() => loadTasks(false)}
             disabled={refreshing}
+            className="h-9"
           >
             <RefreshCw className={cn("h-4 w-4 mr-2", refreshing && "animate-spin")} />
             Refresh
           </Button>
-          <Button onClick={() => setShowCreateDialog(true)}>
+          <Button onClick={() => setShowCreateDialog(true)} className="h-9">
             <Plus className="h-4 w-4 mr-2" />
             New Task
           </Button>
         </div>
       </div>
 
-      {/* View Tabs */}
-      <Tabs value={currentView} onValueChange={setCurrentView} className="mb-6">
-        <TabsList>
-          <TabsTrigger value="pool" className="flex items-center gap-2">
-            <Layers className="h-4 w-4" />
-            Pool
-          </TabsTrigger>
-          <TabsTrigger value="my_assigned" className="flex items-center gap-2">
-            <UserPlus className="h-4 w-4" />
-            My Assigned
-          </TabsTrigger>
-          <TabsTrigger value="my_claimed" className="flex items-center gap-2">
-            <User className="h-4 w-4" />
-            My Claimed
-          </TabsTrigger>
-          <TabsTrigger value="overdue" className="flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4" />
-            Overdue
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
+      {/* View Tabs and Filters Row */}
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-8">
+        <Tabs value={currentView} onValueChange={setCurrentView}>
+          <TabsList className="h-10 p-1">
+            <TabsTrigger value="pool" className="flex items-center gap-2 px-4">
+              <Layers className="h-4 w-4" />
+              Pool
+            </TabsTrigger>
+            <TabsTrigger value="my_assigned" className="flex items-center gap-2 px-4">
+              <UserPlus className="h-4 w-4" />
+              My Assigned
+            </TabsTrigger>
+            <TabsTrigger value="my_claimed" className="flex items-center gap-2 px-4">
+              <User className="h-4 w-4" />
+              My Claimed
+            </TabsTrigger>
+            <TabsTrigger value="overdue" className="flex items-center gap-2 px-4">
+              <AlertTriangle className="h-4 w-4" />
+              Overdue
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
 
-      {/* Filters */}
-      <div className="flex items-center gap-4 mb-6">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search tasks..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
-          />
+        {/* Filters */}
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search tasks..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 w-64 h-10"
+            />
+          </div>
+          <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+            <SelectTrigger className="w-[160px] h-10">
+              <Filter className="h-4 w-4 mr-2 text-muted-foreground" />
+              <SelectValue placeholder="Priority" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Priorities</SelectItem>
+              <SelectItem value="urgent">Urgent</SelectItem>
+              <SelectItem value="high">High</SelectItem>
+              <SelectItem value="medium">Medium</SelectItem>
+              <SelectItem value="low">Low</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-        <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-          <SelectTrigger className="w-[150px]">
-            <Filter className="h-4 w-4 mr-2" />
-            <SelectValue placeholder="Priority" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Priorities</SelectItem>
-            <SelectItem value="urgent">Urgent</SelectItem>
-            <SelectItem value="high">High</SelectItem>
-            <SelectItem value="medium">Medium</SelectItem>
-            <SelectItem value="low">Low</SelectItem>
-          </SelectContent>
-        </Select>
       </div>
 
       {/* Pool View - Action Type Lanes */}
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {[1, 2, 3, 4].map((i) => (
             <div key={i} className="space-y-3">
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-24 w-full" />
-              <Skeleton className="h-24 w-full" />
+              <Skeleton className="h-12 w-full rounded-lg" />
+              <Skeleton className="h-28 w-full rounded-lg" />
+              <Skeleton className="h-28 w-full rounded-lg" />
             </div>
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {actionTypes.map((actionType) => {
             const Icon = getActionIcon(actionType.icon);
             const typeTasks = filterTasks(tasksByActionType[actionType.id] || []);
 
             return (
-              <div key={actionType.id} className="flex flex-col">
-                {/* Lane Header */}
+              <div key={actionType.id} className="flex flex-col bg-card rounded-xl shadow-sm border overflow-hidden">
+                {/* Lane Header - softer colors with left accent */}
                 <div
-                  className="flex items-center gap-2 p-3 rounded-t-lg"
-                  style={{ backgroundColor: actionType.color }}
+                  className="flex items-center gap-3 px-4 py-3 border-b bg-muted/30"
+                  style={{ borderLeftWidth: '4px', borderLeftColor: actionType.color }}
                 >
-                  <Icon className="h-5 w-5 text-white" />
-                  <span className="font-medium text-white">{actionType.label}</span>
-                  <Badge variant="secondary" className="ml-auto bg-white/20 text-white">
+                  <div
+                    className="p-1.5 rounded-md"
+                    style={{ backgroundColor: `${actionType.color}15` }}
+                  >
+                    <Icon className="h-4 w-4" style={{ color: actionType.color }} />
+                  </div>
+                  <span className="font-semibold text-sm text-foreground">{actionType.label}</span>
+                  <Badge
+                    variant="secondary"
+                    className="ml-auto text-xs font-medium"
+                    style={{
+                      backgroundColor: `${actionType.color}15`,
+                      color: actionType.color
+                    }}
+                  >
                     {typeTasks.length}
                   </Badge>
                 </div>
 
-                {/* Lane Content */}
-                <div className="flex-1 bg-muted/30 rounded-b-lg p-2 space-y-2 min-h-[200px]">
+                {/* Lane Content - scrollable with max height */}
+                <div className="flex-1 p-3 space-y-3 max-h-[calc(100vh-320px)] overflow-y-auto bg-muted/10">
                   {typeTasks.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-                      <Icon className="h-8 w-8 mb-2 opacity-20" />
-                      <p className="text-sm">No tasks</p>
+                    <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                      <div
+                        className="p-3 rounded-full mb-3"
+                        style={{ backgroundColor: `${actionType.color}10` }}
+                      >
+                        <Icon className="h-6 w-6 opacity-40" style={{ color: actionType.color }} />
+                      </div>
+                      <p className="text-sm font-medium">No tasks</p>
+                      <p className="text-xs text-muted-foreground/60 mt-1">Tasks will appear here</p>
                     </div>
                   ) : (
                     typeTasks.map(renderTaskCard)
