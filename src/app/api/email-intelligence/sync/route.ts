@@ -245,8 +245,10 @@ export async function POST(request: NextRequest) {
             const taskPoolActionCode = ACTION_TYPE_MAP[actionItem.type] || "PROCESS";
             const taskPoolActionTypeId = actionTypeByCode[taskPoolActionCode];
 
+            console.log(`[Email Sync] Creating task for action item: ${actionItem.title}, type: ${actionItem.type} -> ${taskPoolActionCode}, typeId: ${taskPoolActionTypeId}`);
+
             if (taskPoolActionTypeId) {
-              const { data: newTask } = await supabase
+              const { data: newTask, error: taskError } = await supabase
                 .from("tasks")
                 .insert({
                   title: actionItem.title,
@@ -277,8 +279,11 @@ export async function POST(request: NextRequest) {
                 .select("id")
                 .single();
 
-              // Log activity for the new task
-              if (newTask) {
+              if (taskError) {
+                console.error("[Email Sync] Failed to create task:", taskError);
+              } else if (newTask) {
+                console.log(`[Email Sync] Created task ${newTask.id}`);
+                // Log activity for the new task
                 await supabase.from("task_activity_log").insert({
                   task_id: newTask.id,
                   action: "created",
@@ -292,6 +297,8 @@ export async function POST(request: NextRequest) {
                 });
                 totalTasksCreated++;
               }
+            } else {
+              console.warn(`[Email Sync] No action type found for code: ${taskPoolActionCode}`);
             }
           }
 
