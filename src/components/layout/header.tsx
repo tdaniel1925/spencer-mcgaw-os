@@ -1,17 +1,9 @@
 "use client";
 
-import { Bell, Mail, MessageSquare, Search, UserPen, LogOut, Phone, X, PhoneIncoming, Clock, AlertCircle } from "lucide-react";
+import { Bell, Mail, MessageSquare, Search, Phone, X, PhoneIncoming, Clock, AlertCircle } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   Popover,
   PopoverContent,
@@ -323,44 +315,22 @@ export function Header({ title, breadcrumbItems, currentPageLabel }: HeaderProps
           </PopoverContent>
         </Popover>
 
-        {/* Profile Dropdown */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="flex items-center gap-2 ml-2">
-              <div className="text-right hidden sm:block">
-                <p className="text-sm font-medium">{user?.full_name || "User"}</p>
-                <p className="text-xs text-muted-foreground">{userRoleInfo?.name || "Staff"}</p>
-              </div>
-              <Avatar className="h-9 w-9 border-2 border-accent">
-                <AvatarImage src={user?.avatar_url || ""} alt={user?.full_name || "User"} />
-                <AvatarFallback className="bg-primary text-primary-foreground">
-                  {getUserInitials()}
-                </AvatarFallback>
-              </Avatar>
-              <div className="w-2 h-2 rounded-full bg-green-500 absolute bottom-0 right-0" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel>
-              <div className="flex flex-col">
-                <span>{user?.full_name || "User"}</span>
-                <span className="text-xs font-normal text-muted-foreground">{user?.email}</span>
-              </div>
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link href="/settings">
-                <UserPen className="mr-2 h-4 w-4" />
-                Edit Profile
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-destructive">
-              <LogOut className="mr-2 h-4 w-4" />
-              Log out
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {/* User Profile Badge (no dropdown) */}
+        <div className="flex items-center gap-2 ml-2 px-2">
+          <div className="text-right hidden sm:block">
+            <p className="text-sm font-medium">{user?.full_name || "User"}</p>
+            <p className="text-xs text-muted-foreground">{userRoleInfo?.name || "Staff"}</p>
+          </div>
+          <div className="relative">
+            <Avatar className="h-9 w-9 border-2 border-accent">
+              <AvatarImage src={user?.avatar_url || ""} alt={user?.full_name || "User"} />
+              <AvatarFallback className="bg-primary text-primary-foreground">
+                {getUserInitials()}
+              </AvatarFallback>
+            </Avatar>
+            <div className="w-2 h-2 rounded-full bg-green-500 absolute bottom-0 right-0" />
+          </div>
+        </div>
       </div>
     </header>
   );
