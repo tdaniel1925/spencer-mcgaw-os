@@ -48,6 +48,8 @@ import {
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { BulkUploadDialog } from "@/components/bulk-upload-dialog";
+import { Upload } from "lucide-react";
 
 // Client type from database
 interface Client {
@@ -81,6 +83,7 @@ export default function ClientsPage() {
 
   // Dialog state
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
   // Form state
@@ -260,6 +263,12 @@ export default function ClientsPage() {
               {/* Print */}
               <Button variant="outline" size="icon" onClick={() => window.print()}>
                 <Printer className="h-4 w-4" />
+              </Button>
+
+              {/* Bulk Upload */}
+              <Button variant="outline" onClick={() => setBulkUploadOpen(true)}>
+                <Upload className="h-4 w-4 mr-2" />
+                Bulk Upload
               </Button>
 
               {/* Add Client */}
@@ -576,6 +585,63 @@ export default function ClientsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Bulk Upload Dialog */}
+      <BulkUploadDialog
+        open={bulkUploadOpen}
+        onClose={() => setBulkUploadOpen(false)}
+        title="Bulk Upload Clients"
+        targetFields={[
+          { name: "name", label: "Company/Client Name", required: true, type: "text" },
+          { name: "email", label: "Email", required: false, type: "email" },
+          { name: "phone", label: "Phone", required: false, type: "phone" },
+          { name: "address", label: "Street Address", required: false, type: "text" },
+          { name: "city", label: "City", required: false, type: "text" },
+          { name: "state", label: "State", required: false, type: "text" },
+          { name: "zip", label: "ZIP Code", required: false, type: "text" },
+          { name: "status", label: "Status", required: false, type: "select", options: ["active", "inactive", "prospect"] },
+          { name: "notes", label: "Notes", required: false, type: "text" },
+        ]}
+        onUpload={async (data) => {
+          let success = 0;
+          const errors: string[] = [];
+
+          for (const row of data) {
+            try {
+              const response = await fetch("/api/clients", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  name: row.name,
+                  email: row.email || null,
+                  phone: row.phone || null,
+                  address: row.address || null,
+                  city: row.city || null,
+                  state: row.state || null,
+                  zip: row.zip || null,
+                  status: row.status || "active",
+                  notes: row.notes || null,
+                }),
+              });
+
+              if (response.ok) {
+                success++;
+              } else {
+                const data = await response.json();
+                errors.push(`${row.name}: ${data.error || "Failed to create"}`);
+              }
+            } catch (error) {
+              errors.push(`${row.name}: Unexpected error`);
+            }
+          }
+
+          if (success > 0) {
+            fetchClients();
+          }
+
+          return { success, errors };
+        }}
+      />
     </>
   );
 }

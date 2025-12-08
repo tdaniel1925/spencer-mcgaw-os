@@ -86,6 +86,8 @@ import {
   permissionNames,
 } from "@/lib/permissions";
 import { useAuth } from "@/lib/supabase/auth-context";
+import { BulkUploadDialog } from "@/components/bulk-upload-dialog";
+import { Upload } from "lucide-react";
 
 // Types
 interface TeamMember {
@@ -140,6 +142,7 @@ export default function UserManagementPage() {
   const [editUserOpen, setEditUserOpen] = useState(false);
   const [deleteUserOpen, setDeleteUserOpen] = useState(false);
   const [permissionsOpen, setPermissionsOpen] = useState(false);
+  const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<TeamMember | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -433,10 +436,16 @@ export default function UserManagementPage() {
               </Select>
             </div>
             {can("users:create") && (
-              <Button onClick={() => setAddUserOpen(true)}>
-                <UserPlus className="h-4 w-4 mr-2" />
-                Add User
-              </Button>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setBulkUploadOpen(true)}>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Bulk Upload
+                </Button>
+                <Button onClick={() => setAddUserOpen(true)}>
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  Add User
+                </Button>
+              </div>
             )}
           </div>
         </Card>
@@ -1072,6 +1081,58 @@ export default function UserManagementPage() {
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Bulk Upload Dialog */}
+      <BulkUploadDialog
+        open={bulkUploadOpen}
+        onClose={() => setBulkUploadOpen(false)}
+        title="Bulk Upload Users"
+        targetFields={[
+          { name: "full_name", label: "Full Name", required: true, type: "text" },
+          { name: "email", label: "Email", required: true, type: "email" },
+          { name: "role", label: "Role", required: false, type: "select", options: ["staff", "manager", "admin"] },
+          { name: "department", label: "Department", required: false, type: "text" },
+          { name: "job_title", label: "Job Title", required: false, type: "text" },
+          { name: "phone", label: "Phone", required: false, type: "phone" },
+        ]}
+        onUpload={async (data) => {
+          let success = 0;
+          const errors: string[] = [];
+
+          for (const row of data) {
+            try {
+              const response = await fetch("/api/admin/users", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  email: row.email,
+                  full_name: row.full_name,
+                  role: row.role || "staff",
+                  department: row.department || null,
+                  job_title: row.job_title || null,
+                  phone: row.phone || null,
+                  show_in_taskpool: true,
+                }),
+              });
+
+              if (response.ok) {
+                success++;
+              } else {
+                const data = await response.json();
+                errors.push(`${row.email}: ${data.error || "Failed to create"}`);
+              }
+            } catch (error) {
+              errors.push(`${row.email}: Unexpected error`);
+            }
+          }
+
+          if (success > 0) {
+            loadUsers();
+          }
+
+          return { success, errors };
+        }}
+      />
     </>
   );
 }
