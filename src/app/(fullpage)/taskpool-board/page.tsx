@@ -426,29 +426,48 @@ export default function TaskPoolBoardPage() {
     }
   };
 
+  // Track dragged task ID in ref for reliability across events
+  const draggedTaskIdRef = useRef<string | null>(null);
+
   // Drag and Drop handlers
   const handleDragStart = (e: React.DragEvent, task: Task) => {
-    e.stopPropagation();
+    // Store in both state and ref for reliability
     setDraggedTask(task);
+    draggedTaskIdRef.current = task.id;
+
+    // Set drag data
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", task.id);
-    e.dataTransfer.setData("application/json", JSON.stringify({ taskId: task.id, source: "taskpool" }));
-    // Visual feedback
+    e.dataTransfer.setData("application/x-task-id", task.id);
+
+    // Create a custom drag image
+    const dragImage = e.currentTarget.cloneNode(true) as HTMLElement;
+    dragImage.style.position = "absolute";
+    dragImage.style.top = "-1000px";
+    dragImage.style.opacity = "0.8";
+    dragImage.style.transform = "rotate(3deg)";
+    document.body.appendChild(dragImage);
+    e.dataTransfer.setDragImage(dragImage, 50, 30);
+    setTimeout(() => document.body.removeChild(dragImage), 0);
+
+    // Visual feedback on source
     const target = e.currentTarget as HTMLElement;
     if (target) {
-      target.classList.add("dragging");
-      setTimeout(() => {
-        target.style.opacity = "0.5";
-      }, 0);
+      requestAnimationFrame(() => {
+        target.style.opacity = "0.4";
+        target.style.transform = "scale(0.98)";
+      });
     }
   };
 
   const handleDragEnd = (e: React.DragEvent) => {
-    if (e.currentTarget instanceof HTMLElement) {
-      e.currentTarget.style.opacity = "1";
-      e.currentTarget.classList.remove("dragging");
+    const target = e.currentTarget as HTMLElement;
+    if (target) {
+      target.style.opacity = "1";
+      target.style.transform = "";
     }
     setDraggedTask(null);
+    draggedTaskIdRef.current = null;
     setDragOverColumn(null);
   };
 
@@ -456,9 +475,7 @@ export default function TaskPoolBoardPage() {
     e.preventDefault();
     e.stopPropagation();
     e.dataTransfer.dropEffect = "move";
-    if (dragOverColumn !== columnId) {
-      setDragOverColumn(columnId);
-    }
+    setDragOverColumn(columnId);
   };
 
   const handleDragEnter = (e: React.DragEvent, columnId: string) => {
@@ -470,10 +487,10 @@ export default function TaskPoolBoardPage() {
   const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    // Only clear if leaving the actual drop zone, not a child element
-    const relatedTarget = e.relatedTarget as HTMLElement;
+    const relatedTarget = e.relatedTarget as HTMLElement | null;
     const currentTarget = e.currentTarget as HTMLElement;
-    if (!currentTarget.contains(relatedTarget)) {
+    // Only clear if actually leaving the drop zone
+    if (!relatedTarget || !currentTarget.contains(relatedTarget)) {
       setDragOverColumn(null);
     }
   };
@@ -483,32 +500,48 @@ export default function TaskPoolBoardPage() {
     e.stopPropagation();
     setDragOverColumn(null);
 
-    // Get task from drag data or state
-    let taskToMove = draggedTask;
-    if (!taskToMove) {
-      const taskId = e.dataTransfer.getData("text/plain");
-      if (taskId) {
-        taskToMove = tasks.find(t => t.id === taskId) || null;
-      }
+    // Try multiple methods to get the task ID
+    let taskId = draggedTaskIdRef.current;
+    if (!taskId) {
+      taskId = e.dataTransfer.getData("application/x-task-id");
+    }
+    if (!taskId) {
+      taskId = e.dataTransfer.getData("text/plain");
+    }
+    if (!taskId && draggedTask) {
+      taskId = draggedTask.id;
     }
 
-    if (!taskToMove) {
+    if (!taskId) {
+      console.error("Drop failed: No task ID found");
+      toast.error("Drop failed - please try again");
       return;
     }
 
-    if (columnType === "action") {
-      // Moving to action type column
-      if (taskToMove.action_type_id !== columnId) {
-        await handleChangeActionType(taskToMove.id, columnId);
+    const taskToMove = tasks.find(t => t.id === taskId);
+    if (!taskToMove) {
+      console.error("Drop failed: Task not found in list");
+      toast.error("Task not found - please refresh");
+      return;
+    }
+
+    try {
+      if (columnType === "action") {
+        if (taskToMove.action_type_id !== columnId) {
+          await handleChangeActionType(taskToMove.id, columnId);
+        }
+      } else if (columnType === "user") {
+        if (taskToMove.assigned_to !== columnId) {
+          await handleAssignTask(taskToMove.id, columnId);
+        }
       }
-    } else if (columnType === "user") {
-      // Assigning to user
-      if (taskToMove.assigned_to !== columnId) {
-        await handleAssignTask(taskToMove.id, columnId);
-      }
+    } catch (error) {
+      console.error("Drop action failed:", error);
+      toast.error("Failed to move task");
     }
 
     setDraggedTask(null);
+    draggedTaskIdRef.current = null;
   };
 
   // Group tasks
@@ -575,35 +608,19 @@ export default function TaskPoolBoardPage() {
     return (
       <div
         key={task.id}
-        draggable={true}
+        draggable
         onDragStart={(e) => handleDragStart(e, task)}
-        onDragEnd={(e) => handleDragEnd(e)}
-        onMouseDown={(e) => {
-          // Prevent click when starting drag
-          e.currentTarget.dataset.dragging = "false";
-        }}
-        onMouseMove={(e) => {
-          // Mark as dragging if mouse moves while button is down
-          if (e.buttons === 1) {
-            e.currentTarget.dataset.dragging = "true";
-          }
-        }}
+        onDragEnd={handleDragEnd}
         className={cn(
           "bg-background rounded-lg border cursor-grab transition-all duration-200",
           "hover:shadow-md hover:border-border/80",
           "group relative overflow-hidden select-none",
-          draggedTask?.id === task.id && "opacity-50 cursor-grabbing",
+          draggedTask?.id === task.id && "opacity-40 scale-[0.98] cursor-grabbing",
           dueDateAlert.isOverdue && "ring-2 ring-red-500 ring-offset-1 animate-pulse",
           dueDateAlert.isUrgent && !dueDateAlert.isOverdue && "ring-2 ring-orange-500 ring-offset-1 animate-pulse",
           dueDateAlert.isApproaching && !dueDateAlert.isUrgent && !dueDateAlert.isOverdue && "ring-1 ring-amber-400"
         )}
-        onClick={(e) => {
-          // Only open modal if not dragging
-          const target = e.currentTarget as HTMLElement;
-          if (target.dataset.dragging !== "true") {
-            setSelectedTask(task);
-          }
-        }}
+        onClick={() => setSelectedTask(task)}
       >
         {/* Priority indicator strip */}
         <div
