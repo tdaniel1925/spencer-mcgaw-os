@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { DEFAULT_ORGANIZATION_ID } from "@/lib/constants";
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -227,7 +228,7 @@ export async function createTasksFromExtraction(
             client_match: extraction.client_match,
           },
           status: "open",
-          organization_id: "00000000-0000-0000-0000-000000000001",
+          organization_id: DEFAULT_ORGANIZATION_ID,
           created_by: userId,
         })
         .select("id")

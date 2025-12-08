@@ -1104,8 +1104,9 @@ export default function EmailIntelligencePage() {
     }
   };
 
-  // Update individual action item
-  const handleUpdateActionItem = (intelligenceId: string, itemId: string, updates: Partial<ActionItem>) => {
+  // Update individual action item (optimistic update + persist to backend)
+  const handleUpdateActionItem = async (intelligenceId: string, itemId: string, updates: Partial<ActionItem>) => {
+    // Optimistic update for immediate UI feedback
     setIntelligences((prev) =>
       prev.map((intel) => {
         if (intel.id !== intelligenceId) return intel;
@@ -1117,6 +1118,26 @@ export default function EmailIntelligencePage() {
         };
       })
     );
+
+    // Persist to backend (fire and forget for better UX, log errors)
+    try {
+      const response = await fetch("/api/email/action-items", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: itemId,
+          assignedToUserId: updates.assigneeId,
+          priority: updates.priority,
+          // Note: targetColumn is a UI-only field for task creation, not persisted on action item
+        }),
+      });
+
+      if (!response.ok) {
+        console.error("Failed to persist action item update");
+      }
+    } catch (error) {
+      console.error("Error persisting action item update:", error);
+    }
   };
 
   // Filter intelligences

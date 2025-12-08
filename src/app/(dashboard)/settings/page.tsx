@@ -18,6 +18,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import {
   User,
   Building,
@@ -32,6 +33,9 @@ import {
   CheckCircle,
   XCircle,
   ExternalLink,
+  Sparkles,
+  Clock,
+  MessageSquare,
 } from "lucide-react";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { toast } from "sonner";
@@ -59,6 +63,63 @@ interface CompanySettings {
   timezone: string;
   address: string;
 }
+
+interface NotificationPreferences {
+  // Email Notifications
+  emailNewTask: boolean;
+  emailTaskAssigned: boolean;
+  emailTaskDueSoon: boolean;
+  emailTaskOverdue: boolean;
+  emailTaskCompleted: boolean;
+  emailClientActivity: boolean;
+  emailWeeklySummary: boolean;
+  // In-App Notifications
+  inappNewTask: boolean;
+  inappTaskAssigned: boolean;
+  inappTaskDueSoon: boolean;
+  inappTaskOverdue: boolean;
+  inappTaskCompleted: boolean;
+  inappMentions: boolean;
+  inappClientActivity: boolean;
+  // SMS Notifications
+  smsEnabled: boolean;
+  smsUrgentOnly: boolean;
+  smsTaskOverdue: boolean;
+  // AI/Email Intelligence
+  aiEmailProcessed: boolean;
+  aiHighPriorityDetected: boolean;
+  aiActionItemsExtracted: boolean;
+  // Quiet Hours
+  quietHoursEnabled: boolean;
+  quietHoursStart: string;
+  quietHoursEnd: string;
+}
+
+const DEFAULT_NOTIFICATIONS: NotificationPreferences = {
+  emailNewTask: true,
+  emailTaskAssigned: true,
+  emailTaskDueSoon: true,
+  emailTaskOverdue: true,
+  emailTaskCompleted: false,
+  emailClientActivity: true,
+  emailWeeklySummary: true,
+  inappNewTask: true,
+  inappTaskAssigned: true,
+  inappTaskDueSoon: true,
+  inappTaskOverdue: true,
+  inappTaskCompleted: true,
+  inappMentions: true,
+  inappClientActivity: true,
+  smsEnabled: false,
+  smsUrgentOnly: true,
+  smsTaskOverdue: false,
+  aiEmailProcessed: true,
+  aiHighPriorityDetected: true,
+  aiActionItemsExtracted: true,
+  quietHoursEnabled: false,
+  quietHoursStart: "22:00",
+  quietHoursEnd: "07:00",
+};
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -88,13 +149,18 @@ export default function SettingsPage() {
   const [savingCompany, setSavingCompany] = useState(false);
   const [loadingSettings, setLoadingSettings] = useState(true);
 
-  // Load profile and company settings
+  // Notification preferences state
+  const [notifications, setNotifications] = useState<NotificationPreferences>(DEFAULT_NOTIFICATIONS);
+  const [savingNotifications, setSavingNotifications] = useState(false);
+
+  // Load profile, company, and notification settings
   useEffect(() => {
     async function loadSettings() {
       try {
-        const [profileRes, companyRes] = await Promise.all([
+        const [profileRes, companyRes, notificationsRes] = await Promise.all([
           fetch("/api/settings/profile"),
           fetch("/api/settings/company"),
+          fetch("/api/settings/notifications"),
         ]);
 
         if (profileRes.ok) {
@@ -116,6 +182,11 @@ export default function SettingsPage() {
             timezone: data.timezone || "cst",
             address: data.address || "",
           });
+        }
+
+        if (notificationsRes.ok) {
+          const data = await notificationsRes.json();
+          setNotifications(data);
         }
       } catch (error) {
         console.error("Error loading settings:", error);
@@ -173,6 +244,35 @@ export default function SettingsPage() {
     } finally {
       setSavingCompany(false);
     }
+  };
+
+  // Save notification preferences
+  const handleSaveNotifications = async () => {
+    setSavingNotifications(true);
+    try {
+      const response = await fetch("/api/settings/notifications", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(notifications),
+      });
+
+      if (response.ok) {
+        toast.success("Notification preferences saved successfully");
+      } else {
+        const data = await response.json();
+        toast.error(data.error || "Failed to save notification preferences");
+      }
+    } catch (error) {
+      console.error("Error saving notification preferences:", error);
+      toast.error("Failed to save notification preferences");
+    } finally {
+      setSavingNotifications(false);
+    }
+  };
+
+  // Toggle notification preference
+  const toggleNotification = (key: keyof NotificationPreferences) => {
+    setNotifications(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
   const loadEmailAccounts = useCallback(async () => {
@@ -482,19 +582,316 @@ export default function SettingsPage() {
 
           {/* Notifications Settings */}
           <TabsContent value="notifications">
-            <Card>
-              <CardHeader>
-                <CardTitle>Notification Preferences</CardTitle>
-                <CardDescription>
-                  Configure how you receive notifications
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <p className="text-muted-foreground">
-                  Notification settings coming soon...
-                </p>
-              </CardContent>
-            </Card>
+            <div className="space-y-6">
+              {/* Email Notifications */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Mail className="h-5 w-5" />
+                    Email Notifications
+                  </CardTitle>
+                  <CardDescription>
+                    Choose what emails you receive
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-sm">New Task Created</p>
+                      <p className="text-xs text-muted-foreground">Get notified when a new task is created</p>
+                    </div>
+                    <Switch
+                      checked={notifications.emailNewTask}
+                      onCheckedChange={() => toggleNotification("emailNewTask")}
+                    />
+                  </div>
+                  <Separator />
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-sm">Task Assigned to You</p>
+                      <p className="text-xs text-muted-foreground">Get notified when a task is assigned to you</p>
+                    </div>
+                    <Switch
+                      checked={notifications.emailTaskAssigned}
+                      onCheckedChange={() => toggleNotification("emailTaskAssigned")}
+                    />
+                  </div>
+                  <Separator />
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-sm">Task Due Soon</p>
+                      <p className="text-xs text-muted-foreground">Get reminded about upcoming due dates</p>
+                    </div>
+                    <Switch
+                      checked={notifications.emailTaskDueSoon}
+                      onCheckedChange={() => toggleNotification("emailTaskDueSoon")}
+                    />
+                  </div>
+                  <Separator />
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-sm">Task Overdue</p>
+                      <p className="text-xs text-muted-foreground">Get notified when a task is overdue</p>
+                    </div>
+                    <Switch
+                      checked={notifications.emailTaskOverdue}
+                      onCheckedChange={() => toggleNotification("emailTaskOverdue")}
+                    />
+                  </div>
+                  <Separator />
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-sm">Client Activity</p>
+                      <p className="text-xs text-muted-foreground">Get notified about client-related activity</p>
+                    </div>
+                    <Switch
+                      checked={notifications.emailClientActivity}
+                      onCheckedChange={() => toggleNotification("emailClientActivity")}
+                    />
+                  </div>
+                  <Separator />
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-sm">Weekly Summary</p>
+                      <p className="text-xs text-muted-foreground">Receive a weekly summary of your tasks</p>
+                    </div>
+                    <Switch
+                      checked={notifications.emailWeeklySummary}
+                      onCheckedChange={() => toggleNotification("emailWeeklySummary")}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* In-App Notifications */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Bell className="h-5 w-5" />
+                    In-App Notifications
+                  </CardTitle>
+                  <CardDescription>
+                    Configure notifications within the app
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-sm">New Tasks</p>
+                      <p className="text-xs text-muted-foreground">Show notifications for new tasks</p>
+                    </div>
+                    <Switch
+                      checked={notifications.inappNewTask}
+                      onCheckedChange={() => toggleNotification("inappNewTask")}
+                    />
+                  </div>
+                  <Separator />
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-sm">Task Assignments</p>
+                      <p className="text-xs text-muted-foreground">Notify when tasks are assigned to you</p>
+                    </div>
+                    <Switch
+                      checked={notifications.inappTaskAssigned}
+                      onCheckedChange={() => toggleNotification("inappTaskAssigned")}
+                    />
+                  </div>
+                  <Separator />
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-sm">Due Soon Reminders</p>
+                      <p className="text-xs text-muted-foreground">Show reminders for upcoming deadlines</p>
+                    </div>
+                    <Switch
+                      checked={notifications.inappTaskDueSoon}
+                      onCheckedChange={() => toggleNotification("inappTaskDueSoon")}
+                    />
+                  </div>
+                  <Separator />
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-sm">Mentions</p>
+                      <p className="text-xs text-muted-foreground">Get notified when someone mentions you</p>
+                    </div>
+                    <Switch
+                      checked={notifications.inappMentions}
+                      onCheckedChange={() => toggleNotification("inappMentions")}
+                    />
+                  </div>
+                  <Separator />
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-sm">Client Activity</p>
+                      <p className="text-xs text-muted-foreground">Show client-related notifications</p>
+                    </div>
+                    <Switch
+                      checked={notifications.inappClientActivity}
+                      onCheckedChange={() => toggleNotification("inappClientActivity")}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* SMS Notifications */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <MessageSquare className="h-5 w-5" />
+                    SMS Notifications
+                  </CardTitle>
+                  <CardDescription>
+                    Receive text message alerts for important events
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-sm">Enable SMS Notifications</p>
+                      <p className="text-xs text-muted-foreground">Receive text messages for alerts</p>
+                    </div>
+                    <Switch
+                      checked={notifications.smsEnabled}
+                      onCheckedChange={() => toggleNotification("smsEnabled")}
+                    />
+                  </div>
+                  {notifications.smsEnabled && (
+                    <>
+                      <Separator />
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium text-sm">Urgent Items Only</p>
+                          <p className="text-xs text-muted-foreground">Only send SMS for urgent priorities</p>
+                        </div>
+                        <Switch
+                          checked={notifications.smsUrgentOnly}
+                          onCheckedChange={() => toggleNotification("smsUrgentOnly")}
+                        />
+                      </div>
+                      <Separator />
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium text-sm">Overdue Task Alerts</p>
+                          <p className="text-xs text-muted-foreground">Send SMS when tasks become overdue</p>
+                        </div>
+                        <Switch
+                          checked={notifications.smsTaskOverdue}
+                          onCheckedChange={() => toggleNotification("smsTaskOverdue")}
+                        />
+                      </div>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* AI Email Intelligence */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Sparkles className="h-5 w-5" />
+                    AI Email Intelligence
+                  </CardTitle>
+                  <CardDescription>
+                    Notifications for AI-processed emails
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-sm">Email Processed</p>
+                      <p className="text-xs text-muted-foreground">Notify when new emails are analyzed</p>
+                    </div>
+                    <Switch
+                      checked={notifications.aiEmailProcessed}
+                      onCheckedChange={() => toggleNotification("aiEmailProcessed")}
+                    />
+                  </div>
+                  <Separator />
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-sm">High Priority Detected</p>
+                      <p className="text-xs text-muted-foreground">Alert when AI detects urgent emails</p>
+                    </div>
+                    <Switch
+                      checked={notifications.aiHighPriorityDetected}
+                      onCheckedChange={() => toggleNotification("aiHighPriorityDetected")}
+                    />
+                  </div>
+                  <Separator />
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-sm">Action Items Extracted</p>
+                      <p className="text-xs text-muted-foreground">Notify when action items are found</p>
+                    </div>
+                    <Switch
+                      checked={notifications.aiActionItemsExtracted}
+                      onCheckedChange={() => toggleNotification("aiActionItemsExtracted")}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Quiet Hours */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Clock className="h-5 w-5" />
+                    Quiet Hours
+                  </CardTitle>
+                  <CardDescription>
+                    Pause notifications during specific hours
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-sm">Enable Quiet Hours</p>
+                      <p className="text-xs text-muted-foreground">Pause non-urgent notifications during set hours</p>
+                    </div>
+                    <Switch
+                      checked={notifications.quietHoursEnabled}
+                      onCheckedChange={() => toggleNotification("quietHoursEnabled")}
+                    />
+                  </div>
+                  {notifications.quietHoursEnabled && (
+                    <>
+                      <Separator />
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="quietStart">Start Time</Label>
+                          <Input
+                            id="quietStart"
+                            type="time"
+                            value={notifications.quietHoursStart}
+                            onChange={(e) => setNotifications(prev => ({ ...prev, quietHoursStart: e.target.value }))}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="quietEnd">End Time</Label>
+                          <Input
+                            id="quietEnd"
+                            type="time"
+                            value={notifications.quietHoursEnd}
+                            onChange={(e) => setNotifications(prev => ({ ...prev, quietHoursEnd: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Save Button */}
+              <div className="flex justify-end">
+                <Button onClick={handleSaveNotifications} disabled={savingNotifications}>
+                  {savingNotifications ? (
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4 mr-2" />
+                  )}
+                  {savingNotifications ? "Saving..." : "Save Notification Preferences"}
+                </Button>
+              </div>
+            </div>
           </TabsContent>
 
           {/* Security Settings */}

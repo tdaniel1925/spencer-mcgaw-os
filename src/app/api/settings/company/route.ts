@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-
-// For single-tenant app, company settings are stored in organization_settings table
-// with a single row (id = 1)
-
-const DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001";
+import { DEFAULT_ORGANIZATION_ID, DEFAULT_COMPANY_NAME } from "@/lib/constants";
 
 // GET - Get company/organization settings
 export async function GET() {
@@ -20,7 +16,7 @@ export async function GET() {
     const { data: settings, error } = await supabase
       .from("organization_settings")
       .select("*")
-      .eq("id", DEFAULT_ORG_ID)
+      .eq("id", DEFAULT_ORGANIZATION_ID)
       .single();
 
     if (error && error.code !== "PGRST116") {
@@ -30,7 +26,7 @@ export async function GET() {
 
     // Return settings or defaults
     return NextResponse.json({
-      companyName: settings?.company_name || "Spencer McGaw CPA",
+      companyName: settings?.company_name || DEFAULT_COMPANY_NAME,
       companyEmail: settings?.company_email || "",
       companyPhone: settings?.company_phone || "",
       timezone: settings?.timezone || "cst",
@@ -60,7 +56,7 @@ export async function PUT(request: NextRequest) {
     .eq("id", user.id)
     .single();
 
-  if (userProfile?.role !== "admin" && userProfile?.role !== "owner") {
+  if (userProfile?.role !== "admin") {
     return NextResponse.json({ error: "Only admins can update company settings" }, { status: 403 });
   }
 
@@ -72,7 +68,7 @@ export async function PUT(request: NextRequest) {
     const { error } = await supabase
       .from("organization_settings")
       .upsert({
-        id: DEFAULT_ORG_ID,
+        id: DEFAULT_ORGANIZATION_ID,
         company_name: companyName,
         company_email: companyEmail,
         company_phone: companyPhone,

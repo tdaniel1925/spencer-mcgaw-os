@@ -3,7 +3,7 @@ import pg from "pg";
 const { Pool } = pg;
 
 const pool = new Pool({
-  host: "db.kbqpwvmlxptjttfsifew.supabase.co",
+  host: "db.cyygkhwujcrbhzgjqipj.supabase.co",
   port: 5432,
   database: "postgres",
   user: "postgres",
@@ -73,7 +73,7 @@ async function createOrgSettingsTable() {
           EXISTS (
             SELECT 1 FROM users
             WHERE users.id = auth.uid()
-            AND users.role IN ('admin', 'owner')
+            AND users.role = 'admin'
           )
         );
     `);

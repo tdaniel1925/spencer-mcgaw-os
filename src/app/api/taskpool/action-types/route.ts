@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { DEFAULT_ORGANIZATION_ID } from "@/lib/constants";
 
 // GET - List all action types
 export async function GET(request: NextRequest) {
@@ -58,7 +59,7 @@ export async function POST(request: NextRequest) {
         color: color || "#6B7280",
         icon: icon || "clipboard",
         sort_order: sort_order || 0,
-        organization_id: "00000000-0000-0000-0000-000000000001",
+        organization_id: DEFAULT_ORGANIZATION_ID,
       })
       .select()
       .single();

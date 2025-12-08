@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { classifyEmailWithAI } from "@/lib/email/ai-classifier";
+import { DEFAULT_ORGANIZATION_ID } from "@/lib/constants";
 
 const MICROSOFT_GRAPH_URL = "https://graph.microsoft.com/v1.0";
 
@@ -268,7 +269,7 @@ export async function POST(request: NextRequest) {
                     extracted_entities: classification.extractedEntities,
                   },
                   status: "open",
-                  organization_id: "00000000-0000-0000-0000-000000000001",
+                  organization_id: DEFAULT_ORGANIZATION_ID,
                   created_by: user.id,
                 })
                 .select("id")
