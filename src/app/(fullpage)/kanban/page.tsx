@@ -823,12 +823,8 @@ export default function KanbanBoardPage() {
                     key={column.id}
                     className={cn(
                       "w-80 flex-shrink-0 flex flex-col bg-card rounded-xl shadow-sm border overflow-hidden transition-all",
-                      isDropTarget && "ring-2 ring-blue-500 ring-offset-2"
+                      isDropTarget && "ring-2 ring-blue-500 ring-offset-2 bg-blue-50/50"
                     )}
-                    onDragOver={(e) => handleDragOver(e, column.code)}
-                    onDragEnter={(e) => handleDragEnter(e, column.code)}
-                    onDragLeave={(e) => handleDragLeave(e)}
-                    onDrop={(e) => handleDrop(e, column.code)}
                   >
                     {/* Column Header */}
                     <div className={cn(
@@ -844,15 +840,41 @@ export default function KanbanBoardPage() {
                       </Badge>
                     </div>
 
-                    {/* Column Content */}
+                    {/* Column Content - This is the drop zone */}
                     <div
                       data-column-content
-                      className="flex-1 p-2 space-y-2 overflow-y-auto bg-muted/10"
+                      data-column-code={column.code}
+                      className={cn(
+                        "flex-1 p-2 space-y-2 overflow-y-auto bg-muted/10 min-h-[200px]",
+                        isDropTarget && "bg-blue-100/30"
+                      )}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.dataTransfer.dropEffect = "move";
+                        setDragOverColumn(column.code);
+                      }}
+                      onDragEnter={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setDragOverColumn(column.code);
+                      }}
+                      onDragLeave={(e) => {
+                        e.preventDefault();
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const x = e.clientX;
+                        const y = e.clientY;
+                        // Only clear if actually left the element bounds
+                        if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+                          setDragOverColumn(null);
+                        }
+                      }}
+                      onDrop={(e) => handleDrop(e, column.code)}
                     >
                       {columnTasks.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+                        <div className="flex flex-col items-center justify-center py-8 text-muted-foreground pointer-events-none">
                           <Icon className={cn("h-6 w-6 opacity-30 mb-2", colors.text)} />
-                          <p className="text-xs">No tasks</p>
+                          <p className="text-xs">Drop tasks here</p>
                         </div>
                       ) : (
                         columnTasks.map((task) => renderTaskCard(task))

@@ -950,12 +950,8 @@ export default function TaskPoolBoardPage() {
                     key={actionType.id}
                     className={cn(
                       "w-72 flex-shrink-0 flex flex-col bg-card rounded-xl shadow-sm border overflow-hidden transition-all",
-                      isDropTarget && "ring-2 ring-primary ring-offset-2"
+                      isDropTarget && "ring-2 ring-primary ring-offset-2 bg-primary/5"
                     )}
-                    onDragOver={(e) => handleDragOver(e, actionType.id)}
-                    onDragEnter={(e) => handleDragEnter(e, actionType.id)}
-                    onDragLeave={(e) => handleDragLeave(e)}
-                    onDrop={(e) => handleDrop(e, actionType.id, "action")}
                   >
                     {/* Column Header */}
                     <div
@@ -980,13 +976,39 @@ export default function TaskPoolBoardPage() {
                       </Badge>
                     </div>
 
-                    {/* Column Content */}
+                    {/* Column Content - This is the drop zone */}
                     <div
                       data-column-content
-                      className="flex-1 p-2 space-y-2 overflow-y-auto bg-muted/10"
+                      data-column-id={actionType.id}
+                      className={cn(
+                        "flex-1 p-2 space-y-2 overflow-y-auto bg-muted/10 min-h-[200px]",
+                        isDropTarget && "bg-primary/10"
+                      )}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.dataTransfer.dropEffect = "move";
+                        setDragOverColumn(actionType.id);
+                      }}
+                      onDragEnter={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setDragOverColumn(actionType.id);
+                      }}
+                      onDragLeave={(e) => {
+                        e.preventDefault();
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const x = e.clientX;
+                        const y = e.clientY;
+                        // Only clear if actually left the element bounds
+                        if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+                          setDragOverColumn(null);
+                        }
+                      }}
+                      onDrop={(e) => handleDrop(e, actionType.id, "action")}
                     >
                       {typeTasks.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+                        <div className="flex flex-col items-center justify-center py-8 text-muted-foreground pointer-events-none">
                           <Icon className="h-6 w-6 opacity-30 mb-2" style={{ color: actionType.color }} />
                           <p className="text-xs">Drop tasks here</p>
                         </div>
@@ -1027,6 +1049,7 @@ export default function TaskPoolBoardPage() {
               return (
                 <div
                   key={user.id}
+                  data-user-bucket={user.id}
                   className={cn(
                     "flex-shrink-0 w-20 h-16 rounded-lg border-2 transition-all flex flex-col items-center justify-center text-center",
                     isDropTarget
@@ -1034,21 +1057,38 @@ export default function TaskPoolBoardPage() {
                       : "border-border border-dashed bg-card hover:border-muted-foreground/50 hover:bg-muted/30",
                     draggedTask && "cursor-copy"
                   )}
-                  onDragOver={(e) => handleDragOver(e, `user-${user.id}`)}
-                  onDragEnter={(e) => handleDragEnter(e, `user-${user.id}`)}
-                  onDragLeave={(e) => handleDragLeave(e)}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.dataTransfer.dropEffect = "copy";
+                    setDragOverColumn(`user-${user.id}`);
+                  }}
+                  onDragEnter={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setDragOverColumn(`user-${user.id}`);
+                  }}
+                  onDragLeave={(e) => {
+                    e.preventDefault();
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const x = e.clientX;
+                    const y = e.clientY;
+                    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+                      setDragOverColumn(null);
+                    }
+                  }}
                   onDrop={(e) => handleDrop(e, user.id, "user")}
                 >
-                  <p className="text-xs font-semibold truncate w-full px-1 leading-tight">
+                  <p className="text-xs font-semibold truncate w-full px-1 leading-tight pointer-events-none">
                     {firstName}
                   </p>
-                  <p className="text-xs font-medium text-muted-foreground truncate w-full px-1 leading-tight">
+                  <p className="text-xs font-medium text-muted-foreground truncate w-full px-1 leading-tight pointer-events-none">
                     {lastName || <span className="invisible">.</span>}
                   </p>
                   <Badge
                     variant="secondary"
                     className={cn(
-                      "text-[9px] px-1 py-0 mt-0.5 h-4 min-w-[20px]",
+                      "text-[9px] px-1 py-0 mt-0.5 h-4 min-w-[20px] pointer-events-none",
                       userTasks.length > 0 ? "bg-blue-100 text-blue-700" : "bg-muted text-muted-foreground"
                     )}
                   >
