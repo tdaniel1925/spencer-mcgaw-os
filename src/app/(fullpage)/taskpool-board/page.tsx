@@ -523,30 +523,6 @@ export default function TaskPoolBoardPage() {
     setDragOverColumn(null);
   };
 
-  const handleDragOver = (e: React.DragEvent, columnId: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-    e.dataTransfer.dropEffect = "move";
-    setDragOverColumn(columnId);
-  };
-
-  const handleDragEnter = (e: React.DragEvent, columnId: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragOverColumn(columnId);
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const relatedTarget = e.relatedTarget as HTMLElement | null;
-    const currentTarget = e.currentTarget as HTMLElement;
-    // Only clear if actually leaving the drop zone
-    if (!relatedTarget || !currentTarget.contains(relatedTarget)) {
-      setDragOverColumn(null);
-    }
-  };
-
   const handleDrop = async (e: React.DragEvent, columnId: string, columnType: "action" | "user") => {
     e.preventDefault();
     e.stopPropagation();
@@ -1088,7 +1064,19 @@ export default function TaskPoolBoardPage() {
       </div>
 
       {/* Bottom User Buckets - Fixed at bottom */}
-      <div className="flex-shrink-0 bg-background border-t shadow-lg">
+      <div
+        className="flex-shrink-0 bg-background border-t shadow-lg"
+        onDragOver={(e) => {
+          // Prevent action columns from capturing drops in this area
+          e.preventDefault();
+          e.stopPropagation();
+        }}
+        onDrop={(e) => {
+          // Prevent drops from bubbling to action columns
+          e.preventDefault();
+          e.stopPropagation();
+        }}
+      >
         <div className="px-4 py-1.5 border-b bg-muted/30">
           <div className="flex items-center gap-2">
             <Users className="h-4 w-4 text-muted-foreground" />
@@ -1133,6 +1121,7 @@ export default function TaskPoolBoardPage() {
                   }}
                   onDragLeave={(e) => {
                     e.preventDefault();
+                    e.stopPropagation();
                     const rect = e.currentTarget.getBoundingClientRect();
                     const x = e.clientX;
                     const y = e.clientY;
@@ -1140,7 +1129,12 @@ export default function TaskPoolBoardPage() {
                       setDragOverColumn(null);
                     }
                   }}
-                  onDrop={(e) => handleDrop(e, user.id, "user")}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log("User bucket onDrop fired for user:", user.id);
+                    handleDrop(e, user.id, "user");
+                  }}
                 >
                   <p className="text-xs font-semibold truncate w-full px-1 leading-tight pointer-events-none">
                     {firstName}
