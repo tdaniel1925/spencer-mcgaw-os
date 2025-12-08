@@ -170,6 +170,39 @@ const priorityDotColors: Record<string, string> = {
   low: "bg-green-500",
 };
 
+// Helper to format time elapsed since a date
+function formatTimeElapsed(dateString: string): { text: string; isOld: boolean } {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / (1000 * 60));
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  const diffWeeks = Math.floor(diffDays / 7);
+  const diffMonths = Math.floor(diffDays / 30);
+
+  let text: string;
+  let isOld = false;
+
+  if (diffMins < 60) {
+    text = `${diffMins}m`;
+  } else if (diffHours < 24) {
+    text = `${diffHours}h`;
+    if (diffHours >= 8) isOld = true;
+  } else if (diffDays < 7) {
+    text = `${diffDays}d`;
+    isOld = true;
+  } else if (diffWeeks < 4) {
+    text = `${diffWeeks}w`;
+    isOld = true;
+  } else {
+    text = `${diffMonths}mo`;
+    isOld = true;
+  }
+
+  return { text, isOld };
+}
+
 export default function KanbanBoardPage() {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [actionTypes, setActionTypes] = useState<ActionType[]>([]);
@@ -614,6 +647,10 @@ export default function KanbanBoardPage() {
     const isRecent = (Date.now() - createdDate.getTime()) < 24 * 60 * 60 * 1000;
     const assignedUser = task.assigned_to ? users.find(u => u.id === task.assigned_to) : null;
 
+    // Timer: show time since assignment or creation
+    const timerDate = task.assigned_at || task.created_at;
+    const { text: timerText, isOld } = formatTimeElapsed(timerDate);
+
     return (
       <div
         key={task.id}
@@ -637,7 +674,7 @@ export default function KanbanBoardPage() {
         />
 
         <div className="p-3 pl-3.5">
-          {/* Header row with badges */}
+          {/* Header row with badges and timer */}
           <div className="flex items-start justify-between gap-2 mb-2">
             <div className="flex items-center gap-1.5 flex-wrap">
               <Badge
@@ -659,7 +696,20 @@ export default function KanbanBoardPage() {
                 </Badge>
               )}
             </div>
-            <GripVertical className="h-4 w-4 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab" />
+            <div className="flex items-center gap-1.5">
+              {/* Time since assigned/created badge */}
+              <Badge
+                variant="secondary"
+                className={cn(
+                  "text-[10px] px-1.5 py-0 font-medium flex items-center gap-0.5",
+                  isOld ? "bg-amber-100 text-amber-700" : "bg-muted text-muted-foreground"
+                )}
+              >
+                <Clock className="h-2.5 w-2.5" />
+                {timerText}
+              </Badge>
+              <GripVertical className="h-4 w-4 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab" />
+            </div>
           </div>
 
           {/* Title */}

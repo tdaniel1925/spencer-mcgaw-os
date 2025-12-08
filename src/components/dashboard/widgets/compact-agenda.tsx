@@ -136,8 +136,8 @@ export function CompactAgenda({ maxItems = 4 }: CompactAgendaProps) {
   );
 
   return (
-    <Card className="h-full flex flex-col">
-      <CardHeader className="pb-2 flex-shrink-0">
+    <Card>
+      <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2">
             <CalendarDays className="h-4 w-4 text-primary" />
@@ -152,8 +152,8 @@ export function CompactAgenda({ maxItems = 4 }: CompactAgendaProps) {
         </p>
       </CardHeader>
 
-      <CardContent className="flex-1 flex flex-col p-0">
-        <div className="flex-1 px-4 py-2 space-y-2 overflow-hidden">
+      <CardContent className="p-0">
+        <div className="px-4 py-2 space-y-2">
           {upcomingEvents.length > 0 ? (
             upcomingEvents.map((event) => {
               const isActive = event.id === currentEvent?.id;
@@ -204,15 +204,15 @@ export function CompactAgenda({ maxItems = 4 }: CompactAgendaProps) {
               );
             })
           ) : (
-            <div className="text-center py-6 text-muted-foreground">
-              <CalendarDays className="h-8 w-8 mx-auto mb-2 opacity-30" />
+            <div className="text-center py-4 text-muted-foreground">
+              <CalendarDays className="h-6 w-6 mx-auto mb-1 opacity-30" />
               <p className="text-sm">No events today</p>
             </div>
           )}
         </div>
 
-        {/* Fixed footer */}
-        <div className="flex-shrink-0 p-3 border-t mt-auto">
+        {/* Footer */}
+        <div className="p-3 border-t">
           <Button
             variant="ghost"
             className="w-full justify-between h-8 text-sm"

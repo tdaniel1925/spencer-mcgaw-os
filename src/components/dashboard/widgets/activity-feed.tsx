@@ -112,8 +112,8 @@ export function ActivityFeed({
   };
 
   return (
-    <Card className="h-full flex flex-col">
-      <CardHeader className="pb-2 flex-shrink-0">
+    <Card>
+      <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2">
             <Activity className="h-4 w-4 text-primary" />
@@ -131,8 +131,8 @@ export function ActivityFeed({
         </div>
       </CardHeader>
 
-      <CardContent className="flex-1 p-0 overflow-hidden">
-        <ScrollArea className="h-full max-h-[280px]">
+      <CardContent className="p-0">
+        <ScrollArea className="max-h-[240px]">
           <div className="px-4 py-2 space-y-1">
             {loading ? (
               <div className="space-y-3">
@@ -200,8 +200,8 @@ export function ActivityFeed({
                 );
               })
             ) : (
-              <div className="text-center py-8 text-muted-foreground">
-                <Activity className="h-8 w-8 mx-auto mb-2 opacity-30" />
+              <div className="text-center py-4 text-muted-foreground">
+                <Activity className="h-6 w-6 mx-auto mb-1 opacity-30" />
                 <p className="text-sm">No recent activity</p>
               </div>
             )}

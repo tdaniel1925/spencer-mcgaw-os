@@ -423,6 +423,10 @@ export default function TaskPoolBoardPage() {
         toast.error(data.error || "Failed to assign task");
       } else {
         console.log("Assignment successful!");
+        // Update task with full response data including assigned_at
+        setTasks(prev => prev.map(t =>
+          t.id === taskId ? { ...t, ...data } : t
+        ));
       }
     } catch (error) {
       // Revert on error

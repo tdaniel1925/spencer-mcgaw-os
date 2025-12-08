@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   AlertCircle,
   Clock,
@@ -77,7 +78,7 @@ export function PriorityTasks({
   const displayTasks = tasks.slice(0, maxItems);
 
   return (
-    <Card className="h-full">
+    <Card>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2">
@@ -95,15 +96,16 @@ export function PriorityTasks({
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="space-y-2">
+      <CardContent className="p-0">
         {loading ? (
-          <div className="space-y-2">
+          <div className="p-4 space-y-2">
             {[1, 2, 3].map((i) => (
               <div key={i} className="h-16 bg-muted animate-pulse rounded-lg" />
             ))}
           </div>
         ) : displayTasks.length > 0 ? (
-          <>
+          <ScrollArea className="max-h-[320px]">
+            <div className="p-4 space-y-2">
             {displayTasks.map((task) => {
               const isCompleting = completingTasks.has(task.id);
               const isOverdue = task.due_date && new Date(task.due_date) < new Date();
@@ -195,12 +197,12 @@ export function PriorityTasks({
                 +{tasks.length - maxItems} more tasks
               </Button>
             )}
-          </>
+            </div>
+          </ScrollArea>
         ) : (
-          <div className="text-center py-8 text-muted-foreground">
-            <AlertCircle className="h-8 w-8 mx-auto mb-2 opacity-30" />
+          <div className="text-center py-4 text-muted-foreground">
+            <AlertCircle className="h-6 w-6 mx-auto mb-1 opacity-30" />
             <p className="text-sm">No priority tasks</p>
-            <p className="text-xs mt-1">You&apos;re all caught up!</p>
           </div>
         )}
       </CardContent>

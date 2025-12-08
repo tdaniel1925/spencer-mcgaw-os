@@ -27,6 +27,7 @@ import {
   Webhook,
   Sparkles,
   MessageSquare,
+  MessagesSquare,
   Layers,
   Kanban,
 } from "lucide-react";
@@ -124,6 +125,17 @@ const navSections: NavSection[] = [
         href: "/sms",
         icon: MessageSquare,
         permission: "clients:view",
+      },
+    ],
+  },
+  {
+    label: "Team",
+    items: [
+      {
+        title: "Chat",
+        href: "/chat",
+        icon: MessagesSquare,
+        permission: "dashboard:view",
       },
     ],
   },

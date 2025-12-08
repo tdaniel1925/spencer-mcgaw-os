@@ -6,6 +6,7 @@ import { CallProvider } from "@/lib/calls/call-context";
 import { NotificationProvider } from "@/lib/notifications";
 import { DashboardProvider } from "@/lib/dashboard";
 import { FileProvider } from "@/lib/files";
+import { ChatProvider } from "@/lib/chat";
 import { AIAssistant } from "@/components/ai-assistant/ai-assistant";
 
 export default function DashboardLayout({
@@ -36,12 +37,14 @@ export default function DashboardLayout({
                   initialCounts={initialNotificationCounts}
                   initialTaskProgress={initialTaskProgress}
                 >
-                  <div className="min-h-screen bg-background">
-                    <Sidebar />
-                    {/* Responsive padding: no padding on mobile, pl-64 on desktop (lg+) */}
-                    <div className="lg:pl-64 pt-14 lg:pt-0">{children}</div>
-                    <AIAssistant />
-                  </div>
+                  <ChatProvider>
+                    <div className="min-h-screen bg-background">
+                      <Sidebar />
+                      {/* Responsive padding: no padding on mobile, pl-64 on desktop (lg+) */}
+                      <div className="lg:pl-64 pt-14 lg:pt-0">{children}</div>
+                      <AIAssistant />
+                    </div>
+                  </ChatProvider>
                 </NotificationProvider>
               </FileProvider>
             </DashboardProvider>

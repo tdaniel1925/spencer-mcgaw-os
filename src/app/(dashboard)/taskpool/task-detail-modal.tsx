@@ -253,7 +253,7 @@ export function TaskDetailModal({
     setCompleting(true);
     try {
       const body: Record<string, any> = {};
-      if (routeToActionType) {
+      if (routeToActionType && routeToActionType !== "none") {
         body.route_to_action_type_id = routeToActionType;
         body.route_title = routeTitle || undefined;
       }
@@ -266,7 +266,7 @@ export function TaskDetailModal({
 
       if (response.ok) {
         toast.success(
-          routeToActionType
+          routeToActionType && routeToActionType !== "none"
             ? "Task completed and routed to next action"
             : "Task completed"
         );
@@ -397,62 +397,73 @@ export function TaskDetailModal({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader className="pr-8 sticky top-0 bg-background z-10 pb-4">
-          {/* Title and badges row */}
-          <div className="flex items-start gap-3">
-            {task.action_type && (
-              <div
-                className="p-2 rounded-lg shrink-0"
-                style={{ backgroundColor: task.action_type.color }}
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto p-0">
+        {/* Compact Header */}
+        <div className="sticky top-0 bg-background z-10 border-b">
+          <div className="p-4 pr-10">
+            {/* Title Row */}
+            <div className="flex items-center gap-2 mb-2">
+              {task.action_type && (
+                <div
+                  className="w-2 h-2 rounded-full shrink-0"
+                  style={{ backgroundColor: task.action_type.color }}
+                />
+              )}
+              <DialogTitle className="text-lg font-semibold leading-tight line-clamp-1">
+                {task.title}
+              </DialogTitle>
+            </div>
+
+            {/* Badges Row - Compact */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Badge
+                variant="outline"
+                className="text-[10px] px-1.5 py-0"
+                style={{ borderColor: task.action_type?.color, color: task.action_type?.color }}
               >
-                <FileText className="h-5 w-5 text-white" />
-              </div>
-            )}
-            <div className="flex-1 min-w-0">
-              <DialogTitle className="text-xl leading-tight">{task.title}</DialogTitle>
-              <div className="flex flex-wrap items-center gap-2 mt-1">
-                <Badge variant="outline">{task.action_type?.label}</Badge>
-                <Badge className={cn(priorityColors[task.priority], "text-white")}>
-                  {task.priority}
+                {task.action_type?.label}
+              </Badge>
+              <Badge className={cn("text-[10px] px-1.5 py-0", priorityColors[task.priority])}>
+                {task.priority}
+              </Badge>
+              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 capitalize">
+                {task.status.replace('_', ' ')}
+              </Badge>
+              {task.ai_confidence && (
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 flex items-center gap-0.5">
+                  <Sparkles className="h-2.5 w-2.5" />
+                  {Math.round(task.ai_confidence * 100)}%
                 </Badge>
-                <Badge variant="secondary">{task.status}</Badge>
-                {task.ai_confidence && (
-                  <Badge variant="outline" className="flex items-center gap-1">
-                    <Sparkles className="h-3 w-3" />
-                    AI {Math.round(task.ai_confidence * 100)}%
-                  </Badge>
-                )}
-              </div>
+              )}
             </div>
           </div>
 
-          {/* Action buttons row - separate from title */}
+          {/* Action Bar - Clean horizontal layout */}
           {task.status !== "completed" && (
-            <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t">
-              {/* Assign dropdown */}
+            <div className="flex items-center gap-1 px-4 pb-3">
+              {/* Assign/Reassign dropdown */}
               <Popover open={assignPopoverOpen} onOpenChange={setAssignPopoverOpen}>
                 <PopoverTrigger asChild>
                   <Button
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
-                    className="flex items-center gap-1"
+                    className="h-8 px-2 text-xs"
                     disabled={assigning}
                   >
-                    <UserPlus className="h-4 w-4" />
+                    <UserPlus className="h-3.5 w-3.5 mr-1" />
                     {task.assigned_to ? "Reassign" : "Assign"}
-                    <ChevronDown className="h-3 w-3 ml-1" />
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-64 p-0" align="start">
+                <PopoverContent className="w-56 p-0" align="start">
                   <Command>
                     <CommandInput
                       placeholder="Search users..."
                       value={userSearch}
                       onValueChange={setUserSearch}
+                      className="h-8 text-sm"
                     />
-                    <CommandList>
-                      <CommandEmpty>
+                    <CommandList className="max-h-48">
+                      <CommandEmpty className="py-2 text-xs text-center">
                         {loadingUsers ? "Loading..." : "No users found"}
                       </CommandEmpty>
                       <CommandGroup>
@@ -461,13 +472,10 @@ export function TaskDetailModal({
                             key={user.id}
                             value={user.id}
                             onSelect={() => handleAssignTask(user.id)}
-                            className="cursor-pointer"
+                            className="cursor-pointer py-1.5"
                           >
-                            <User className="h-4 w-4 mr-2" />
-                            <div className="flex flex-col">
-                              <span className="text-sm">{user.full_name || "Unnamed"}</span>
-                              <span className="text-xs text-muted-foreground">{user.email}</span>
-                            </div>
+                            <User className="h-3.5 w-3.5 mr-2" />
+                            <span className="text-sm truncate">{user.full_name || user.email}</span>
                           </CommandItem>
                         ))}
                       </CommandGroup>
@@ -476,31 +484,29 @@ export function TaskDetailModal({
                 </PopoverContent>
               </Popover>
 
-              {/* Show current assignee with unassign option */}
               {task.assigned_to && (
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={handleUnassignTask}
                   disabled={assigning}
-                  className="text-muted-foreground"
+                  className="h-8 px-2 text-xs text-muted-foreground"
                 >
                   <X className="h-3 w-3 mr-1" />
                   Unassign
                 </Button>
               )}
 
-              <div className="flex-1" />
+              <div className="h-4 w-px bg-border mx-1" />
 
-              {/* Claim/Release button */}
               {!task.claimed_by ? (
                 <Button
                   size="sm"
-                  variant="outline"
+                  variant="ghost"
                   onClick={() => onClaim(task.id)}
-                  className="flex items-center gap-1"
+                  className="h-8 px-2 text-xs"
                 >
-                  <Hand className="h-4 w-4" />
+                  <Hand className="h-3.5 w-3.5 mr-1" />
                   Claim
                 </Button>
               ) : (
@@ -508,28 +514,34 @@ export function TaskDetailModal({
                   size="sm"
                   variant="ghost"
                   onClick={() => onRelease(task.id)}
-                  className="flex items-center gap-1"
+                  className="h-8 px-2 text-xs text-muted-foreground"
                 >
-                  <Undo2 className="h-4 w-4" />
+                  <Undo2 className="h-3.5 w-3.5 mr-1" />
                   Release
                 </Button>
               )}
 
-              {/* Complete button */}
+              <div className="flex-1" />
+
+              {/* Primary action - Complete */}
               <Button
                 size="sm"
                 onClick={() => setShowCompleteDialog(true)}
-                className="flex items-center gap-1"
+                className="h-8 px-3 text-xs"
               >
-                <Check className="h-4 w-4" />
+                <Check className="h-3.5 w-3.5 mr-1" />
                 Complete
               </Button>
             </div>
           )}
+        </div>
+
+        <DialogHeader className="sr-only">
+          <DialogTitle>{task.title}</DialogTitle>
         </DialogHeader>
 
-        <Tabs defaultValue="details" className="mt-4">
-          <TabsList className="grid w-full grid-cols-4">
+        <Tabs defaultValue="details" className="px-4 pb-4">
+          <TabsList className="grid w-full grid-cols-4 mb-4">
             <TabsTrigger value="details">Details</TabsTrigger>
             <TabsTrigger value="notes">
               Notes {notes.length > 0 && `(${notes.length})`}
@@ -538,7 +550,7 @@ export function TaskDetailModal({
             <TabsTrigger value="ai">AI Data</TabsTrigger>
           </TabsList>
 
-          <div className="mt-4">
+          <div>
             <TabsContent value="details" className="mt-0 space-y-4">
               {editing ? (
                 <div className="space-y-4">
@@ -895,7 +907,7 @@ export function TaskDetailModal({
                       <SelectValue placeholder="Select action type..." />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">None</SelectItem>
+                      <SelectItem value="none">None</SelectItem>
                       {actionTypes
                         .filter((at) => at.id !== task.action_type_id)
                         .map((at) => (
@@ -907,7 +919,7 @@ export function TaskDetailModal({
                   </Select>
                 </div>
 
-                {routeToActionType && (
+                {routeToActionType && routeToActionType !== "none" && (
                   <div>
                     <Label>New Task Title (Optional)</Label>
                     <Input

@@ -51,8 +51,8 @@ export function RecentCalls({ calls, loading = false, maxItems = 4 }: RecentCall
   }).length;
 
   return (
-    <Card className="h-full flex flex-col">
-      <CardHeader className="pb-2 flex-shrink-0">
+    <Card>
+      <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2">
             <Phone className="h-4 w-4 text-primary" />
@@ -64,7 +64,7 @@ export function RecentCalls({ calls, loading = false, maxItems = 4 }: RecentCall
         </div>
       </CardHeader>
 
-      <CardContent className="flex-1 p-0 overflow-hidden">
+      <CardContent className="p-0">
         {loading ? (
           <div className="p-4 space-y-3">
             {[1, 2, 3].map((i) => (
@@ -127,8 +127,8 @@ export function RecentCalls({ calls, loading = false, maxItems = 4 }: RecentCall
             })}
           </div>
         ) : (
-          <div className="text-center py-8 text-muted-foreground">
-            <Phone className="h-8 w-8 mx-auto mb-2 opacity-30" />
+          <div className="text-center py-4 text-muted-foreground">
+            <Phone className="h-6 w-6 mx-auto mb-1 opacity-30" />
             <p className="text-sm">No recent calls</p>
           </div>
         )}
