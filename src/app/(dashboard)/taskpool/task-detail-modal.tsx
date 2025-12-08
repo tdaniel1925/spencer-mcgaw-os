@@ -20,7 +20,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
   Popover,
@@ -394,8 +393,8 @@ export function TaskDetailModal({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader className="pr-8">
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader className="pr-8 sticky top-0 bg-background z-10 pb-4">
           {/* Title and badges row */}
           <div className="flex items-start gap-3">
             {task.action_type && (
@@ -525,7 +524,7 @@ export function TaskDetailModal({
           )}
         </DialogHeader>
 
-        <Tabs defaultValue="details" className="flex-1 overflow-hidden flex flex-col">
+        <Tabs defaultValue="details" className="mt-4">
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="details">Details</TabsTrigger>
             <TabsTrigger value="notes">
@@ -535,7 +534,7 @@ export function TaskDetailModal({
             <TabsTrigger value="ai">AI Data</TabsTrigger>
           </TabsList>
 
-          <ScrollArea className="flex-1 mt-4">
+          <div className="mt-4">
             <TabsContent value="details" className="mt-0 space-y-4">
               {editing ? (
                 <div className="space-y-4">
@@ -842,7 +841,7 @@ export function TaskDetailModal({
                 </div>
               )}
             </TabsContent>
-          </ScrollArea>
+          </div>
         </Tabs>
 
         {/* Complete Dialog */}
