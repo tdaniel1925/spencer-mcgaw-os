@@ -32,6 +32,9 @@ export async function GET(request: NextRequest) {
     if (view === "pool") {
       // Pool view: unclaimed AND unassigned, open tasks
       query = query.is("claimed_by", null).is("assigned_to", null).eq("status", "open");
+    } else if (view === "all") {
+      // All non-completed tasks (for board view)
+      query = query.neq("status", "completed");
     } else if (view === "my_assigned") {
       // Tasks assigned to current user
       query = query.eq("assigned_to", user.id).neq("status", "completed");

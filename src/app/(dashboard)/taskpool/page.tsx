@@ -22,7 +22,9 @@ import {
   ChevronRight,
   MoreHorizontal,
   UserPlus,
+  Maximize2,
 } from "lucide-react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -395,6 +397,12 @@ export default function TaskPoolPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <Link href="/taskpool-board">
+            <Button variant="outline" size="sm" className="h-9 gap-2">
+              <Maximize2 className="h-4 w-4" />
+              Full Board
+            </Button>
+          </Link>
           <Button
             variant="outline"
             size="sm"
