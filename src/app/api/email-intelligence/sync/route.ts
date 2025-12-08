@@ -4,6 +4,16 @@ import { classifyEmailWithAI } from "@/lib/email/ai-classifier";
 
 const MICROSOFT_GRAPH_URL = "https://graph.microsoft.com/v1.0";
 
+// Map email action item types to TaskPool action type codes
+const ACTION_TYPE_MAP: Record<string, string> = {
+  response: "RESPOND",
+  document: "PREPARE",
+  calendar: "SCHEDULE",
+  task: "PROCESS",
+  call: "RESPOND",
+  review: "REVIEW",
+};
+
 // Helper to refresh access token if expired
 async function refreshAccessToken(refreshToken: string): Promise<{
   access_token: string;
@@ -63,6 +73,7 @@ export async function POST(request: NextRequest) {
 
     let totalProcessed = 0;
     let totalFailed = 0;
+    let totalTasksCreated = 0;
 
     for (const connection of connections) {
       if (connection.provider !== "microsoft") continue;
@@ -169,8 +180,53 @@ export async function POST(request: NextRequest) {
             tokens_used: classification.tokensUsed,
           });
 
-          // Store action items
+          // Store action items AND create TaskPool tasks
+          // First, get the action types from TaskPool
+          const { data: actionTypes } = await supabase
+            .from("task_action_types")
+            .select("id, code")
+            .eq("is_active", true);
+
+          const actionTypeByCode: Record<string, string> = {};
+          (actionTypes || []).forEach((at: { id: string; code: string }) => {
+            actionTypeByCode[at.code] = at.id;
+          });
+
+          // Try to match client from email sender
+          let matchedClientId: string | null = null;
+          const senderEmail = email.from?.emailAddress?.address;
+          if (senderEmail) {
+            const { data: clientMatch } = await supabase
+              .from("client_contacts")
+              .select("id")
+              .eq("email", senderEmail)
+              .single();
+            if (clientMatch) {
+              matchedClientId = clientMatch.id;
+            }
+          }
+
+          // Also try to match by extracted names
+          if (!matchedClientId && classification.extractedEntities.names.length > 0) {
+            for (const nameObj of classification.extractedEntities.names) {
+              const nameParts = nameObj.name.split(" ");
+              if (nameParts.length >= 2) {
+                const { data: clientMatch } = await supabase
+                  .from("client_contacts")
+                  .select("id")
+                  .ilike("first_name", `%${nameParts[0]}%`)
+                  .ilike("last_name", `%${nameParts.slice(1).join(" ")}%`)
+                  .single();
+                if (clientMatch) {
+                  matchedClientId = clientMatch.id;
+                  break;
+                }
+              }
+            }
+          }
+
           for (const actionItem of classification.actionItems) {
+            // Store in email_action_items
             await supabase.from("email_action_items").insert({
               email_message_id: email.id,
               title: actionItem.title,
@@ -181,6 +237,59 @@ export async function POST(request: NextRequest) {
               confidence: actionItem.confidence,
               status: "pending",
             });
+
+            // Create TaskPool task
+            const taskPoolActionCode = ACTION_TYPE_MAP[actionItem.type] || "PROCESS";
+            const taskPoolActionTypeId = actionTypeByCode[taskPoolActionCode];
+
+            if (taskPoolActionTypeId) {
+              const { data: newTask } = await supabase
+                .from("tasks")
+                .insert({
+                  title: actionItem.title,
+                  description: `${actionItem.description || ""}\n\nFrom email: ${email.subject}\nSender: ${email.from?.emailAddress?.name} <${email.from?.emailAddress?.address}>`,
+                  action_type_id: taskPoolActionTypeId,
+                  client_id: matchedClientId,
+                  priority: actionItem.priority,
+                  due_date: actionItem.dueDate ? new Date(actionItem.dueDate).toISOString().split("T")[0] : null,
+                  source_type: "email",
+                  source_email_id: email.id,
+                  source_metadata: {
+                    email_subject: email.subject,
+                    sender_name: email.from?.emailAddress?.name,
+                    sender_email: email.from?.emailAddress?.address,
+                    received_at: email.receivedDateTime,
+                    classification_summary: classification.summary,
+                  },
+                  ai_confidence: actionItem.confidence,
+                  ai_extracted_data: {
+                    action_item: actionItem,
+                    classification_category: classification.category,
+                    extracted_entities: classification.extractedEntities,
+                  },
+                  status: "open",
+                  organization_id: "00000000-0000-0000-0000-000000000001",
+                  created_by: user.id,
+                })
+                .select("id")
+                .single();
+
+              // Log activity for the new task
+              if (newTask) {
+                await supabase.from("task_activity_log").insert({
+                  task_id: newTask.id,
+                  action: "created",
+                  details: {
+                    source: "email_sync",
+                    email_id: email.id,
+                    email_subject: email.subject,
+                    confidence: actionItem.confidence,
+                  },
+                  performed_by: user.id,
+                });
+                totalTasksCreated++;
+              }
+            }
           }
 
           totalProcessed++;
@@ -195,6 +304,7 @@ export async function POST(request: NextRequest) {
       success: true,
       processed: totalProcessed,
       failed: totalFailed,
+      tasksCreated: totalTasksCreated,
     });
   } catch (error) {
     console.error("Error in sync:", error);
