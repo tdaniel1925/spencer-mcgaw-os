@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect, useCallback } from "react";
 import { Header } from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,11 +28,72 @@ import {
   Mail,
   Save,
   Upload,
+  RefreshCw,
+  CheckCircle,
+  XCircle,
+  ExternalLink,
 } from "lucide-react";
 import { useAuth } from "@/lib/supabase/auth-context";
+import { toast } from "sonner";
+
+interface EmailAccount {
+  id: string;
+  email: string;
+  displayName: string;
+  provider: string;
+  isConnected: boolean;
+  lastSyncAt: string | null;
+}
 
 export default function SettingsPage() {
   const { user } = useAuth();
+  const [emailAccounts, setEmailAccounts] = useState<EmailAccount[]>([]);
+  const [loadingAccounts, setLoadingAccounts] = useState(true);
+  const [connecting, setConnecting] = useState(false);
+
+  const loadEmailAccounts = useCallback(async () => {
+    try {
+      const response = await fetch("/api/email/accounts");
+      if (response.ok) {
+        const data = await response.json();
+        setEmailAccounts(data.accounts || []);
+      }
+    } catch (error) {
+      console.error("Error loading email accounts:", error);
+    } finally {
+      setLoadingAccounts(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadEmailAccounts();
+  }, [loadEmailAccounts]);
+
+  const handleConnectMicrosoft = () => {
+    setConnecting(true);
+    // Redirect to Microsoft OAuth
+    window.location.href = "/api/email/connect";
+  };
+
+  const handleDisconnectAccount = async (accountId: string) => {
+    if (!confirm("Are you sure you want to disconnect this email account?")) return;
+
+    try {
+      const response = await fetch(`/api/email/accounts/${accountId}`, {
+        method: "DELETE",
+      });
+
+      if (response.ok) {
+        toast.success("Email account disconnected");
+        loadEmailAccounts();
+      } else {
+        toast.error("Failed to disconnect account");
+      }
+    } catch (error) {
+      console.error("Error disconnecting account:", error);
+      toast.error("Failed to disconnect account");
+    }
+  };
 
   return (
     <>
@@ -263,45 +325,161 @@ export default function SettingsPage() {
 
           {/* Integrations Settings */}
           <TabsContent value="integrations">
-            <Card>
-              <CardHeader>
-                <CardTitle>Integrations</CardTitle>
-                <CardDescription>
-                  Connect external services
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center">
-                      <Phone className="h-6 w-6 text-blue-600" />
+            <div className="space-y-6">
+              {/* Email Connections */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Mail className="h-5 w-5" />
+                    Email Accounts
+                  </CardTitle>
+                  <CardDescription>
+                    Connect your email accounts to sync emails and automatically create tasks
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {loadingAccounts ? (
+                    <div className="flex items-center justify-center py-8">
+                      <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
                     </div>
-                    <div>
-                      <p className="font-medium">VAPI Voice Agent</p>
-                      <p className="text-sm text-muted-foreground">
-                        AI-powered phone agent for calls
-                      </p>
+                  ) : emailAccounts.length > 0 ? (
+                    <>
+                      {emailAccounts.map((account) => (
+                        <div
+                          key={account.id}
+                          className="flex items-center justify-between p-4 border rounded-lg"
+                        >
+                          <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center">
+                              <Mail className="h-6 w-6 text-purple-600" />
+                            </div>
+                            <div>
+                              <p className="font-medium">{account.displayName}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {account.email}
+                              </p>
+                              {account.lastSyncAt && (
+                                <p className="text-xs text-muted-foreground">
+                                  Last synced: {new Date(account.lastSyncAt).toLocaleString()}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {account.isConnected ? (
+                              <Badge className="bg-green-100 text-green-700 flex items-center gap-1">
+                                <CheckCircle className="h-3 w-3" />
+                                Connected
+                              </Badge>
+                            ) : (
+                              <Badge className="bg-red-100 text-red-700 flex items-center gap-1">
+                                <XCircle className="h-3 w-3" />
+                                Expired
+                              </Badge>
+                            )}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDisconnectAccount(account.id)}
+                            >
+                              Disconnect
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                      <Separator />
+                    </>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <Mail className="h-12 w-12 mx-auto mb-4 opacity-20" />
+                      <p>No email accounts connected</p>
+                      <p className="text-sm">Connect your Microsoft 365 account to start syncing emails</p>
                     </div>
-                  </div>
-                  <Badge className="bg-green-100 text-green-700">Connected</Badge>
-                </div>
+                  )}
 
-                <div className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center">
-                      <Mail className="h-6 w-6 text-purple-600" />
+                  {/* Connect Microsoft 365 Button */}
+                  <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center">
+                        <svg className="h-6 w-6" viewBox="0 0 23 23">
+                          <path fill="#f35325" d="M1 1h10v10H1z"/>
+                          <path fill="#81bc06" d="M12 1h10v10H12z"/>
+                          <path fill="#05a6f0" d="M1 12h10v10H1z"/>
+                          <path fill="#ffba08" d="M12 12h10v10H12z"/>
+                        </svg>
+                      </div>
+                      <div>
+                        <p className="font-medium">Microsoft 365 / Outlook</p>
+                        <p className="text-sm text-muted-foreground">
+                          Connect to sync emails, calendar, and contacts
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-medium">Microsoft 365</p>
-                      <p className="text-sm text-muted-foreground">
-                        Email and document sync
-                      </p>
-                    </div>
+                    <Button
+                      onClick={handleConnectMicrosoft}
+                      disabled={connecting}
+                    >
+                      {connecting ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                          Connecting...
+                        </>
+                      ) : (
+                        <>
+                          <ExternalLink className="h-4 w-4 mr-2" />
+                          {emailAccounts.length > 0 ? "Add Another Account" : "Connect"}
+                        </>
+                      )}
+                    </Button>
                   </div>
-                  <Button variant="outline" size="sm">Connect</Button>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+
+              {/* Other Integrations */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Other Integrations</CardTitle>
+                  <CardDescription>
+                    Additional services and connections
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center">
+                        <Phone className="h-6 w-6 text-blue-600" />
+                      </div>
+                      <div>
+                        <p className="font-medium">VAPI Voice Agent</p>
+                        <p className="text-sm text-muted-foreground">
+                          AI-powered phone agent for calls
+                        </p>
+                      </div>
+                    </div>
+                    <Badge className="bg-green-100 text-green-700">Connected</Badge>
+                  </div>
+
+                  <div className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-lg bg-green-100 flex items-center justify-center">
+                        <svg className="h-6 w-6 text-green-600" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+                        </svg>
+                      </div>
+                      <div>
+                        <p className="font-medium">Twilio SMS</p>
+                        <p className="text-sm text-muted-foreground">
+                          SMS messaging integration
+                        </p>
+                      </div>
+                    </div>
+                    <Button variant="outline" size="sm" asChild>
+                      <a href="/admin/sms-settings">Configure</a>
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
         </Tabs>
       </main>
