@@ -344,30 +344,61 @@ export default function TaskPoolBoardPage() {
 
   // Drag and Drop handlers
   const handleDragStart = (e: React.DragEvent, task: Task) => {
+    e.stopPropagation();
     setDraggedTask(task);
     e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", task.id);
+    // Add a slight delay to allow the drag image to be set
+    if (e.currentTarget instanceof HTMLElement) {
+      e.currentTarget.style.opacity = "0.5";
+    }
   };
 
-  const handleDragEnd = () => {
+  const handleDragEnd = (e: React.DragEvent) => {
+    if (e.currentTarget instanceof HTMLElement) {
+      e.currentTarget.style.opacity = "1";
+    }
     setDraggedTask(null);
     setDragOverColumn(null);
   };
 
   const handleDragOver = (e: React.DragEvent, columnId: string) => {
     e.preventDefault();
+    e.stopPropagation();
     e.dataTransfer.dropEffect = "move";
+    if (dragOverColumn !== columnId) {
+      setDragOverColumn(columnId);
+    }
+  };
+
+  const handleDragEnter = (e: React.DragEvent, columnId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
     setDragOverColumn(columnId);
   };
 
-  const handleDragLeave = () => {
-    setDragOverColumn(null);
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only clear if leaving the actual drop zone, not a child element
+    const relatedTarget = e.relatedTarget as HTMLElement;
+    const currentTarget = e.currentTarget as HTMLElement;
+    if (!currentTarget.contains(relatedTarget)) {
+      setDragOverColumn(null);
+    }
   };
 
   const handleDrop = async (e: React.DragEvent, columnId: string, columnType: "action" | "user") => {
     e.preventDefault();
+    e.stopPropagation();
     setDragOverColumn(null);
 
-    if (!draggedTask) return;
+    if (!draggedTask) {
+      console.log("No dragged task found");
+      return;
+    }
+
+    console.log("Dropping task", draggedTask.id, "to", columnId, columnType);
 
     if (columnType === "action") {
       // Moving to action type column
@@ -434,16 +465,32 @@ export default function TaskPoolBoardPage() {
     return (
       <div
         key={task.id}
-        draggable
+        draggable={true}
         onDragStart={(e) => handleDragStart(e, task)}
-        onDragEnd={handleDragEnd}
+        onDragEnd={(e) => handleDragEnd(e)}
+        onMouseDown={(e) => {
+          // Prevent click when starting drag
+          e.currentTarget.dataset.dragging = "false";
+        }}
+        onMouseMove={(e) => {
+          // Mark as dragging if mouse moves while button is down
+          if (e.buttons === 1) {
+            e.currentTarget.dataset.dragging = "true";
+          }
+        }}
         className={cn(
           "bg-background rounded-lg border cursor-grab transition-all duration-200",
           "hover:shadow-md hover:border-border/80",
-          "group relative overflow-hidden",
+          "group relative overflow-hidden select-none",
           draggedTask?.id === task.id && "opacity-50 cursor-grabbing"
         )}
-        onClick={() => setSelectedTask(task)}
+        onClick={(e) => {
+          // Only open modal if not dragging
+          const target = e.currentTarget as HTMLElement;
+          if (target.dataset.dragging !== "true") {
+            setSelectedTask(task);
+          }
+        }}
       >
         {/* Priority indicator strip */}
         <div
@@ -697,7 +744,8 @@ export default function TaskPoolBoardPage() {
                     isDropTarget && "ring-2 ring-primary ring-offset-2"
                   )}
                   onDragOver={(e) => handleDragOver(e, actionType.id)}
-                  onDragLeave={handleDragLeave}
+                  onDragEnter={(e) => handleDragEnter(e, actionType.id)}
+                  onDragLeave={(e) => handleDragLeave(e)}
                   onDrop={(e) => handleDrop(e, actionType.id, "action")}
                 >
                   {/* Column Header */}
@@ -777,7 +825,8 @@ export default function TaskPoolBoardPage() {
                         isDropTarget && "ring-2 ring-blue-500 ring-offset-1"
                       )}
                       onDragOver={(e) => handleDragOver(e, `user-${user.id}`)}
-                      onDragLeave={handleDragLeave}
+                      onDragEnter={(e) => handleDragEnter(e, `user-${user.id}`)}
+                      onDragLeave={(e) => handleDragLeave(e)}
                       onDrop={(e) => handleDrop(e, user.id, "user")}
                     >
                       {/* User Header */}
