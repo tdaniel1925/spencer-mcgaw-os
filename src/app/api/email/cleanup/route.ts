@@ -5,7 +5,8 @@ import { createClient } from "@/lib/supabase/server";
  * POST /api/email/cleanup
  *
  * Cleans up all orphaned email data when no email account is connected.
- * This is used when a user has disconnected their email but data remains.
+ * This includes records with NULL account_id (legacy data) and any records
+ * belonging to deleted accounts.
  */
 export async function POST() {
   const supabase = await createClient();
@@ -18,31 +19,44 @@ export async function POST() {
   try {
     console.log(`[Email Cleanup] Starting cleanup for user ${user.id}`);
 
-    // Get all email classifications (we need the IDs for cleanup)
-    const { data: classifications } = await supabase
+    // Get count of orphaned classifications (no account_id or account doesn't exist)
+    const { count: classificationCount } = await supabase
       .from("email_classifications")
-      .select("id, email_message_id");
+      .select("*", { count: "exact", head: true })
+      .is("account_id", null);
 
-    const emailMessageIds = (classifications || []).map(c => c.email_message_id);
-    const classificationIds = (classifications || []).map(c => c.id);
+    const { count: actionItemCount } = await supabase
+      .from("email_action_items")
+      .select("*", { count: "exact", head: true })
+      .is("account_id", null);
 
-    console.log(`[Email Cleanup] Found ${emailMessageIds.length} email classifications to delete`);
+    console.log(`[Email Cleanup] Found ${classificationCount || 0} orphaned classifications and ${actionItemCount || 0} orphaned action items`);
 
-    // 1. Delete email_action_items for these emails
-    if (emailMessageIds.length > 0) {
-      const { error: actionItemsError } = await supabase
-        .from("email_action_items")
-        .delete()
-        .in("email_message_id", emailMessageIds);
+    // 1. Delete orphaned email_action_items (no account_id)
+    const { error: actionItemsError } = await supabase
+      .from("email_action_items")
+      .delete()
+      .is("account_id", null);
 
-      if (actionItemsError) {
-        console.error("[Email Cleanup] Error deleting action items:", actionItemsError);
-      } else {
-        console.log("[Email Cleanup] Deleted email action items");
-      }
+    if (actionItemsError) {
+      console.error("[Email Cleanup] Error deleting action items:", actionItemsError);
+    } else {
+      console.log("[Email Cleanup] Deleted orphaned email action items");
     }
 
-    // 2. Delete tasks from TaskPool that came from email (source_type = 'email')
+    // 2. Delete orphaned email_classifications (no account_id)
+    const { error: classError } = await supabase
+      .from("email_classifications")
+      .delete()
+      .is("account_id", null);
+
+    if (classError) {
+      console.error("[Email Cleanup] Error deleting classifications:", classError);
+    } else {
+      console.log("[Email Cleanup] Deleted orphaned email classifications");
+    }
+
+    // 3. Delete tasks from TaskPool that came from email (source_type = 'email')
     const { error: tasksError, count: tasksDeleted } = await supabase
       .from("tasks")
       .delete()
@@ -53,20 +67,6 @@ export async function POST() {
       console.error("[Email Cleanup] Error deleting tasks:", tasksError);
     } else {
       console.log(`[Email Cleanup] Deleted ${tasksDeleted || 0} tasks from TaskPool`);
-    }
-
-    // 3. Delete email_classifications
-    if (classificationIds.length > 0) {
-      const { error: classError } = await supabase
-        .from("email_classifications")
-        .delete()
-        .in("id", classificationIds);
-
-      if (classError) {
-        console.error("[Email Cleanup] Error deleting classifications:", classError);
-      } else {
-        console.log("[Email Cleanup] Deleted email classifications");
-      }
     }
 
     // 4. Delete sender_rules associated with user
@@ -95,9 +95,9 @@ export async function POST() {
       success: true,
       message: "All orphaned email data has been deleted",
       cleaned: {
-        classifications: classificationIds.length,
-        emailMessageIds: emailMessageIds.length,
-        tasksDeleted: tasksDeleted || 0,
+        classifications: classificationCount || 0,
+        actionItems: actionItemCount || 0,
+        tasks: tasksDeleted || 0,
       },
     });
   } catch (error) {

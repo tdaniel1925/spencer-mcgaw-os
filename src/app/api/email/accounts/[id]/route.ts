@@ -46,32 +46,20 @@ export async function DELETE(
 
     console.log(`[Email Cleanup] Starting cleanup for connection ${id} (${connection.email})`);
 
-    // Get all email message IDs from classifications for this user
-    // We need these to clean up action items
-    const { data: classifications } = await supabase
+    // Count what will be deleted for reporting
+    const { count: classificationCount } = await supabase
       .from("email_classifications")
-      .select("id, email_message_id");
+      .select("*", { count: "exact", head: true })
+      .eq("account_id", id);
 
-    const emailMessageIds = (classifications || []).map(c => c.email_message_id);
-    const classificationIds = (classifications || []).map(c => c.id);
+    const { count: actionItemCount } = await supabase
+      .from("email_action_items")
+      .select("*", { count: "exact", head: true })
+      .eq("account_id", id);
 
-    console.log(`[Email Cleanup] Found ${emailMessageIds.length} email classifications to delete`);
+    console.log(`[Email Cleanup] Found ${classificationCount || 0} classifications and ${actionItemCount || 0} action items to delete`);
 
-    // 1. Delete email_action_items for these emails
-    if (emailMessageIds.length > 0) {
-      const { error: actionItemsError } = await supabase
-        .from("email_action_items")
-        .delete()
-        .in("email_message_id", emailMessageIds);
-
-      if (actionItemsError) {
-        console.error("[Email Cleanup] Error deleting action items:", actionItemsError);
-      } else {
-        console.log("[Email Cleanup] Deleted email action items");
-      }
-    }
-
-    // 2. Delete tasks from TaskPool that came from email (source_type = 'email')
+    // 1. Delete tasks from TaskPool that came from this account's emails
     const { error: tasksError, count: tasksDeleted } = await supabase
       .from("tasks")
       .delete()
@@ -84,24 +72,7 @@ export async function DELETE(
       console.log(`[Email Cleanup] Deleted ${tasksDeleted || 0} tasks from TaskPool`);
     }
 
-    // 3. Delete task_activity_log entries for deleted tasks
-    // Note: This may cascade automatically depending on FK constraints
-
-    // 4. Delete email_classifications
-    if (classificationIds.length > 0) {
-      const { error: classError } = await supabase
-        .from("email_classifications")
-        .delete()
-        .in("id", classificationIds);
-
-      if (classError) {
-        console.error("[Email Cleanup] Error deleting classifications:", classError);
-      } else {
-        console.log("[Email Cleanup] Deleted email classifications");
-      }
-    }
-
-    // 5. Delete sender_rules associated with user
+    // 2. Delete sender_rules associated with user
     const { error: senderRulesError } = await supabase
       .from("sender_rules")
       .delete()
@@ -111,7 +82,7 @@ export async function DELETE(
       console.error("[Email Cleanup] Error deleting sender rules:", senderRulesError);
     }
 
-    // 6. Delete email_training_samples
+    // 3. Delete email_training_samples
     const { error: trainingError } = await supabase
       .from("email_training_samples")
       .delete()
@@ -121,7 +92,27 @@ export async function DELETE(
       console.error("[Email Cleanup] Error deleting training samples:", trainingError);
     }
 
-    // 7. Finally, delete the email_connections record
+    // 4. Delete email_classifications and email_action_items for this account
+    // We need to do this explicitly since existing records may not have account_id set
+    const { error: classError } = await supabase
+      .from("email_classifications")
+      .delete()
+      .eq("account_id", id);
+
+    if (classError) {
+      console.error("[Email Cleanup] Error deleting classifications:", classError);
+    }
+
+    const { error: actionError } = await supabase
+      .from("email_action_items")
+      .delete()
+      .eq("account_id", id);
+
+    if (actionError) {
+      console.error("[Email Cleanup] Error deleting action items:", actionError);
+    }
+
+    // 5. Finally, delete the email_connections record
     const { error: deleteError } = await supabase
       .from("email_connections")
       .delete()
@@ -141,8 +132,9 @@ export async function DELETE(
       success: true,
       message: "Email account disconnected and all associated data deleted",
       cleaned: {
-        classifications: classificationIds.length,
-        emailMessageIds: emailMessageIds.length,
+        classifications: classificationCount || 0,
+        actionItems: actionItemCount || 0,
+        tasks: tasksDeleted || 0,
         connection: 1,
       },
     });

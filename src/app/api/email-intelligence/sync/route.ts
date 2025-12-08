@@ -154,9 +154,10 @@ export async function POST(request: NextRequest) {
             hasAttachments: email.hasAttachments,
           });
 
-          // Store classification
+          // Store classification with account_id for proper cleanup on disconnect
           await supabase.from("email_classifications").insert({
             email_message_id: email.id,
+            account_id: connection.id,
             category: classification.category,
             subcategory: classification.subcategory,
             is_business_relevant: classification.isBusinessRelevant,
@@ -227,9 +228,10 @@ export async function POST(request: NextRequest) {
           }
 
           for (const actionItem of classification.actionItems) {
-            // Store in email_action_items
+            // Store in email_action_items with account_id for proper cleanup
             await supabase.from("email_action_items").insert({
               email_message_id: email.id,
+              account_id: connection.id,
               title: actionItem.title,
               description: actionItem.description,
               action_type: actionItem.type,
