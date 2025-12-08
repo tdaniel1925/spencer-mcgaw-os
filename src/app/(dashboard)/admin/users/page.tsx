@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Header } from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,8 @@ import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
@@ -97,102 +99,10 @@ interface TeamMember {
   avatar_url?: string;
   is_active: boolean;
   show_in_taskpool: boolean;
-  last_login?: Date;
-  created_at: Date;
+  last_login?: string;
+  created_at: string;
   invited_by?: string;
 }
-
-// Mock data
-const mockTeamMembers: TeamMember[] = [
-  {
-    id: "1",
-    email: "sarah.mcgaw@spencermcgaw.com",
-    full_name: "Sarah McGaw",
-    role: "owner",
-    department: "Executive",
-    job_title: "Managing Partner",
-    phone: "(555) 123-4567",
-    is_active: true,
-    show_in_taskpool: true,
-    last_login: new Date(Date.now() - 1000 * 60 * 30),
-    created_at: new Date(2023, 0, 1),
-  },
-  {
-    id: "2",
-    email: "john.spencer@spencermcgaw.com",
-    full_name: "John Spencer",
-    role: "admin",
-    department: "Executive",
-    job_title: "Partner",
-    phone: "(555) 123-4568",
-    is_active: true,
-    show_in_taskpool: true,
-    last_login: new Date(Date.now() - 1000 * 60 * 60 * 2),
-    created_at: new Date(2023, 0, 1),
-  },
-  {
-    id: "3",
-    email: "mike.chen@spencermcgaw.com",
-    full_name: "Mike Chen",
-    role: "manager",
-    department: "Tax",
-    job_title: "Tax Manager",
-    phone: "(555) 234-5678",
-    is_active: true,
-    show_in_taskpool: true,
-    last_login: new Date(Date.now() - 1000 * 60 * 60 * 24),
-    created_at: new Date(2023, 3, 15),
-  },
-  {
-    id: "4",
-    email: "lisa.williams@spencermcgaw.com",
-    full_name: "Lisa Williams",
-    role: "accountant",
-    department: "Accounting",
-    job_title: "Senior Accountant",
-    phone: "(555) 345-6789",
-    is_active: true,
-    show_in_taskpool: true,
-    last_login: new Date(Date.now() - 1000 * 60 * 60 * 4),
-    created_at: new Date(2023, 6, 1),
-  },
-  {
-    id: "5",
-    email: "david.brown@spencermcgaw.com",
-    full_name: "David Brown",
-    role: "staff",
-    department: "Client Services",
-    job_title: "Client Coordinator",
-    phone: "(555) 456-7890",
-    is_active: true,
-    show_in_taskpool: true,
-    last_login: new Date(Date.now() - 1000 * 60 * 60 * 48),
-    created_at: new Date(2024, 1, 1),
-  },
-  {
-    id: "6",
-    email: "emily.davis@spencermcgaw.com",
-    full_name: "Emily Davis",
-    role: "staff",
-    department: "Tax",
-    job_title: "Tax Associate",
-    is_active: true,
-    show_in_taskpool: true,
-    last_login: new Date(Date.now() - 1000 * 60 * 60 * 12),
-    created_at: new Date(2024, 3, 1),
-  },
-  {
-    id: "7",
-    email: "robert.wilson@spencermcgaw.com",
-    full_name: "Robert Wilson",
-    role: "viewer",
-    department: "Audit",
-    job_title: "External Auditor",
-    is_active: false,
-    show_in_taskpool: false,
-    created_at: new Date(2024, 6, 1),
-  },
-];
 
 const departments = [
   "Executive",
@@ -219,7 +129,8 @@ function RoleIcon({ role }: { role: UserRole }) {
 
 export default function UserManagementPage() {
   const [mounted, setMounted] = useState(false);
-  const [members, setMembers] = useState<TeamMember[]>(mockTeamMembers);
+  const [loading, setLoading] = useState(true);
+  const [members, setMembers] = useState<TeamMember[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -230,6 +141,7 @@ export default function UserManagementPage() {
   const [deleteUserOpen, setDeleteUserOpen] = useState(false);
   const [permissionsOpen, setPermissionsOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<TeamMember | null>(null);
+  const [saving, setSaving] = useState(false);
 
   // New user form state
   const [newUser, setNewUser] = useState({
@@ -245,9 +157,30 @@ export default function UserManagementPage() {
 
   const { can, isAdmin, isOwner } = useAuth();
 
+  // Fetch users from database
+  const loadUsers = useCallback(async () => {
+    try {
+      setLoading(true);
+      const response = await fetch("/api/admin/users");
+      if (response.ok) {
+        const data = await response.json();
+        setMembers(data.users || []);
+      } else {
+        console.error("Failed to load users");
+        toast.error("Failed to load users");
+      }
+    } catch (error) {
+      console.error("Error loading users:", error);
+      toast.error("Failed to load users");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     setMounted(true);
-  }, []);
+    loadUsers();
+  }, [loadUsers]);
 
   // Filter members
   const filteredMembers = members.filter((member) => {
@@ -269,59 +202,136 @@ export default function UserManagementPage() {
     active: members.filter((m) => m.is_active).length,
     admins: members.filter((m) => m.role === "admin" || m.role === "owner").length,
     recentlyActive: members.filter(
-      (m) => m.last_login && Date.now() - m.last_login.getTime() < 1000 * 60 * 60 * 24
+      (m) => m.last_login && Date.now() - new Date(m.last_login).getTime() < 1000 * 60 * 60 * 24
     ).length,
   };
 
-  const handleAddUser = () => {
-    const member: TeamMember = {
-      id: `user-${Date.now()}`,
-      email: newUser.email,
-      full_name: newUser.full_name,
-      role: newUser.role,
-      department: newUser.department,
-      job_title: newUser.job_title,
-      phone: newUser.phone,
-      is_active: true,
-      show_in_taskpool: newUser.show_in_taskpool,
-      created_at: new Date(),
-      invited_by: "Current User",
-    };
-    setMembers((prev) => [...prev, member]);
-    setAddUserOpen(false);
-    setNewUser({
-      email: "",
-      full_name: "",
-      role: "staff",
-      department: "",
-      job_title: "",
-      phone: "",
-      sendInvite: true,
-      show_in_taskpool: true,
-    });
+  const handleAddUser = async () => {
+    setSaving(true);
+    try {
+      const response = await fetch("/api/admin/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: newUser.email,
+          full_name: newUser.full_name,
+          role: newUser.role,
+          department: newUser.department,
+          job_title: newUser.job_title,
+          phone: newUser.phone,
+          show_in_taskpool: newUser.show_in_taskpool,
+        }),
+      });
+
+      if (response.ok) {
+        toast.success("User added successfully");
+        setAddUserOpen(false);
+        setNewUser({
+          email: "",
+          full_name: "",
+          role: "staff",
+          department: "",
+          job_title: "",
+          phone: "",
+          sendInvite: true,
+          show_in_taskpool: true,
+        });
+        loadUsers();
+      } else {
+        const data = await response.json();
+        toast.error(data.error || "Failed to add user");
+      }
+    } catch (error) {
+      console.error("Error adding user:", error);
+      toast.error("Failed to add user");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleUpdateUser = () => {
+  const handleUpdateUser = async () => {
     if (!selectedUser) return;
-    setMembers((prev) =>
-      prev.map((m) => (m.id === selectedUser.id ? selectedUser : m))
-    );
-    setEditUserOpen(false);
-    setSelectedUser(null);
+    setSaving(true);
+    try {
+      const response = await fetch(`/api/admin/users/${selectedUser.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          full_name: selectedUser.full_name,
+          role: selectedUser.role,
+          department: selectedUser.department,
+          job_title: selectedUser.job_title,
+          phone: selectedUser.phone,
+          is_active: selectedUser.is_active,
+          show_in_taskpool: selectedUser.show_in_taskpool,
+        }),
+      });
+
+      if (response.ok) {
+        toast.success("User updated successfully");
+        setEditUserOpen(false);
+        setSelectedUser(null);
+        loadUsers();
+      } else {
+        const data = await response.json();
+        toast.error(data.error || "Failed to update user");
+      }
+    } catch (error) {
+      console.error("Error updating user:", error);
+      toast.error("Failed to update user");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleDeleteUser = () => {
+  const handleDeleteUser = async () => {
     if (!selectedUser) return;
-    setMembers((prev) => prev.filter((m) => m.id !== selectedUser.id));
-    setDeleteUserOpen(false);
-    setSelectedUser(null);
+    setSaving(true);
+    try {
+      const response = await fetch(`/api/admin/users/${selectedUser.id}`, {
+        method: "DELETE",
+      });
+
+      if (response.ok) {
+        toast.success("User deleted successfully");
+        setDeleteUserOpen(false);
+        setSelectedUser(null);
+        loadUsers();
+      } else {
+        const data = await response.json();
+        toast.error(data.error || "Failed to delete user");
+      }
+    } catch (error) {
+      console.error("Error deleting user:", error);
+      toast.error("Failed to delete user");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleToggleActive = (userId: string) => {
-    setMembers((prev) =>
-      prev.map((m) => (m.id === userId ? { ...m, is_active: !m.is_active } : m))
-    );
+  const handleToggleActive = async (userId: string) => {
+    const member = members.find(m => m.id === userId);
+    if (!member) return;
+
+    try {
+      const response = await fetch(`/api/admin/users/${userId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_active: !member.is_active }),
+      });
+
+      if (response.ok) {
+        toast.success(member.is_active ? "User deactivated" : "User activated");
+        loadUsers();
+      } else {
+        toast.error("Failed to update user status");
+      }
+    } catch (error) {
+      console.error("Error toggling user status:", error);
+      toast.error("Failed to update user status");
+    }
   };
+
 
   const getUserInitials = (name: string) => {
     return name

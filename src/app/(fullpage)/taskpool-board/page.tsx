@@ -126,6 +126,35 @@ const priorityDotColors: Record<string, string> = {
   low: "bg-green-500",
 };
 
+// Helper function to format time elapsed
+function formatTimeElapsed(dateString: string): { text: string; isOld: boolean } {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / (1000 * 60));
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  const diffWeeks = Math.floor(diffDays / 7);
+
+  let text: string;
+  let isOld = false;
+
+  if (diffMins < 60) {
+    text = `${diffMins}m`;
+  } else if (diffHours < 24) {
+    text = `${diffHours}h`;
+    if (diffHours >= 8) isOld = true;
+  } else if (diffDays < 7) {
+    text = `${diffDays}d`;
+    isOld = true;
+  } else {
+    text = `${diffWeeks}w`;
+    isOld = true;
+  }
+
+  return { text, isOld };
+}
+
 export default function TaskPoolBoardPage() {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [actionTypes, setActionTypes] = useState<ActionType[]>([]);
@@ -452,6 +481,12 @@ export default function TaskPoolBoardPage() {
     const isRecent = (Date.now() - createdDate.getTime()) < 24 * 60 * 60 * 1000;
     const assignedUser = task.assigned_to ? users.find(u => u.id === task.assigned_to) : null;
 
+    // Timer: show time since creation or time since assignment
+    const timeElapsed = task.assigned_at
+      ? formatTimeElapsed(task.assigned_at)
+      : formatTimeElapsed(task.created_at);
+    const timerLabel = task.assigned_at ? "assigned" : "waiting";
+
     return (
       <div
         key={task.id}
@@ -513,8 +548,22 @@ export default function TaskPoolBoardPage() {
               )}
             </div>
 
-            {/* Drag handle */}
-            <GripVertical className="h-4 w-4 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab" />
+            {/* Timer and drag handle */}
+            <div className="flex items-center gap-1">
+              <div
+                className={cn(
+                  "flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded",
+                  timeElapsed.isOld
+                    ? "bg-amber-100 text-amber-700 animate-pulse"
+                    : "bg-muted text-muted-foreground"
+                )}
+                title={`${timerLabel} ${timeElapsed.text} ago`}
+              >
+                <Clock className="h-3 w-3" />
+                <span className="font-medium">{timeElapsed.text}</span>
+              </div>
+              <GripVertical className="h-4 w-4 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab" />
+            </div>
           </div>
 
           {/* Title */}
@@ -780,31 +829,34 @@ export default function TaskPoolBoardPage() {
 
       {/* Bottom User Buckets - Fixed at bottom */}
       <div className="flex-shrink-0 bg-background border-t shadow-lg">
-        <div className="px-4 py-2 border-b bg-muted/30">
+        <div className="px-4 py-1.5 border-b bg-muted/30">
           <div className="flex items-center gap-2">
             <Users className="h-4 w-4 text-muted-foreground" />
             <span className="text-sm font-medium text-muted-foreground">
-              Drag tasks here to assign
+              Drag tasks to assign
             </span>
             <Badge variant="secondary" className="text-xs ml-auto">
               {tasks.filter(t => t.assigned_to && t.status !== "completed").length} assigned
             </Badge>
           </div>
         </div>
-        <div className="p-3 overflow-x-auto">
-          <div className="flex gap-3 min-w-max">
+        <div className="p-2 overflow-x-auto">
+          <div className="flex gap-2 min-w-max">
             {users.map((user) => {
               const userTasks = getTasksByUser(user.id);
               const isDropTarget = dragOverColumn === `user-${user.id}`;
+              const nameParts = (user.full_name || user.email.split("@")[0]).split(" ");
+              const firstName = nameParts[0] || "";
+              const lastName = nameParts.slice(1).join(" ") || "";
 
               return (
                 <div
                   key={user.id}
                   className={cn(
-                    "flex-shrink-0 w-48 rounded-lg border-2 border-dashed transition-all",
+                    "flex-shrink-0 w-20 h-16 rounded-lg border-2 transition-all flex flex-col items-center justify-center text-center",
                     isDropTarget
-                      ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30 scale-105 shadow-lg"
-                      : "border-border bg-card hover:border-muted-foreground/30",
+                      ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30 scale-110 shadow-lg border-solid"
+                      : "border-border border-dashed bg-card hover:border-muted-foreground/50 hover:bg-muted/30",
                     draggedTask && "cursor-copy"
                   )}
                   onDragOver={(e) => handleDragOver(e, `user-${user.id}`)}
@@ -812,33 +864,29 @@ export default function TaskPoolBoardPage() {
                   onDragLeave={(e) => handleDragLeave(e)}
                   onDrop={(e) => handleDrop(e, user.id, "user")}
                 >
-                  <div className="p-3 flex items-center gap-3">
-                    <Avatar className={cn(
-                      "h-10 w-10 ring-2 ring-offset-2 transition-all",
-                      isDropTarget ? "ring-blue-500" : "ring-transparent"
-                    )}>
-                      <AvatarImage src={user.avatar_url || undefined} />
-                      <AvatarFallback className="text-sm font-medium">
-                        {getUserInitials(user)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">
-                        {user.full_name || user.email.split("@")[0]}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {userTasks.length} task{userTasks.length !== 1 ? "s" : ""}
-                      </p>
-                    </div>
-                  </div>
+                  <p className="text-xs font-semibold truncate w-full px-1 leading-tight">
+                    {firstName}
+                  </p>
+                  <p className="text-xs font-medium text-muted-foreground truncate w-full px-1 leading-tight">
+                    {lastName || <span className="invisible">.</span>}
+                  </p>
+                  <Badge
+                    variant="secondary"
+                    className={cn(
+                      "text-[9px] px-1 py-0 mt-0.5 h-4 min-w-[20px]",
+                      userTasks.length > 0 ? "bg-blue-100 text-blue-700" : "bg-muted text-muted-foreground"
+                    )}
+                  >
+                    {userTasks.length}
+                  </Badge>
                 </div>
               );
             })}
 
             {users.length === 0 && (
-              <div className="flex items-center justify-center py-4 px-8 text-muted-foreground">
+              <div className="flex items-center justify-center py-3 px-8 text-muted-foreground">
                 <Users className="h-5 w-5 mr-2 opacity-50" />
-                <span className="text-sm">No team members available</span>
+                <span className="text-sm">No team members in TaskPool ribbon</span>
               </div>
             )}
           </div>
