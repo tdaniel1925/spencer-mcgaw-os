@@ -1,2 +1,10 @@
 export { CalendarWidget } from "./calendar-widget";
 export { DashboardSettings } from "./dashboard-settings";
+export { KPICard } from "./kpi-card";
+export { KPIRibbon } from "./kpi-ribbon";
+export { PriorityTasks } from "./priority-tasks";
+export { CompactAgenda } from "./compact-agenda";
+export { ActivityFeed } from "./activity-feed";
+export { QuickActions, QuickActionsBar } from "./quick-actions";
+export { MiniKanban } from "./mini-kanban";
+export { RecentCalls } from "./recent-calls";
