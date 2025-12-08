@@ -157,6 +157,8 @@ export default function SystemSettingsPage() {
   const [showAddWebhook, setShowAddWebhook] = useState(false);
   const [showApiKeyValue, setShowApiKeyValue] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isCleaningOrphanedData, setIsCleaningOrphanedData] = useState(false);
+  const [cleanupResult, setCleanupResult] = useState<{ success: boolean; message: string } | null>(null);
 
   // Handle hydration mismatch
   useEffect(() => {
@@ -239,6 +241,39 @@ export default function SystemSettingsPage() {
     setIsConnecting(true);
     // Redirect to the actual OAuth endpoint
     window.location.href = "/api/email/connect";
+  };
+
+  // Handle orphaned email data cleanup
+  const handleCleanupOrphanedData = async () => {
+    setIsCleaningOrphanedData(true);
+    setCleanupResult(null);
+    try {
+      const response = await fetch("/api/email/cleanup", {
+        method: "POST",
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setCleanupResult({
+          success: true,
+          message: `Cleaned up ${data.cleaned?.classifications || 0} classifications, ${data.cleaned?.actionItems || 0} action items, and ${data.cleaned?.tasks || 0} tasks.`,
+        });
+        // Refresh accounts to update UI
+        await refreshAccounts();
+      } else {
+        setCleanupResult({
+          success: false,
+          message: data.error || "Failed to cleanup orphaned data",
+        });
+      }
+    } catch (error) {
+      console.error("Failed to cleanup orphaned data:", error);
+      setCleanupResult({
+        success: false,
+        message: "An error occurred while cleaning up data",
+      });
+    } finally {
+      setIsCleaningOrphanedData(false);
+    }
   };
 
   // Handle API key creation
@@ -383,10 +418,55 @@ export default function SystemSettingsPage() {
                 </CardHeader>
                 <CardContent>
                   {connectedAccounts.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground">
-                      <Mail className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                      <p>No email accounts connected</p>
-                      <p className="text-sm">Connect your Microsoft 365 or Google account to enable email features</p>
+                    <div className="space-y-6">
+                      <div className="text-center py-8 text-muted-foreground">
+                        <Mail className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                        <p>No email accounts connected</p>
+                        <p className="text-sm">Connect your Microsoft 365 or Google account to enable email features</p>
+                      </div>
+
+                      {/* Orphaned Data Cleanup Section */}
+                      <Separator />
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h4 className="font-medium flex items-center gap-2">
+                              <Trash2 className="h-4 w-4 text-muted-foreground" />
+                              Clear Orphaned Email Data
+                            </h4>
+                            <p className="text-sm text-muted-foreground mt-1">
+                              Remove any leftover email classifications, action items, and tasks from previously disconnected accounts
+                            </p>
+                          </div>
+                          <Button
+                            variant="outline"
+                            onClick={handleCleanupOrphanedData}
+                            disabled={isCleaningOrphanedData}
+                          >
+                            {isCleaningOrphanedData ? (
+                              <>
+                                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                                Cleaning...
+                              </>
+                            ) : (
+                              <>
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Clear Orphaned Data
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                        {cleanupResult && (
+                          <Alert variant={cleanupResult.success ? "default" : "destructive"}>
+                            {cleanupResult.success ? (
+                              <CheckCircle className="h-4 w-4" />
+                            ) : (
+                              <AlertTriangle className="h-4 w-4" />
+                            )}
+                            <AlertDescription>{cleanupResult.message}</AlertDescription>
+                          </Alert>
+                        )}
+                      </div>
                     </div>
                   ) : (
                     <div className="space-y-4">
