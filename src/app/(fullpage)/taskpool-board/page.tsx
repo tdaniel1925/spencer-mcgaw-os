@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   Layers,
@@ -23,6 +23,8 @@ import {
   Users,
   ChevronDown,
   GripVertical,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -136,6 +138,7 @@ const priorityDotColors: Record<string, string> = {
 
 export default function TaskPoolBoardPage() {
   const router = useRouter();
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [actionTypes, setActionTypes] = useState<ActionType[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -147,6 +150,65 @@ export default function TaskPoolBoardPage() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  // Check scroll position to show/hide arrow buttons
+  const updateScrollButtons = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (container) {
+      setCanScrollLeft(container.scrollLeft > 0);
+      setCanScrollRight(
+        container.scrollLeft < container.scrollWidth - container.clientWidth - 10
+      );
+    }
+  }, []);
+
+  // Scroll handlers for arrow buttons
+  const scrollLeft = () => {
+    const container = scrollContainerRef.current;
+    if (container) {
+      container.scrollBy({ left: -300, behavior: "smooth" });
+    }
+  };
+
+  const scrollRight = () => {
+    const container = scrollContainerRef.current;
+    if (container) {
+      container.scrollBy({ left: 300, behavior: "smooth" });
+    }
+  };
+
+  // Mouse wheel horizontal scroll
+  const handleWheel = useCallback((e: WheelEvent) => {
+    const container = scrollContainerRef.current;
+    if (container) {
+      // Only handle horizontal scroll if not scrolling vertically within a column
+      const target = e.target as HTMLElement;
+      const isInScrollableColumn = target.closest('[data-column-content]');
+
+      if (!isInScrollableColumn || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+        e.preventDefault();
+        container.scrollLeft += e.deltaY + e.deltaX;
+        updateScrollButtons();
+      }
+    }
+  }, [updateScrollButtons]);
+
+  // Set up wheel listener
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (container) {
+      container.addEventListener("wheel", handleWheel, { passive: false });
+      container.addEventListener("scroll", updateScrollButtons);
+      updateScrollButtons();
+
+      return () => {
+        container.removeEventListener("wheel", handleWheel);
+        container.removeEventListener("scroll", updateScrollButtons);
+      };
+    }
+  }, [handleWheel, updateScrollButtons, loading]);
 
   const loadActionTypes = useCallback(async () => {
     try {
@@ -582,19 +644,45 @@ export default function TaskPoolBoardPage() {
       </div>
 
       {/* Board Content */}
-      <div className="flex-1 overflow-x-auto p-4">
-        {loading ? (
-          <div className="flex gap-4 h-full">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="w-72 flex-shrink-0 space-y-3">
-                <Skeleton className="h-10 w-full rounded-lg" />
-                <Skeleton className="h-24 w-full rounded-lg" />
-                <Skeleton className="h-24 w-full rounded-lg" />
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="flex gap-4 h-full">
+      <div className="flex-1 relative">
+        {/* Scroll Arrow Buttons */}
+        {canScrollLeft && (
+          <Button
+            variant="secondary"
+            size="icon"
+            className="absolute left-2 top-1/2 -translate-y-1/2 z-10 h-10 w-10 rounded-full shadow-lg bg-background/90 backdrop-blur-sm"
+            onClick={scrollLeft}
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </Button>
+        )}
+        {canScrollRight && (
+          <Button
+            variant="secondary"
+            size="icon"
+            className="absolute right-2 top-1/2 -translate-y-1/2 z-10 h-10 w-10 rounded-full shadow-lg bg-background/90 backdrop-blur-sm"
+            onClick={scrollRight}
+          >
+            <ChevronRight className="h-5 w-5" />
+          </Button>
+        )}
+
+        <div
+          ref={scrollContainerRef}
+          className="h-full overflow-x-auto p-4 scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent"
+        >
+          {loading ? (
+            <div className="flex gap-4 h-full">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="w-72 flex-shrink-0 space-y-3">
+                  <Skeleton className="h-10 w-full rounded-lg" />
+                  <Skeleton className="h-24 w-full rounded-lg" />
+                  <Skeleton className="h-24 w-full rounded-lg" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex gap-4 h-full">
             {/* Action Type Columns */}
             {actionTypes.map((actionType) => {
               const Icon = getActionIcon(actionType.icon);
@@ -636,7 +724,10 @@ export default function TaskPoolBoardPage() {
                   </div>
 
                   {/* Column Content */}
-                  <div className="flex-1 p-2 space-y-2 overflow-y-auto bg-muted/10">
+                  <div
+                    data-column-content
+                    className="flex-1 p-2 space-y-2 overflow-y-auto bg-muted/10"
+                  >
                     {typeTasks.length === 0 ? (
                       <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
                         <Icon className="h-6 w-6 opacity-30 mb-2" style={{ color: actionType.color }} />
@@ -673,7 +764,7 @@ export default function TaskPoolBoardPage() {
               </div>
 
               {/* User Buckets */}
-              <div className="flex-1 p-2 space-y-3 overflow-y-auto bg-muted/10">
+              <div data-column-content className="flex-1 p-2 space-y-3 overflow-y-auto bg-muted/10">
                 {users.map((user) => {
                   const userTasks = filterTasks(getTasksByUser(user.id));
                   const isDropTarget = dragOverColumn === `user-${user.id}`;
@@ -729,6 +820,7 @@ export default function TaskPoolBoardPage() {
             </div>
           </div>
         )}
+        </div>
       </div>
 
       {/* Task Detail Modal */}
