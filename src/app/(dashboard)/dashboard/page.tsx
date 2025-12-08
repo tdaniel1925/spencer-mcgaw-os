@@ -93,6 +93,7 @@ export default function DashboardPage() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [taskStats, setTaskStats] = useState<TaskStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [statsError, setStatsError] = useState<string | null>(null);
 
   const { emails, emailTasks, getUnreadCount } = useEmail();
   const { calls } = useCalls();
@@ -108,13 +109,18 @@ export default function DashboardPage() {
   useEffect(() => {
     async function fetchTaskStats() {
       try {
+        setStatsError(null);
         const response = await fetch("/api/tasks/stats");
         if (response.ok) {
           const data = await response.json();
           setTaskStats(data);
+        } else {
+          const errorData = await response.json().catch(() => ({}));
+          setStatsError(errorData.error || "Failed to load task statistics");
         }
       } catch (error) {
         console.error("Failed to fetch task stats:", error);
+        setStatsError("Unable to connect to server");
       } finally {
         setLoading(false);
       }

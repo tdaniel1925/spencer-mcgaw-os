@@ -933,6 +933,8 @@ export default function EmailIntelligencePage() {
   const [intelligences, setIntelligences] = useState<EmailIntelligence[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [needsConnection, setNeedsConnection] = useState(false);
   const [filter, setFilter] = useState<"all" | "pending" | "approved" | "dismissed">("pending");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
@@ -942,28 +944,49 @@ export default function EmailIntelligencePage() {
   const [delegatingIntelligence, setDelegatingIntelligence] = useState<EmailIntelligence | null>(null);
   const [viewingIntelligence, setViewingIntelligence] = useState<EmailIntelligence | null>(null);
 
-  // Mock team members
-  const teamMembers: TeamMember[] = [
-    { id: "1", name: "Sarah Johnson", email: "sarah@spencermcgaw.com" },
-    { id: "2", name: "Mike Chen", email: "mike@spencermcgaw.com" },
-    { id: "3", name: "Emily Davis", email: "emily@spencermcgaw.com" },
-  ];
+  // Team members state (loaded from API)
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+
+  // Load team members
+  const loadTeamMembers = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/users");
+      if (res.ok) {
+        const data = await res.json();
+        setTeamMembers((data.users || []).map((u: { id: string; full_name: string; email: string }) => ({
+          id: u.id,
+          name: u.full_name || u.email,
+          email: u.email,
+        })));
+      }
+    } catch (err) {
+      console.error("Failed to load team members:", err);
+    }
+  }, []);
 
   // Load email intelligences
   const loadIntelligences = useCallback(async () => {
+    setError(null);
+    setNeedsConnection(false);
     try {
       const res = await fetch(`/api/email-intelligence?status=${filter}`);
       if (res.ok) {
         const data = await res.json();
         setIntelligences(data.intelligences || []);
       } else {
-        // Use mock data for demo
-        setIntelligences(getMockData());
+        const errorData = await res.json().catch(() => ({}));
+        if (errorData.needsConnection) {
+          setNeedsConnection(true);
+          setIntelligences([]);
+        } else {
+          setError(errorData.error || "Failed to load email intelligence data");
+          setIntelligences([]);
+        }
       }
-    } catch (error) {
-      console.error("Failed to load intelligences:", error);
-      // Use mock data for demo
-      setIntelligences(getMockData());
+    } catch (err) {
+      console.error("Failed to load intelligences:", err);
+      setError("Unable to connect to server. Please check your connection and try again.");
+      setIntelligences([]);
     } finally {
       setLoading(false);
     }
@@ -971,7 +994,8 @@ export default function EmailIntelligencePage() {
 
   useEffect(() => {
     loadIntelligences();
-  }, [loadIntelligences]);
+    loadTeamMembers();
+  }, [loadIntelligences, loadTeamMembers]);
 
   // Sync emails and process with AI
   const handleSync = async () => {
@@ -1004,30 +1028,33 @@ export default function EmailIntelligencePage() {
           prev.map((i) => (i.id === intelligence.id ? { ...i, status: "approved" } : i))
         );
       } else {
-        toast.error("Failed to create task");
+        const errorData = await res.json().catch(() => ({}));
+        toast.error(errorData.error || "Failed to create task");
       }
-    } catch (error) {
-      // For demo, just update local state
-      toast.success("Task created successfully");
-      setIntelligences((prev) =>
-        prev.map((i) => (i.id === intelligence.id ? { ...i, status: "approved" } : i))
-      );
+    } catch (err) {
+      console.error("Failed to approve:", err);
+      toast.error("Failed to create task. Please try again.");
     }
   };
 
   // Dismiss
   const handleDismiss = async (intelligence: EmailIntelligence) => {
     try {
-      await fetch(`/api/email-intelligence/${intelligence.id}/dismiss`, {
+      const res = await fetch(`/api/email-intelligence/${intelligence.id}/dismiss`, {
         method: "POST",
       });
-    } catch (error) {
-      // Continue anyway for demo
+      if (res.ok) {
+        toast.success("Dismissed");
+        setIntelligences((prev) =>
+          prev.map((i) => (i.id === intelligence.id ? { ...i, status: "dismissed" } : i))
+        );
+      } else {
+        toast.error("Failed to dismiss email");
+      }
+    } catch (err) {
+      console.error("Failed to dismiss:", err);
+      toast.error("Failed to dismiss. Please try again.");
     }
-    toast.success("Dismissed");
-    setIntelligences((prev) =>
-      prev.map((i) => (i.id === intelligence.id ? { ...i, status: "dismissed" } : i))
-    );
   };
 
   // Delegate
@@ -1057,8 +1084,6 @@ export default function EmailIntelligencePage() {
   // Approve selected action items only
   const handleApproveSelected = async (intelligence: EmailIntelligence, selectedItems: ActionItem[]) => {
     try {
-      // In a real implementation, this would send selectedItems to the API
-      // with their individual assignees and target columns
       const res = await fetch(`/api/email-intelligence/${intelligence.id}/approve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1070,14 +1095,12 @@ export default function EmailIntelligencePage() {
           prev.map((i) => (i.id === intelligence.id ? { ...i, status: "approved" } : i))
         );
       } else {
-        toast.error("Failed to create tasks");
+        const errorData = await res.json().catch(() => ({}));
+        toast.error(errorData.error || "Failed to create tasks");
       }
-    } catch (error) {
-      // For demo, just update local state
-      toast.success(`Created ${selectedItems.length} task${selectedItems.length > 1 ? "s" : ""}`);
-      setIntelligences((prev) =>
-        prev.map((i) => (i.id === intelligence.id ? { ...i, status: "approved" } : i))
-      );
+    } catch (err) {
+      console.error("Failed to approve selected:", err);
+      toast.error("Failed to create tasks. Please try again.");
     }
   };
 
@@ -1226,6 +1249,36 @@ export default function EmailIntelligencePage() {
                 <IntelligenceCardSkeleton key={i} />
               ))}
             </div>
+          ) : error ? (
+            <div className="flex flex-col items-center justify-center h-full text-center">
+              <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mb-4">
+                <AlertTriangle className="h-8 w-8 text-red-600" />
+              </div>
+              <h3 className="text-lg font-medium mb-2">Failed to Load Emails</h3>
+              <p className="text-sm text-muted-foreground mb-4 max-w-md">
+                {error}
+              </p>
+              <Button onClick={loadIntelligences} variant="outline">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Try Again
+              </Button>
+            </div>
+          ) : needsConnection ? (
+            <div className="flex flex-col items-center justify-center h-full text-center">
+              <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center mb-4">
+                <Mail className="h-8 w-8 text-amber-600" />
+              </div>
+              <h3 className="text-lg font-medium mb-2">No Email Account Connected</h3>
+              <p className="text-sm text-muted-foreground mb-4 max-w-md">
+                Connect your Microsoft 365 email account to start syncing and processing emails with AI.
+              </p>
+              <Button asChild>
+                <Link href="/settings?tab=integrations">
+                  <Mail className="h-4 w-4 mr-2" />
+                  Connect Email Account
+                </Link>
+              </Button>
+            </div>
           ) : filteredIntelligences.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center">
               <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
@@ -1288,220 +1341,3 @@ export default function EmailIntelligencePage() {
   );
 }
 
-// Mock data for demo
-function getMockData(): EmailIntelligence[] {
-  return [
-    {
-      id: "1",
-      emailId: "email-1",
-      accountId: "acc-1",
-      from: { name: "John Smith", email: "john.smith@abccorp.com" },
-      subject: "Need Q3 Estimated Tax Payment Vouchers",
-      receivedAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
-      hasAttachments: false,
-      summary: "Client requesting Q3 estimated tax payment vouchers. Mentions deadline of December 15th. Appears to be an existing client based on email domain match.",
-      primaryAction: "Generate Q3 estimated tax vouchers for ABC Corp",
-      actionItems: [
-        { id: "a1", title: "Generate Q3 estimated tax vouchers", type: "task", priority: "high", confidence: 0.95 },
-        { id: "a2", title: "Send vouchers to client by Dec 15", type: "response", priority: "high", dueDate: new Date("2025-12-15"), confidence: 0.9 },
-      ],
-      category: "tax_filing",
-      priority: "high",
-      priorityScore: 78,
-      sentiment: "neutral",
-      urgency: "high",
-      requiresResponse: true,
-      responseDeadline: new Date("2025-12-15"),
-      extractedDates: [{ value: "2025-12-15", context: "Payment deadline" }],
-      extractedAmounts: [],
-      extractedDocumentTypes: ["Estimated tax voucher"],
-      extractedNames: [{ name: "John Smith", role: "client" }],
-      matchedClientId: "client-1",
-      matchedClientName: "ABC Corporation",
-      clientMatchConfidence: 0.92,
-      suggestedAssigneeId: "1",
-      suggestedAssigneeName: "Sarah Johnson",
-      assignmentReason: "Handles ABC Corp account",
-      draftResponse: null,
-      status: "pending",
-      processedAt: new Date(),
-    },
-    {
-      id: "2",
-      emailId: "email-2",
-      accountId: "acc-1",
-      from: { name: "Mary Williams", email: "mary@williamsfamily.com" },
-      subject: "W-2 and 1099 Forms for 2024 Tax Return",
-      receivedAt: new Date(Date.now() - 4 * 60 * 60 * 1000),
-      hasAttachments: true,
-      summary: "Client sending W-2 and 1099 forms for their 2024 tax return. Attached 3 documents. Ready for tax preparation.",
-      primaryAction: "Review and save attached W-2 and 1099 documents",
-      actionItems: [
-        { id: "a3", title: "Review attached W-2 forms", type: "document", priority: "medium", confidence: 0.98 },
-        { id: "a4", title: "Review attached 1099 forms", type: "document", priority: "medium", confidence: 0.98 },
-        { id: "a5", title: "Begin 2024 tax return preparation", type: "task", priority: "medium", confidence: 0.85 },
-      ],
-      category: "document_request",
-      priority: "medium",
-      priorityScore: 62,
-      sentiment: "positive",
-      urgency: "medium",
-      requiresResponse: true,
-      responseDeadline: null,
-      extractedDates: [],
-      extractedAmounts: [],
-      extractedDocumentTypes: ["W-2", "1099"],
-      extractedNames: [{ name: "Mary Williams", role: "client" }],
-      matchedClientId: "client-2",
-      matchedClientName: "Williams Family",
-      clientMatchConfidence: 0.88,
-      suggestedAssigneeId: null,
-      suggestedAssigneeName: null,
-      assignmentReason: null,
-      draftResponse: null,
-      status: "pending",
-      processedAt: new Date(),
-    },
-    {
-      id: "3",
-      emailId: "email-3",
-      accountId: "acc-1",
-      from: { name: "Robert Chen", email: "robert@chenenterprises.com" },
-      subject: "URGENT: IRS Notice - Need Help ASAP",
-      receivedAt: new Date(Date.now() - 30 * 60 * 1000),
-      hasAttachments: true,
-      summary: "URGENT: Client received IRS Notice CP2000 regarding unreported income. Needs immediate assistance. Attached is the notice. Response deadline in 30 days.",
-      primaryAction: "Review IRS Notice CP2000 and schedule urgent consultation",
-      actionItems: [
-        { id: "a6", title: "Review attached IRS Notice CP2000", type: "review", priority: "urgent", confidence: 0.99 },
-        { id: "a7", title: "Schedule urgent consultation call", type: "calendar", priority: "urgent", confidence: 0.95 },
-        { id: "a8", title: "Prepare response to IRS", type: "task", priority: "urgent", dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), confidence: 0.9 },
-      ],
-      category: "urgent",
-      priority: "urgent",
-      priorityScore: 95,
-      sentiment: "negative",
-      urgency: "urgent",
-      requiresResponse: true,
-      responseDeadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-      extractedDates: [{ value: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), context: "IRS response deadline" }],
-      extractedAmounts: [{ value: 12500, context: "Alleged unreported income" }],
-      extractedDocumentTypes: ["IRS Notice CP2000"],
-      extractedNames: [{ name: "Robert Chen", role: "client" }],
-      matchedClientId: "client-3",
-      matchedClientName: "Chen Enterprises",
-      clientMatchConfidence: 0.95,
-      suggestedAssigneeId: "1",
-      suggestedAssigneeName: "Sarah Johnson",
-      assignmentReason: "Tax resolution specialist",
-      draftResponse: null,
-      status: "pending",
-      processedAt: new Date(),
-    },
-    {
-      id: "4",
-      emailId: "email-4",
-      accountId: "acc-1",
-      from: { name: "Lisa Thompson", email: "lisa.t@gmail.com" },
-      subject: "Question about deducting home office expenses",
-      receivedAt: new Date(Date.now() - 6 * 60 * 60 * 1000),
-      hasAttachments: false,
-      summary: "Potential new client inquiring about home office expense deductions. Works from home full-time and wants to know what qualifies. Looking for guidance.",
-      primaryAction: "Respond with home office deduction information",
-      actionItems: [
-        { id: "a9", title: "Send home office deduction guide", type: "response", priority: "low", confidence: 0.85 },
-        { id: "a10", title: "Schedule consultation if interested", type: "calendar", priority: "low", confidence: 0.7 },
-      ],
-      category: "question",
-      priority: "low",
-      priorityScore: 35,
-      sentiment: "positive",
-      urgency: "low",
-      requiresResponse: true,
-      responseDeadline: null,
-      extractedDates: [],
-      extractedAmounts: [],
-      extractedDocumentTypes: [],
-      extractedNames: [{ name: "Lisa Thompson", role: "prospect" }],
-      matchedClientId: null,
-      matchedClientName: null,
-      clientMatchConfidence: 0,
-      suggestedAssigneeId: null,
-      suggestedAssigneeName: null,
-      assignmentReason: null,
-      draftResponse: "Hi Lisa,\n\nThank you for reaching out! I'd be happy to help you understand home office deductions.\n\nTo qualify for the home office deduction, you need to use a portion of your home exclusively and regularly for business. There are two methods to calculate the deduction:\n\n1. Simplified method: $5 per square foot (max 300 sq ft = $1,500)\n2. Regular method: Calculate actual expenses proportional to your office space\n\nWould you like to schedule a consultation to discuss your specific situation?\n\nBest regards",
-      status: "pending",
-      processedAt: new Date(),
-    },
-    {
-      id: "5",
-      emailId: "email-5",
-      accountId: "acc-1",
-      from: { name: "Accounts Payable", email: "ap@bigvendor.com" },
-      subject: "Invoice #INV-2024-5892 - Payment Due",
-      receivedAt: new Date(Date.now() - 1 * 60 * 60 * 1000),
-      hasAttachments: true,
-      summary: "Vendor invoice for office supplies totaling $847.50. Payment due in 30 days. Attached is the invoice PDF.",
-      primaryAction: "Process vendor invoice for payment",
-      actionItems: [
-        { id: "a11", title: "Review and approve invoice #INV-2024-5892", type: "review", priority: "medium", confidence: 0.95 },
-        { id: "a12", title: "Schedule payment within 30 days", type: "task", priority: "medium", dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), confidence: 0.9 },
-      ],
-      category: "payment",
-      priority: "medium",
-      priorityScore: 55,
-      sentiment: "neutral",
-      urgency: "medium",
-      requiresResponse: false,
-      responseDeadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-      extractedDates: [{ value: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), context: "Payment due date" }],
-      extractedAmounts: [{ value: 847.50, context: "Invoice total" }],
-      extractedDocumentTypes: ["Invoice"],
-      extractedNames: [],
-      matchedClientId: null,
-      matchedClientName: null,
-      clientMatchConfidence: 0,
-      suggestedAssigneeId: "2",
-      suggestedAssigneeName: "Mike Chen",
-      assignmentReason: "Handles accounts payable",
-      draftResponse: null,
-      status: "pending",
-      processedAt: new Date(),
-    },
-    {
-      id: "6",
-      emailId: "email-6",
-      accountId: "acc-1",
-      from: { name: "David Park", email: "david@parkholdings.com" },
-      subject: "Schedule meeting to discuss 2025 tax planning",
-      receivedAt: new Date(Date.now() - 8 * 60 * 60 * 1000),
-      hasAttachments: false,
-      summary: "Existing client wants to schedule a meeting to discuss tax planning strategies for 2025. Mentions potential business expansion and wants advice on structure.",
-      primaryAction: "Schedule tax planning meeting with David Park",
-      actionItems: [
-        { id: "a13", title: "Schedule 2025 tax planning meeting", type: "calendar", priority: "medium", confidence: 0.95 },
-        { id: "a14", title: "Prepare business expansion tax strategy notes", type: "task", priority: "medium", confidence: 0.8 },
-      ],
-      category: "appointment",
-      priority: "medium",
-      priorityScore: 58,
-      sentiment: "positive",
-      urgency: "medium",
-      requiresResponse: true,
-      responseDeadline: null,
-      extractedDates: [],
-      extractedAmounts: [],
-      extractedDocumentTypes: [],
-      extractedNames: [{ name: "David Park", role: "client" }],
-      matchedClientId: "client-4",
-      matchedClientName: "Park Holdings LLC",
-      clientMatchConfidence: 0.91,
-      suggestedAssigneeId: "1",
-      suggestedAssigneeName: "Sarah Johnson",
-      assignmentReason: "Primary contact for Park Holdings",
-      draftResponse: null,
-      status: "pending",
-      processedAt: new Date(),
-    },
-  ];
-}

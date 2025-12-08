@@ -392,7 +392,7 @@ export default function ClientsPage() {
                 <p className="text-sm text-muted-foreground">
                   Showing {((page - 1) * ITEMS_PER_PAGE) + 1} to {Math.min(page * ITEMS_PER_PAGE, totalCount)} of {totalCount} entries
                 </p>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
                   <Button
                     variant="outline"
                     size="sm"
@@ -401,20 +401,51 @@ export default function ClientsPage() {
                   >
                     Previous
                   </Button>
-                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                    const pageNum = i + 1;
-                    return (
-                      <Button
-                        key={pageNum}
-                        variant="outline"
-                        size="sm"
-                        className={cn(page === pageNum && "bg-primary text-primary-foreground")}
-                        onClick={() => setPage(pageNum)}
-                      >
-                        {pageNum}
-                      </Button>
+                  {/* Smart pagination: show first, last, and pages around current */}
+                  {(() => {
+                    const pages: (number | "ellipsis")[] = [];
+                    if (totalPages <= 7) {
+                      // Show all pages if 7 or fewer
+                      for (let i = 1; i <= totalPages; i++) pages.push(i);
+                    } else {
+                      // Always show first page
+                      pages.push(1);
+
+                      if (page > 3) {
+                        pages.push("ellipsis");
+                      }
+
+                      // Pages around current
+                      const start = Math.max(2, page - 1);
+                      const end = Math.min(totalPages - 1, page + 1);
+                      for (let i = start; i <= end; i++) {
+                        if (!pages.includes(i)) pages.push(i);
+                      }
+
+                      if (page < totalPages - 2) {
+                        pages.push("ellipsis");
+                      }
+
+                      // Always show last page
+                      if (!pages.includes(totalPages)) pages.push(totalPages);
+                    }
+
+                    return pages.map((p, idx) =>
+                      p === "ellipsis" ? (
+                        <span key={`ellipsis-${idx}`} className="px-2 text-muted-foreground">...</span>
+                      ) : (
+                        <Button
+                          key={p}
+                          variant="outline"
+                          size="sm"
+                          className={cn(page === p && "bg-primary text-primary-foreground")}
+                          onClick={() => setPage(p)}
+                        >
+                          {p}
+                        </Button>
+                      )
                     );
-                  })}
+                  })()}
                   <Button
                     variant="outline"
                     size="sm"

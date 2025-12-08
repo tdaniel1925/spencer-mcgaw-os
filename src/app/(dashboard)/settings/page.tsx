@@ -45,6 +45,21 @@ interface EmailAccount {
   lastSyncAt: string | null;
 }
 
+interface ProfileSettings {
+  fullName: string;
+  email: string;
+  phone: string;
+  bio: string;
+}
+
+interface CompanySettings {
+  companyName: string;
+  companyEmail: string;
+  companyPhone: string;
+  timezone: string;
+  address: string;
+}
+
 export default function SettingsPage() {
   const { user } = useAuth();
   const [emailAccounts, setEmailAccounts] = useState<EmailAccount[]>([]);
@@ -52,6 +67,113 @@ export default function SettingsPage() {
   const [connecting, setConnecting] = useState(false);
   const [orphanedDataCount, setOrphanedDataCount] = useState(0);
   const [clearingData, setClearingData] = useState(false);
+
+  // Profile form state
+  const [profile, setProfile] = useState<ProfileSettings>({
+    fullName: user?.full_name || "",
+    email: user?.email || "",
+    phone: user?.phone || "",
+    bio: "",
+  });
+  const [savingProfile, setSavingProfile] = useState(false);
+
+  // Company form state
+  const [company, setCompany] = useState<CompanySettings>({
+    companyName: "Spencer McGaw CPA",
+    companyEmail: "",
+    companyPhone: "",
+    timezone: "cst",
+    address: "",
+  });
+  const [savingCompany, setSavingCompany] = useState(false);
+  const [loadingSettings, setLoadingSettings] = useState(true);
+
+  // Load profile and company settings
+  useEffect(() => {
+    async function loadSettings() {
+      try {
+        const [profileRes, companyRes] = await Promise.all([
+          fetch("/api/settings/profile"),
+          fetch("/api/settings/company"),
+        ]);
+
+        if (profileRes.ok) {
+          const data = await profileRes.json();
+          setProfile({
+            fullName: data.fullName || user?.full_name || "",
+            email: data.email || user?.email || "",
+            phone: data.phone || "",
+            bio: data.bio || "",
+          });
+        }
+
+        if (companyRes.ok) {
+          const data = await companyRes.json();
+          setCompany({
+            companyName: data.companyName || "Spencer McGaw CPA",
+            companyEmail: data.companyEmail || "",
+            companyPhone: data.companyPhone || "",
+            timezone: data.timezone || "cst",
+            address: data.address || "",
+          });
+        }
+      } catch (error) {
+        console.error("Error loading settings:", error);
+      } finally {
+        setLoadingSettings(false);
+      }
+    }
+
+    loadSettings();
+  }, [user]);
+
+  // Save profile
+  const handleSaveProfile = async () => {
+    setSavingProfile(true);
+    try {
+      const response = await fetch("/api/settings/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(profile),
+      });
+
+      if (response.ok) {
+        toast.success("Profile saved successfully");
+      } else {
+        const data = await response.json();
+        toast.error(data.error || "Failed to save profile");
+      }
+    } catch (error) {
+      console.error("Error saving profile:", error);
+      toast.error("Failed to save profile");
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  // Save company settings
+  const handleSaveCompany = async () => {
+    setSavingCompany(true);
+    try {
+      const response = await fetch("/api/settings/company", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(company),
+      });
+
+      if (response.ok) {
+        toast.success("Company settings saved successfully");
+      } else {
+        const data = await response.json();
+        toast.error(data.error || "Failed to save company settings");
+      }
+    } catch (error) {
+      console.error("Error saving company settings:", error);
+      toast.error("Failed to save company settings");
+    } finally {
+      setSavingCompany(false);
+    }
+  };
 
   const loadEmailAccounts = useCallback(async () => {
     try {
@@ -214,7 +336,8 @@ export default function SettingsPage() {
                     <Label htmlFor="fullName">Full Name</Label>
                     <Input
                       id="fullName"
-                      defaultValue={user?.full_name || ""}
+                      value={profile.fullName}
+                      onChange={(e) => setProfile(p => ({ ...p, fullName: e.target.value }))}
                       placeholder="Enter your full name"
                     />
                   </div>
@@ -223,13 +346,21 @@ export default function SettingsPage() {
                     <Input
                       id="email"
                       type="email"
-                      defaultValue={user?.email || ""}
+                      value={profile.email}
+                      disabled
+                      className="bg-muted"
                       placeholder="Enter your email"
                     />
+                    <p className="text-xs text-muted-foreground">Email cannot be changed</p>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="phone">Phone Number</Label>
-                    <Input id="phone" placeholder="Enter your phone number" />
+                    <Input
+                      id="phone"
+                      value={profile.phone}
+                      onChange={(e) => setProfile(p => ({ ...p, phone: e.target.value }))}
+                      placeholder="Enter your phone number"
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="role">Role</Label>
@@ -246,15 +377,21 @@ export default function SettingsPage() {
                   <Label htmlFor="bio">Bio</Label>
                   <Textarea
                     id="bio"
+                    value={profile.bio}
+                    onChange={(e) => setProfile(p => ({ ...p, bio: e.target.value }))}
                     placeholder="Tell us about yourself"
                     rows={3}
                   />
                 </div>
 
                 <div className="flex justify-end">
-                  <Button className="bg-primary">
-                    <Save className="h-4 w-4 mr-2" />
-                    Save Changes
+                  <Button onClick={handleSaveProfile} disabled={savingProfile}>
+                    {savingProfile ? (
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Save className="h-4 w-4 mr-2" />
+                    )}
+                    {savingProfile ? "Saving..." : "Save Changes"}
                   </Button>
                 </div>
               </CardContent>
@@ -276,7 +413,8 @@ export default function SettingsPage() {
                     <Label htmlFor="companyName">Company Name</Label>
                     <Input
                       id="companyName"
-                      defaultValue="Spencer McGaw CPA"
+                      value={company.companyName}
+                      onChange={(e) => setCompany(c => ({ ...c, companyName: e.target.value }))}
                     />
                   </div>
                   <div className="space-y-2">
@@ -284,16 +422,26 @@ export default function SettingsPage() {
                     <Input
                       id="companyEmail"
                       type="email"
-                      defaultValue="contact@spencermcgaw.com"
+                      value={company.companyEmail}
+                      onChange={(e) => setCompany(c => ({ ...c, companyEmail: e.target.value }))}
+                      placeholder="contact@example.com"
                     />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="companyPhone">Company Phone</Label>
-                    <Input id="companyPhone" defaultValue="(555) 123-4567" />
+                    <Input
+                      id="companyPhone"
+                      value={company.companyPhone}
+                      onChange={(e) => setCompany(c => ({ ...c, companyPhone: e.target.value }))}
+                      placeholder="(555) 123-4567"
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="timezone">Timezone</Label>
-                    <Select defaultValue="cst">
+                    <Select
+                      value={company.timezone}
+                      onValueChange={(value) => setCompany(c => ({ ...c, timezone: value }))}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Select timezone" />
                       </SelectTrigger>
@@ -311,15 +459,21 @@ export default function SettingsPage() {
                   <Label htmlFor="address">Address</Label>
                   <Textarea
                     id="address"
+                    value={company.address}
+                    onChange={(e) => setCompany(c => ({ ...c, address: e.target.value }))}
                     placeholder="Enter company address"
                     rows={2}
                   />
                 </div>
 
                 <div className="flex justify-end">
-                  <Button className="bg-primary">
-                    <Save className="h-4 w-4 mr-2" />
-                    Save Changes
+                  <Button onClick={handleSaveCompany} disabled={savingCompany}>
+                    {savingCompany ? (
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Save className="h-4 w-4 mr-2" />
+                    )}
+                    {savingCompany ? "Saving..." : "Save Changes"}
                   </Button>
                 </div>
               </CardContent>

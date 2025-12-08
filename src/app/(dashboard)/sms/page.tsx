@@ -761,23 +761,29 @@ function SMSPageContent() {
                         ref={inputRef}
                         placeholder="Type a message... (Type / for quick replies)"
                         value={messageInput}
-                        onChange={(e) => setMessageInput(e.target.value)}
+                        onChange={(e) => setMessageInput(e.target.value.slice(0, 160))}
                         onKeyDown={(e) => {
                           if (e.key === "Enter" && !e.shiftKey) {
                             e.preventDefault();
                             handleSendMessage();
                           }
                         }}
-                        className="min-h-[44px] max-h-32 resize-none pr-12"
+                        maxLength={160}
+                        className="min-h-[44px] max-h-32 resize-none pr-16"
                         rows={1}
                       />
-                      <div className="absolute bottom-1 right-1 text-[10px] text-muted-foreground">
+                      <div className={cn(
+                        "absolute bottom-1 right-1 text-[10px]",
+                        messageInput.length >= 160 ? "text-red-500 font-medium" :
+                        messageInput.length >= 140 ? "text-amber-500" :
+                        "text-muted-foreground"
+                      )}>
                         {messageInput.length}/160
                       </div>
                     </div>
                     <Button
                       onClick={handleSendMessage}
-                      disabled={!messageInput.trim() || sending}
+                      disabled={!messageInput.trim() || sending || messageInput.length > 160}
                       className="flex-shrink-0"
                     >
                       <Send className="h-4 w-4" />

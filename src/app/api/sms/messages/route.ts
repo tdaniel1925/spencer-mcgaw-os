@@ -1,6 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
+// Validate phone number format (E.164 or common formats)
+function isValidPhoneNumber(phone: string): boolean {
+  if (!phone) return false;
+  // Remove all non-digits except leading +
+  const cleaned = phone.replace(/[^\d+]/g, "");
+  // E.164 format: +1XXXXXXXXXX (10-15 digits after +)
+  if (/^\+\d{10,15}$/.test(cleaned)) return true;
+  // US format without +: 10 digits
+  if (/^\d{10}$/.test(cleaned)) return true;
+  // US format with 1: 11 digits starting with 1
+  if (/^1\d{10}$/.test(cleaned)) return true;
+  return false;
+}
+
+// Normalize phone number to E.164 format
+function normalizePhoneNumber(phone: string): string {
+  const cleaned = phone.replace(/[^\d+]/g, "");
+  // Already E.164
+  if (cleaned.startsWith("+")) return cleaned;
+  // US 10-digit
+  if (cleaned.length === 10) return `+1${cleaned}`;
+  // US 11-digit with 1
+  if (cleaned.length === 11 && cleaned.startsWith("1")) return `+${cleaned}`;
+  return cleaned;
+}
+
 // POST - Send a new SMS message
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -43,6 +69,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Contact has opted out of SMS messages" }, { status: 400 });
     }
 
+    // Validate phone number
+    const toNumber = conversation.phone_number;
+    if (!isValidPhoneNumber(toNumber)) {
+      return NextResponse.json({
+        error: "Invalid phone number format. Please update the contact's phone number."
+      }, { status: 400 });
+    }
+
+    // Validate message length (SMS limit)
+    if (messageBody.length > 160) {
+      return NextResponse.json({
+        error: "Message exceeds 160 character SMS limit"
+      }, { status: 400 });
+    }
+
     // Get SMS settings for the from number
     const { data: settings } = await supabase
       .from("sms_settings")
@@ -51,7 +92,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     const fromNumber = settings?.twilio_phone_number || process.env.TWILIO_PHONE_NUMBER || "+1234567890";
-    const toNumber = conversation.phone_number;
+    const normalizedToNumber = normalizePhoneNumber(toNumber);
 
     // Create the message record
     const isScheduled = !!scheduled_for && new Date(scheduled_for) > new Date();
@@ -64,7 +105,7 @@ export async function POST(request: NextRequest) {
         client_id: conversation.client_id,
         direction: "outbound",
         from_number: fromNumber,
-        to_number: toNumber,
+        to_number: normalizedToNumber,
         body: messageBody,
         status: isScheduled ? "scheduled" : "pending",
         sent_by: user.id,
@@ -99,7 +140,7 @@ export async function POST(request: NextRequest) {
               },
               body: new URLSearchParams({
                 From: fromNumber,
-                To: toNumber,
+                To: normalizedToNumber,
                 Body: messageBody,
               }),
             }
