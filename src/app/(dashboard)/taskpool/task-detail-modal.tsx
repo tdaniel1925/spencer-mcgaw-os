@@ -86,6 +86,8 @@ interface Task {
   status: string;
   priority: string;
   due_date: string | null;
+  alert_threshold_hours: number | null;
+  alert_dismissed: boolean;
   claimed_by: string | null;
   claimed_at: string | null;
   assigned_to: string | null;
@@ -173,6 +175,7 @@ export function TaskDetailModal({
     description: task.description || "",
     priority: task.priority,
     due_date: task.due_date || "",
+    alert_threshold_hours: task.alert_threshold_hours || 24,
     action_type_id: task.action_type_id,
   });
 
@@ -214,6 +217,7 @@ export function TaskDetailModal({
         description: task.description || "",
         priority: task.priority,
         due_date: task.due_date || "",
+        alert_threshold_hours: task.alert_threshold_hours || 24,
         action_type_id: task.action_type_id,
       });
     }
@@ -598,15 +602,42 @@ export function TaskDetailModal({
                       </Select>
                     </div>
                   </div>
-                  <div>
-                    <Label>Due Date</Label>
-                    <Input
-                      type="date"
-                      value={editForm.due_date}
-                      onChange={(e) =>
-                        setEditForm({ ...editForm, due_date: e.target.value })
-                      }
-                    />
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label>Due Date</Label>
+                      <Input
+                        type="date"
+                        value={editForm.due_date}
+                        onChange={(e) =>
+                          setEditForm({ ...editForm, due_date: e.target.value })
+                        }
+                      />
+                    </div>
+                    {editForm.due_date && (
+                      <div>
+                        <Label>Alert Reminder</Label>
+                        <Select
+                          value={String(editForm.alert_threshold_hours)}
+                          onValueChange={(value) =>
+                            setEditForm({ ...editForm, alert_threshold_hours: parseInt(value) })
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="1">1 hour before</SelectItem>
+                            <SelectItem value="2">2 hours before</SelectItem>
+                            <SelectItem value="4">4 hours before</SelectItem>
+                            <SelectItem value="8">8 hours before</SelectItem>
+                            <SelectItem value="24">1 day before</SelectItem>
+                            <SelectItem value="48">2 days before</SelectItem>
+                            <SelectItem value="72">3 days before</SelectItem>
+                            <SelectItem value="168">1 week before</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                   </div>
                   <div className="flex justify-end gap-2">
                     <Button variant="outline" onClick={() => setEditing(false)}>

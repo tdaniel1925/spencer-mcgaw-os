@@ -65,6 +65,7 @@ export function CreateTaskDialog({
     client_id: "",
     priority: "medium",
     due_date: "",
+    alert_threshold_hours: 24,
   });
 
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
@@ -135,6 +136,7 @@ export function CreateTaskDialog({
           ...form,
           client_id: form.client_id || null,
           due_date: form.due_date || null,
+          alert_threshold_hours: form.due_date ? form.alert_threshold_hours : null,
         }),
       });
 
@@ -147,6 +149,7 @@ export function CreateTaskDialog({
           client_id: "",
           priority: "medium",
           due_date: "",
+          alert_threshold_hours: 24,
         });
         setSelectedClient(null);
         setClientSearch("");
@@ -171,6 +174,7 @@ export function CreateTaskDialog({
       client_id: "",
       priority: "medium",
       due_date: "",
+      alert_threshold_hours: 24,
     });
     setSelectedClient(null);
     setClientSearch("");
@@ -331,6 +335,34 @@ export function CreateTaskDialog({
               />
             </div>
           </div>
+
+          {/* Alert Threshold - only show when due date is set */}
+          {form.due_date && (
+            <div className="space-y-2">
+              <Label>Alert Reminder</Label>
+              <Select
+                value={String(form.alert_threshold_hours)}
+                onValueChange={(value) => setForm({ ...form, alert_threshold_hours: parseInt(value) })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="When to remind..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">1 hour before</SelectItem>
+                  <SelectItem value="2">2 hours before</SelectItem>
+                  <SelectItem value="4">4 hours before</SelectItem>
+                  <SelectItem value="8">8 hours before</SelectItem>
+                  <SelectItem value="24">1 day before</SelectItem>
+                  <SelectItem value="48">2 days before</SelectItem>
+                  <SelectItem value="72">3 days before</SelectItem>
+                  <SelectItem value="168">1 week before</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                You'll receive alerts when the due date approaches
+              </p>
+            </div>
+          )}
         </div>
 
         <DialogFooter>

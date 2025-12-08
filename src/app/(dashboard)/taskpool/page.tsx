@@ -75,6 +75,8 @@ interface Task {
   status: string;
   priority: string;
   due_date: string | null;
+  alert_threshold_hours: number | null;
+  alert_dismissed: boolean;
   claimed_by: string | null;
   claimed_at: string | null;
   assigned_to: string | null;

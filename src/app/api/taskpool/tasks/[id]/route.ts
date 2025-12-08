@@ -111,6 +111,72 @@ export async function PUT(
   }
 }
 
+// PATCH - Partial update task
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  try {
+    const body = await request.json();
+
+    // Get current task for activity logging
+    const { data: currentTask } = await supabase
+      .from("tasks")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    const { data: task, error } = await supabase
+      .from("tasks")
+      .update({
+        ...body,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .select(`
+        *,
+        action_type:task_action_types!tasks_action_type_id_fkey(*),
+        client:client_contacts(id, first_name, last_name, company)
+      `)
+      .single();
+
+    if (error) {
+      console.error("Error updating task:", error);
+      return NextResponse.json({ error: "Failed to update task" }, { status: 500 });
+    }
+
+    // Log activity
+    const changes: Record<string, { from: any; to: any }> = {};
+    for (const key of Object.keys(body)) {
+      if (currentTask && currentTask[key] !== body[key]) {
+        changes[key] = { from: currentTask[key], to: body[key] };
+      }
+    }
+
+    if (Object.keys(changes).length > 0) {
+      await supabase.from("task_activity_log").insert({
+        task_id: id,
+        action: "updated",
+        details: { changes },
+        performed_by: user.id,
+      });
+    }
+
+    return NextResponse.json(task);
+  } catch (error) {
+    console.error("Error updating task:", error);
+    return NextResponse.json({ error: "Failed to update task" }, { status: 500 });
+  }
+}
+
 // DELETE - Delete task
 export async function DELETE(
   request: NextRequest,

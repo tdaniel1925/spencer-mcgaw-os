@@ -22,6 +22,9 @@ import {
   GripVertical,
   ChevronLeft,
   ChevronRight,
+  AlertTriangle,
+  Bell,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -87,6 +90,8 @@ interface Task {
   status: string;
   priority: string;
   due_date: string | null;
+  alert_threshold_hours: number | null;
+  alert_dismissed: boolean;
   claimed_by: string | null;
   claimed_at: string | null;
   assigned_to: string | null;
@@ -155,6 +160,53 @@ function formatTimeElapsed(dateString: string): { text: string; isOld: boolean }
   return { text, isOld };
 }
 
+// Helper to check due date alert status
+interface DueDateAlertStatus {
+  isOverdue: boolean;
+  isApproaching: boolean;
+  isUrgent: boolean;
+  hoursRemaining: number | null;
+  text: string | null;
+}
+
+function getDueDateAlertStatus(
+  dueDate: string | null,
+  alertThresholdHours: number | null,
+  alertDismissed: boolean
+): DueDateAlertStatus {
+  if (!dueDate) {
+    return { isOverdue: false, isApproaching: false, isUrgent: false, hoursRemaining: null, text: null };
+  }
+
+  const now = new Date();
+  const due = new Date(dueDate);
+  // Set due date to end of day if it's just a date
+  if (!dueDate.includes('T')) {
+    due.setHours(23, 59, 59, 999);
+  }
+
+  const diffMs = due.getTime() - now.getTime();
+  const hoursRemaining = Math.floor(diffMs / (1000 * 60 * 60));
+  const threshold = alertThresholdHours || 24;
+
+  const isOverdue = diffMs < 0;
+  const isApproaching = !isOverdue && hoursRemaining <= threshold && !alertDismissed;
+  const isUrgent = !isOverdue && hoursRemaining <= Math.min(threshold / 2, 4) && !alertDismissed;
+
+  let text: string | null = null;
+  if (isOverdue) {
+    const overdueDays = Math.abs(Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+    text = overdueDays === 1 ? "1 day overdue" : `${overdueDays} days overdue`;
+  } else if (hoursRemaining < 24) {
+    text = hoursRemaining <= 1 ? "Due within 1 hour" : `Due in ${hoursRemaining}h`;
+  } else {
+    const daysRemaining = Math.ceil(hoursRemaining / 24);
+    text = daysRemaining === 1 ? "Due tomorrow" : `Due in ${daysRemaining} days`;
+  }
+
+  return { isOverdue, isApproaching, isUrgent, hoursRemaining, text };
+}
+
 export default function TaskPoolBoardPage() {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [actionTypes, setActionTypes] = useState<ActionType[]>([]);
@@ -170,6 +222,19 @@ export default function TaskPoolBoardPage() {
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
+  const [showAlertBanner, setShowAlertBanner] = useState(true);
+
+  // Get tasks with due date alerts
+  const tasksWithAlerts = tasks.filter(t => {
+    if (t.status === "completed" || !t.due_date) return false;
+    const alert = getDueDateAlertStatus(t.due_date, t.alert_threshold_hours, t.alert_dismissed || false);
+    return alert.isOverdue || alert.isApproaching;
+  });
+  const overdueCount = tasksWithAlerts.filter(t => {
+    const alert = getDueDateAlertStatus(t.due_date, t.alert_threshold_hours, t.alert_dismissed || false);
+    return alert.isOverdue;
+  }).length;
+  const approachingCount = tasksWithAlerts.length - overdueCount;
 
   // Check scroll position to show/hide arrow buttons
   const updateScrollButtons = useCallback(() => {
@@ -435,9 +500,11 @@ export default function TaskPoolBoardPage() {
   };
 
   // Group tasks
-  const getUnassignedTasks = () => tasks.filter(t => !t.assigned_to && t.status !== "completed");
+  // Tasks in action type columns - show all non-completed tasks (assigned and unassigned)
   const getTasksByActionType = (actionTypeId: string) =>
-    getUnassignedTasks().filter(t => t.action_type_id === actionTypeId);
+    tasks.filter(t => t.action_type_id === actionTypeId && t.status !== "completed");
+
+  // Tasks assigned to a specific user
   const getTasksByUser = (userId: string) =>
     tasks.filter(t => t.assigned_to === userId && t.status !== "completed");
 
@@ -476,7 +543,6 @@ export default function TaskPoolBoardPage() {
   };
 
   const renderTaskCard = (task: Task, showAssignDropdown = true) => {
-    const isOverdue = task.due_date && new Date(task.due_date) < new Date();
     const createdDate = new Date(task.created_at);
     const isRecent = (Date.now() - createdDate.getTime()) < 24 * 60 * 60 * 1000;
     const assignedUser = task.assigned_to ? users.find(u => u.id === task.assigned_to) : null;
@@ -486,6 +552,13 @@ export default function TaskPoolBoardPage() {
       ? formatTimeElapsed(task.assigned_at)
       : formatTimeElapsed(task.created_at);
     const timerLabel = task.assigned_at ? "assigned" : "waiting";
+
+    // Due date alert status
+    const dueDateAlert = getDueDateAlertStatus(
+      task.due_date,
+      task.alert_threshold_hours,
+      task.alert_dismissed || false
+    );
 
     return (
       <div
@@ -507,7 +580,10 @@ export default function TaskPoolBoardPage() {
           "bg-background rounded-lg border cursor-grab transition-all duration-200",
           "hover:shadow-md hover:border-border/80",
           "group relative overflow-hidden select-none",
-          draggedTask?.id === task.id && "opacity-50 cursor-grabbing"
+          draggedTask?.id === task.id && "opacity-50 cursor-grabbing",
+          dueDateAlert.isOverdue && "ring-2 ring-red-500 ring-offset-1 animate-pulse",
+          dueDateAlert.isUrgent && !dueDateAlert.isOverdue && "ring-2 ring-orange-500 ring-offset-1 animate-pulse",
+          dueDateAlert.isApproaching && !dueDateAlert.isUrgent && !dueDateAlert.isOverdue && "ring-1 ring-amber-400"
         )}
         onClick={(e) => {
           // Only open modal if not dragging
@@ -544,6 +620,14 @@ export default function TaskPoolBoardPage() {
                   className="text-[10px] px-1.5 py-0 bg-blue-50 text-blue-600 border-blue-200"
                 >
                   New
+                </Badge>
+              )}
+              {assignedUser && (
+                <Badge
+                  variant="outline"
+                  className="text-[10px] px-1.5 py-0 bg-green-50 text-green-700 border-green-200"
+                >
+                  Assigned
                 </Badge>
               )}
             </div>
@@ -642,15 +726,24 @@ export default function TaskPoolBoardPage() {
               </Popover>
             )}
 
-            {/* Due date */}
+            {/* Due date with alert */}
             {task.due_date && (
-              <span className={cn(
-                "text-[10px] flex items-center gap-0.5",
-                isOverdue ? "text-red-600 font-medium" : "text-muted-foreground"
+              <div className={cn(
+                "flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded",
+                dueDateAlert.isOverdue && "bg-red-100 text-red-700 animate-pulse font-medium",
+                dueDateAlert.isUrgent && !dueDateAlert.isOverdue && "bg-orange-100 text-orange-700 animate-pulse font-medium",
+                dueDateAlert.isApproaching && !dueDateAlert.isUrgent && !dueDateAlert.isOverdue && "bg-amber-50 text-amber-700",
+                !dueDateAlert.isOverdue && !dueDateAlert.isApproaching && "text-muted-foreground"
               )}>
-                <Clock className="h-3 w-3" />
-                {new Date(task.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-              </span>
+                {dueDateAlert.isOverdue ? (
+                  <AlertTriangle className="h-3 w-3" />
+                ) : dueDateAlert.isApproaching ? (
+                  <Bell className="h-3 w-3" />
+                ) : (
+                  <Calendar className="h-3 w-3" />
+                )}
+                <span>{dueDateAlert.text || new Date(task.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+              </div>
             )}
           </div>
         </div>
@@ -723,6 +816,59 @@ export default function TaskPoolBoardPage() {
           </div>
         </div>
       </div>
+
+      {/* Alert Banner - shows when there are overdue or approaching tasks */}
+      {showAlertBanner && tasksWithAlerts.length > 0 && (
+        <div className={cn(
+          "flex items-center justify-between px-6 py-2 text-sm",
+          overdueCount > 0 ? "bg-red-50 border-b border-red-200" : "bg-amber-50 border-b border-amber-200"
+        )}>
+          <div className="flex items-center gap-3">
+            <div className={cn(
+              "flex items-center gap-1.5 font-medium animate-pulse",
+              overdueCount > 0 ? "text-red-700" : "text-amber-700"
+            )}>
+              <AlertTriangle className="h-4 w-4" />
+              <span>
+                {overdueCount > 0 && (
+                  <>{overdueCount} overdue task{overdueCount !== 1 && "s"}</>
+                )}
+                {overdueCount > 0 && approachingCount > 0 && " and "}
+                {approachingCount > 0 && (
+                  <>{approachingCount} task{approachingCount !== 1 && "s"} due soon</>
+                )}
+              </span>
+            </div>
+            <div className="flex gap-1">
+              {tasksWithAlerts.slice(0, 3).map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => setSelectedTask(t)}
+                  className={cn(
+                    "px-2 py-0.5 rounded text-xs font-medium truncate max-w-[150px] hover:opacity-80 transition-opacity",
+                    getDueDateAlertStatus(t.due_date, t.alert_threshold_hours, t.alert_dismissed || false).isOverdue
+                      ? "bg-red-100 text-red-800"
+                      : "bg-amber-100 text-amber-800"
+                  )}
+                >
+                  {t.title}
+                </button>
+              ))}
+              {tasksWithAlerts.length > 3 && (
+                <span className="text-muted-foreground text-xs self-center">
+                  +{tasksWithAlerts.length - 3} more
+                </span>
+              )}
+            </div>
+          </div>
+          <button
+            onClick={() => setShowAlertBanner(false)}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       {/* Main Board Area - Action Type Columns */}
       <div className="flex-1 relative min-h-0">
