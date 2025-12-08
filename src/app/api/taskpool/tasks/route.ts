@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
       .from("tasks")
       .select(`
         *,
-        action_type:task_action_types(id, code, label, color, icon)
+        action_type:task_action_types!tasks_action_type_id_fkey(id, code, label, color, icon)
       `)
       .order("created_at", { ascending: false });
 
@@ -128,7 +128,7 @@ export async function POST(request: NextRequest) {
       })
       .select(`
         *,
-        action_type:task_action_types(id, code, label, color, icon)
+        action_type:task_action_types!tasks_action_type_id_fkey(id, code, label, color, icon)
       `)
       .single();
 

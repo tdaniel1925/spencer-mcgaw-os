@@ -52,7 +52,7 @@ export async function POST(
       .eq("id", id)
       .select(`
         *,
-        action_type:task_action_types(*),
+        action_type:task_action_types!tasks_action_type_id_fkey(*),
         client:client_contacts(id, first_name, last_name, company)
       `)
       .single();
@@ -121,7 +121,7 @@ export async function DELETE(
       .eq("id", id)
       .select(`
         *,
-        action_type:task_action_types(*),
+        action_type:task_action_types!tasks_action_type_id_fkey(*),
         client:client_contacts(id, first_name, last_name, company)
       `)
       .single();

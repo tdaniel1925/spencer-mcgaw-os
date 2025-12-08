@@ -19,11 +19,11 @@ export async function GET(
       .from("tasks")
       .select(`
         *,
-        action_type:task_action_types(*),
+        action_type:task_action_types!tasks_action_type_id_fkey(*),
         next_action_type:task_action_types!tasks_next_action_type_id_fkey(*),
         client:client_contacts(id, first_name, last_name, company, email, phone),
-        notes:task_notes(*, created_by_user:auth.users(email)),
-        activity:task_activity_log(*, performed_by_user:auth.users(email)),
+        notes:task_notes(*),
+        activity:task_activity_log(*),
         attachments:task_attachments(*)
       `)
       .eq("id", id)
@@ -77,7 +77,7 @@ export async function PUT(
       .eq("id", id)
       .select(`
         *,
-        action_type:task_action_types(*),
+        action_type:task_action_types!tasks_action_type_id_fkey(*),
         client:client_contacts(id, first_name, last_name, company)
       `)
       .single();

@@ -21,7 +21,7 @@ export async function POST(
     // Get current task
     const { data: currentTask } = await supabase
       .from("tasks")
-      .select("*, action_type:task_action_types(*)")
+      .select("*, action_type:task_action_types!tasks_action_type_id_fkey(*)")
       .eq("id", id)
       .single();
 
@@ -75,7 +75,7 @@ export async function POST(
         })
         .select(`
           *,
-          action_type:task_action_types(*),
+          action_type:task_action_types!tasks_action_type_id_fkey(*),
           client:client_contacts(id, first_name, last_name, company)
         `)
         .single();
