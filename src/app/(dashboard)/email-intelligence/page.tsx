@@ -1000,17 +1000,29 @@ export default function EmailIntelligencePage() {
   // Sync emails and process with AI
   const handleSync = async () => {
     setSyncing(true);
+    // Show immediate feedback that sync started
+    toast.loading("Syncing emails... This may take a minute as AI processes each email.", {
+      id: "email-sync",
+      duration: 60000, // Keep visible for up to 60 seconds
+    });
     try {
       const res = await fetch("/api/email-intelligence/sync", { method: "POST" });
       if (res.ok) {
         const data = await res.json();
-        toast.success(`Processed ${data.processed} new emails`);
+        toast.success(`Processed ${data.processed} new emails${data.tasksCreated ? `, created ${data.tasksCreated} tasks` : ""}`, {
+          id: "email-sync",
+        });
         loadIntelligences();
       } else {
-        toast.error("Failed to sync emails");
+        const errorData = await res.json().catch(() => ({}));
+        toast.error(errorData.error || "Failed to sync emails", {
+          id: "email-sync",
+        });
       }
     } catch (error) {
-      toast.error("Failed to sync emails");
+      toast.error("Failed to sync emails. Please try again.", {
+        id: "email-sync",
+      });
     } finally {
       setSyncing(false);
     }
@@ -1312,8 +1324,12 @@ export default function EmailIntelligencePage() {
                   : "No emails match your current filters."}
               </p>
               <Button onClick={handleSync} disabled={syncing}>
-                <RefreshCw className={cn("h-4 w-4 mr-2", syncing && "animate-spin")} />
-                Sync New Emails
+                {syncing ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                )}
+                {syncing ? "Syncing emails..." : "Sync New Emails"}
               </Button>
             </div>
           ) : (
