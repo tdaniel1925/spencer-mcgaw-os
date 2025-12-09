@@ -54,6 +54,11 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
   ClipboardList,
   Clock,
   CheckCircle,
@@ -76,15 +81,32 @@ import {
   FlaskConical,
   Users,
   ChevronDown,
+  ChevronUp,
   ArrowRight,
   UserPlus,
   Activity,
+  ThumbsDown,
+  ExternalLink,
+  Volume2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
 // Types
+interface SourceMetadata {
+  email_subject?: string;
+  sender_name?: string;
+  sender_email?: string;
+  email_body?: string;
+  extraction_summary?: string;
+  call_transcript?: string;
+  recording_url?: string;
+  caller_phone?: string;
+  caller_name?: string;
+  call_duration?: number;
+}
+
 interface Task {
   id: string;
   title: string;
@@ -93,6 +115,7 @@ interface Task {
   priority: "low" | "medium" | "high" | "urgent";
   source_type: "phone_call" | "email" | "document_intake" | "manual" | null;
   source_email_id: string | null;
+  source_metadata?: SourceMetadata | null;
   client_id: string | null;
   assigned_to: string | null;
   claimed_by: string | null;
@@ -197,6 +220,16 @@ export default function TaskTablePage() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
+  const [notATaskDialogOpen, setNotATaskDialogOpen] = useState(false);
+
+  // Source content states
+  const [sourceContentOpen, setSourceContentOpen] = useState(false);
+  const [sourceContent, setSourceContent] = useState<{
+    emailBody?: string;
+    transcript?: string;
+    recordingUrl?: string;
+    loading: boolean;
+  }>({ loading: false });
 
   // "View as User" for admins
   const [viewAsUser, setViewAsUser] = useState<string | null>(null);
@@ -506,6 +539,120 @@ export default function TaskTablePage() {
       console.error("Error deleting task:", error);
       toast.error("Failed to delete task");
     }
+  };
+
+  // Handle "Not a Task" - remove task and train AI
+  const handleNotATask = async () => {
+    if (!selectedTask) return;
+    try {
+      // First, send feedback to train AI that this shouldn't be a task
+      if (selectedTask.source_email_id && !selectedTask.source_email_id.startsWith("test_")) {
+        await fetch("/api/taskpool/tasks/" + selectedTask.id + "/ai-feedback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            feedback_type: "not_a_task",
+            reason: "User marked this as not a valid task",
+            source_type: selectedTask.source_type,
+            source_id: selectedTask.source_email_id,
+          }),
+        });
+      }
+
+      // Then delete the task
+      const response = await fetch(`/api/tasks/${selectedTask.id}`, { method: "DELETE" });
+      if (response.ok) {
+        toast.success("Task removed and AI trained", {
+          description: "Future similar items will be less likely to create tasks",
+        });
+        setNotATaskDialogOpen(false);
+        setViewDialogOpen(false);
+        setSelectedTask(null);
+        fetchTasks();
+      } else {
+        toast.error("Failed to remove task");
+      }
+    } catch (error) {
+      console.error("Error marking as not a task:", error);
+      toast.error("Failed to process feedback");
+    }
+  };
+
+  // Fetch source content (email body or call transcript)
+  const fetchSourceContent = async (task: Task) => {
+    if (!task.source_email_id || task.source_email_id.startsWith("test_")) {
+      setSourceContent({ loading: false });
+      return;
+    }
+
+    setSourceContent({ loading: true });
+
+    try {
+      if (task.source_type === "email") {
+        // Fetch email content - check source_metadata first
+        if (task.source_metadata?.email_body) {
+          setSourceContent({
+            emailBody: task.source_metadata.email_body,
+            loading: false,
+          });
+        } else {
+          // Try to fetch from email classifications
+          const response = await fetch(`/api/email-intelligence?email_id=${task.source_email_id}`);
+          if (response.ok) {
+            const data = await response.json();
+            const email = data.intelligences?.[0];
+            setSourceContent({
+              emailBody: email?.summary || task.source_metadata?.extraction_summary || "Email content not available",
+              loading: false,
+            });
+          } else {
+            setSourceContent({
+              emailBody: task.source_metadata?.extraction_summary || "Email content not available",
+              loading: false,
+            });
+          }
+        }
+      } else if (task.source_type === "phone_call") {
+        // Fetch call transcript
+        if (task.source_metadata?.call_transcript) {
+          setSourceContent({
+            transcript: task.source_metadata.call_transcript,
+            recordingUrl: task.source_metadata.recording_url,
+            loading: false,
+          });
+        } else {
+          // Try to fetch from calls API
+          const response = await fetch("/api/calls");
+          if (response.ok) {
+            const data = await response.json();
+            const call = data.calls?.find((c: { vapiCallId: string }) => c.vapiCallId === task.source_email_id);
+            setSourceContent({
+              transcript: call?.transcript || "Call transcript not available",
+              recordingUrl: call?.recordingUrl,
+              loading: false,
+            });
+          } else {
+            setSourceContent({
+              transcript: "Call transcript not available",
+              loading: false,
+            });
+          }
+        }
+      } else {
+        setSourceContent({ loading: false });
+      }
+    } catch (error) {
+      console.error("Error fetching source content:", error);
+      setSourceContent({ loading: false });
+    }
+  };
+
+  // Open task details modal
+  const openTaskDetails = (task: Task) => {
+    setSelectedTask(task);
+    setViewDialogOpen(true);
+    setSourceContentOpen(false);
+    setSourceContent({ loading: false });
   };
 
   // Selection handlers
@@ -913,7 +1060,12 @@ export default function TaskTablePage() {
                           #{task.id.slice(0, 6)}
                         </TableCell>
                         <TableCell className="max-w-[250px]">
-                          <div className="truncate font-medium">{task.title}</div>
+                          <button
+                            className="text-left w-full truncate font-medium text-primary hover:underline cursor-pointer"
+                            onClick={() => openTaskDetails(task)}
+                          >
+                            {task.title}
+                          </button>
                           {task.description && (
                             <div className="text-xs text-muted-foreground truncate">
                               {task.description}
@@ -1100,7 +1252,7 @@ export default function TaskTablePage() {
 
       {/* View Task Dialog */}
       <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[600px] max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Task Details</DialogTitle>
           </DialogHeader>
@@ -1164,6 +1316,125 @@ export default function TaskTablePage() {
                   <p>{format(new Date(selectedTask.created_at), "MMM d, yyyy h:mm a")}</p>
                 </div>
               </div>
+
+              {/* Source Content Section */}
+              {selectedTask.source_type && selectedTask.source_type !== "manual" && selectedTask.source_email_id && !selectedTask.source_email_id.startsWith("test_") && (
+                <Collapsible
+                  open={sourceContentOpen}
+                  onOpenChange={(open) => {
+                    setSourceContentOpen(open);
+                    if (open && !sourceContent.emailBody && !sourceContent.transcript) {
+                      fetchSourceContent(selectedTask);
+                    }
+                  }}
+                >
+                  <CollapsibleTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-between"
+                      size="sm"
+                    >
+                      <span className="flex items-center gap-2">
+                        {selectedTask.source_type === "email" ? (
+                          <Mail className="h-4 w-4" />
+                        ) : selectedTask.source_type === "phone_call" ? (
+                          <Phone className="h-4 w-4" />
+                        ) : (
+                          <FileText className="h-4 w-4" />
+                        )}
+                        View Original {selectedTask.source_type === "email" ? "Email" : selectedTask.source_type === "phone_call" ? "Call Recording/Transcript" : "Document"}
+                      </span>
+                      {sourceContentOpen ? (
+                        <ChevronUp className="h-4 w-4" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="mt-3">
+                    <div className="rounded-md border bg-muted/50 p-3">
+                      {sourceContent.loading ? (
+                        <div className="flex items-center justify-center py-4">
+                          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                          <span className="ml-2 text-sm text-muted-foreground">Loading content...</span>
+                        </div>
+                      ) : selectedTask.source_type === "email" ? (
+                        <div className="space-y-2">
+                          {selectedTask.source_metadata?.email_subject && (
+                            <div>
+                              <Label className="text-xs text-muted-foreground">Subject</Label>
+                              <p className="text-sm font-medium">{selectedTask.source_metadata.email_subject}</p>
+                            </div>
+                          )}
+                          {(selectedTask.source_metadata?.sender_name || selectedTask.source_metadata?.sender_email) && (
+                            <div>
+                              <Label className="text-xs text-muted-foreground">From</Label>
+                              <p className="text-sm">
+                                {selectedTask.source_metadata.sender_name}
+                                {selectedTask.source_metadata.sender_email && (
+                                  <span className="text-muted-foreground"> &lt;{selectedTask.source_metadata.sender_email}&gt;</span>
+                                )}
+                              </p>
+                            </div>
+                          )}
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Content</Label>
+                            <ScrollArea className="h-[200px] mt-1">
+                              <p className="text-sm whitespace-pre-wrap">
+                                {sourceContent.emailBody || selectedTask.source_metadata?.extraction_summary || "Email content not available"}
+                              </p>
+                            </ScrollArea>
+                          </div>
+                        </div>
+                      ) : selectedTask.source_type === "phone_call" ? (
+                        <div className="space-y-2">
+                          {(selectedTask.source_metadata?.caller_name || selectedTask.source_metadata?.caller_phone) && (
+                            <div>
+                              <Label className="text-xs text-muted-foreground">Caller</Label>
+                              <p className="text-sm">
+                                {selectedTask.source_metadata.caller_name || selectedTask.source_metadata.caller_phone}
+                              </p>
+                            </div>
+                          )}
+                          {selectedTask.source_metadata?.call_duration && (
+                            <div>
+                              <Label className="text-xs text-muted-foreground">Duration</Label>
+                              <p className="text-sm">{Math.floor(selectedTask.source_metadata.call_duration / 60)}m {selectedTask.source_metadata.call_duration % 60}s</p>
+                            </div>
+                          )}
+                          {(sourceContent.recordingUrl || selectedTask.source_metadata?.recording_url) && (
+                            <div>
+                              <Label className="text-xs text-muted-foreground">Recording</Label>
+                              <div className="mt-1">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => window.open(sourceContent.recordingUrl || selectedTask.source_metadata?.recording_url, "_blank")}
+                                >
+                                  <Volume2 className="h-4 w-4 mr-2" />
+                                  Play Recording
+                                  <ExternalLink className="h-3 w-3 ml-2" />
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Transcript</Label>
+                            <ScrollArea className="h-[200px] mt-1">
+                              <p className="text-sm whitespace-pre-wrap">
+                                {sourceContent.transcript || selectedTask.source_metadata?.call_transcript || "Transcript not available"}
+                              </p>
+                            </ScrollArea>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">Source content not available</p>
+                      )}
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              )}
+
               {selectedTask.source_email_id?.startsWith("test_") && (
                 <div className="bg-amber-50 p-3 rounded border border-amber-200">
                   <p className="text-sm text-amber-700">
@@ -1173,13 +1444,47 @@ export default function TaskTablePage() {
               )}
             </div>
           )}
-          <DialogFooter>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            {selectedTask && selectedTask.status === "pending" && !selectedTask.source_email_id?.startsWith("test_") && (
+              <Button
+                variant="outline"
+                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                onClick={() => setNotATaskDialogOpen(true)}
+              >
+                <ThumbsDown className="h-4 w-4 mr-2" />
+                Not a Task
+              </Button>
+            )}
+            <div className="flex-1" />
             <Button variant="outline" onClick={() => setViewDialogOpen(false)}>
               Close
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Not a Task Confirmation Dialog */}
+      <AlertDialog open={notATaskDialogOpen} onOpenChange={setNotATaskDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Mark as Not a Task</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove the task and train the AI to avoid creating similar tasks in the future.
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={handleNotATask}
+            >
+              <ThumbsDown className="h-4 w-4 mr-2" />
+              Confirm - Not a Task
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
