@@ -91,19 +91,15 @@ interface Task {
   description: string | null;
   status: "pending" | "in_progress" | "completed" | "cancelled";
   priority: "low" | "medium" | "high" | "urgent";
-  source: "phone_call" | "email" | "document_intake" | "manual";
-  source_id: string | null;
+  source_type: "phone_call" | "email" | "document_intake" | "manual" | null;
+  source_email_id: string | null;
   client_id: string | null;
-  client_name: string | null;
-  assignee_id: string | null;
-  assignee_name: string | null;
+  assigned_to: string | null;
+  claimed_by: string | null;
   due_date: string | null;
   completed_at: string | null;
   created_at: string;
   updated_at: string;
-  tags: string[] | null;
-  estimated_minutes: number | null;
-  actual_minutes: number | null;
 }
 
 interface TeamMember {
@@ -223,15 +219,15 @@ export default function TaskTablePage() {
         // Filter by assignee if needed
         if (assigneeFilter !== "all") {
           if (assigneeFilter === "unassigned") {
-            filteredTasks = filteredTasks.filter((t: Task) => !t.assignee_id);
+            filteredTasks = filteredTasks.filter((t: Task) => !t.assigned_to);
           } else {
-            filteredTasks = filteredTasks.filter((t: Task) => t.assignee_id === assigneeFilter);
+            filteredTasks = filteredTasks.filter((t: Task) => t.assigned_to === assigneeFilter);
           }
         }
 
         // Filter test tasks if needed
         if (showTestOnly) {
-          filteredTasks = filteredTasks.filter((t: Task) => t.source_id?.startsWith("test_"));
+          filteredTasks = filteredTasks.filter((t: Task) => t.source_email_id?.startsWith("test_"));
         }
 
         setTasks(filteredTasks);
@@ -381,18 +377,24 @@ export default function TaskTablePage() {
 
   // Handle task assignment
   const handleAssignTask = async (taskId: string, assigneeId: string | null, assigneeName: string | null) => {
+    console.log("[TaskTable] Assigning task:", taskId, "to:", assigneeId, assigneeName);
     try {
+      const payload = {
+        assigned_to: assigneeId,
+        status: assigneeId ? "in_progress" : "pending",
+      };
+      console.log("[TaskTable] Payload:", JSON.stringify(payload));
+
       const response = await fetch(`/api/tasks/${taskId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          assignee_id: assigneeId,
-          assignee_name: assigneeName,
-          status: assigneeId ? "in_progress" : "pending",
-        }),
+        body: JSON.stringify(payload),
       });
 
-      if (response.ok) {
+      const responseData = await response.json();
+      console.log("[TaskTable] Response:", response.status, JSON.stringify(responseData));
+
+      if (response.ok && responseData.success) {
         toast.success(assigneeId ? `Assigned to ${assigneeName}` : "Task unassigned");
         fetchTasks();
 
@@ -406,16 +408,17 @@ export default function TaskTablePage() {
               resource_type: "task",
               resource_id: taskId,
               resource_name: assigneeName,
-              details: { assignee_id: assigneeId },
+              details: { assigned_to: assigneeId },
             }),
           });
           fetchTestEvents();
         }
       } else {
-        toast.error("Failed to assign task");
+        console.error("[TaskTable] Assignment failed:", responseData);
+        toast.error(responseData.error || "Failed to assign task");
       }
     } catch (error) {
-      console.error("Error assigning task:", error);
+      console.error("[TaskTable] Error assigning task:", error);
       toast.error("Failed to assign task");
     }
   };
@@ -672,7 +675,7 @@ export default function TaskTablePage() {
           />
           <StatCard
             title="Unassigned"
-            value={tasks.filter((t) => !t.assignee_id).length}
+            value={tasks.filter((t) => !t.assigned_to).length}
             icon={<Users className="h-6 w-6 text-orange-700" />}
             iconBg="bg-orange-100"
           />
@@ -890,8 +893,8 @@ export default function TaskTablePage() {
                 </TableHeader>
                 <TableBody>
                   {tasks.map((task) => {
-                    const SourceIcon = sourceIcons[task.source] || ClipboardList;
-                    const isTestTask = task.source_id?.startsWith("test_");
+                    const SourceIcon = sourceIcons[task.source_type as keyof typeof sourceIcons] || ClipboardList;
+                    const isTestTask = task.source_email_id?.startsWith("test_");
                     return (
                       <TableRow
                         key={task.id}
@@ -923,24 +926,17 @@ export default function TaskTablePage() {
                           )}
                         </TableCell>
                         <TableCell>
-                          {task.client_name ? (
-                            <div className="flex items-center gap-2">
-                              <Avatar className="h-6 w-6">
-                                <AvatarFallback className="text-xs bg-muted">
-                                  {task.client_name.slice(0, 2).toUpperCase()}
-                                </AvatarFallback>
-                              </Avatar>
-                              <span className="text-sm truncate max-w-[120px]">
-                                {task.client_name}
-                              </span>
-                            </div>
+                          {task.client_id ? (
+                            <span className="text-sm text-muted-foreground truncate max-w-[120px]">
+                              {task.client_id.slice(0, 8)}...
+                            </span>
                           ) : (
                             <span className="text-muted-foreground">-</span>
                           )}
                         </TableCell>
                         <TableCell onClick={(e) => e.stopPropagation()}>
                           <Select
-                            value={task.assignee_id || "unassigned"}
+                            value={task.assigned_to || "unassigned"}
                             onValueChange={(value) => {
                               if (value === "unassigned") {
                                 handleAssignTask(task.id, null, null);
@@ -952,14 +948,14 @@ export default function TaskTablePage() {
                           >
                             <SelectTrigger className="h-8 text-xs">
                               <SelectValue>
-                                {task.assignee_id ? (
+                                {task.assigned_to ? (
                                   <div className="flex items-center gap-2">
                                     <Avatar className="h-5 w-5">
                                       <AvatarFallback className="text-xs bg-primary text-primary-foreground">
-                                        {(task.assignee_name || "?").slice(0, 2).toUpperCase()}
+                                        {(teamMembers.find(m => m.id === task.assigned_to)?.full_name || "?").slice(0, 2).toUpperCase()}
                                       </AvatarFallback>
                                     </Avatar>
-                                    <span className="truncate">{task.assignee_name}</span>
+                                    <span className="truncate">{teamMembers.find(m => m.id === task.assigned_to)?.full_name || teamMembers.find(m => m.id === task.assigned_to)?.email || "Assigned"}</span>
                                   </div>
                                 ) : (
                                   <span className="text-muted-foreground">Unassigned</span>
@@ -989,7 +985,7 @@ export default function TaskTablePage() {
                           <div className="flex items-center gap-1.5">
                             <SourceIcon className="h-4 w-4 text-muted-foreground" />
                             <span className="text-xs text-muted-foreground capitalize">
-                              {(task.source || "manual").replace(/_/g, " ")}
+                              {(task.source_type || "manual").replace(/_/g, " ")}
                             </span>
                           </div>
                         </TableCell>
@@ -1151,24 +1147,24 @@ export default function TaskTablePage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label className="text-muted-foreground">Client</Label>
-                  <p>{selectedTask.client_name || "-"}</p>
+                  <p>-</p>
                 </div>
                 <div>
                   <Label className="text-muted-foreground">Assignee</Label>
-                  <p>{selectedTask.assignee_name || "-"}</p>
+                  <p>{selectedTask.assigned_to ? (teamMembers.find(m => m.id === selectedTask.assigned_to)?.full_name || teamMembers.find(m => m.id === selectedTask.assigned_to)?.email || "Assigned") : "-"}</p>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label className="text-muted-foreground">Source</Label>
-                  <p className="capitalize">{(selectedTask.source || "manual").replace(/_/g, " ")}</p>
+                  <p className="capitalize">{(selectedTask.source_type || "manual").replace(/_/g, " ")}</p>
                 </div>
                 <div>
                   <Label className="text-muted-foreground">Created</Label>
                   <p>{format(new Date(selectedTask.created_at), "MMM d, yyyy h:mm a")}</p>
                 </div>
               </div>
-              {selectedTask.source_id?.startsWith("test_") && (
+              {selectedTask.source_email_id?.startsWith("test_") && (
                 <div className="bg-amber-50 p-3 rounded border border-amber-200">
                   <p className="text-sm text-amber-700">
                     This is a test task generated during test mode.

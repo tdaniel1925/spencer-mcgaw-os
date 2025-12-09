@@ -32,15 +32,20 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  console.log("[Tasks API] PUT request for task:", id);
+
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
+    console.log("[Tasks API] Not authenticated");
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
   try {
     const body = await request.json();
+    console.log("[Tasks API] Request body:", JSON.stringify(body));
+
     const {
       title,
       description,
@@ -48,12 +53,10 @@ export async function PUT(
       priority,
       due_date,
       client_id,
-      client_name,
+      // Support both old names and new database column names
       assignee_id,
+      assigned_to,
       assignee_name,
-      tags,
-      estimated_minutes,
-      actual_minutes,
     } = body;
 
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -69,12 +72,22 @@ export async function PUT(
     if (priority !== undefined) updates.priority = priority;
     if (due_date !== undefined) updates.due_date = due_date;
     if (client_id !== undefined) updates.client_id = client_id;
-    if (client_name !== undefined) updates.client_name = client_name;
-    if (assignee_id !== undefined) updates.assignee_id = assignee_id;
-    if (assignee_name !== undefined) updates.assignee_name = assignee_name;
-    if (tags !== undefined) updates.tags = tags;
-    if (estimated_minutes !== undefined) updates.estimated_minutes = estimated_minutes;
-    if (actual_minutes !== undefined) updates.actual_minutes = actual_minutes;
+
+    // Map assignee_id to assigned_to (database column name)
+    const assigneeValue = assigned_to !== undefined ? assigned_to : assignee_id;
+    if (assigneeValue !== undefined) {
+      updates.assigned_to = assigneeValue;
+      // If assigning, also set assigned_at and assigned_by
+      if (assigneeValue) {
+        updates.assigned_at = new Date().toISOString();
+        updates.assigned_by = user.id;
+      } else {
+        updates.assigned_at = null;
+        updates.assigned_by = null;
+      }
+    }
+
+    console.log("[Tasks API] Updates to apply:", JSON.stringify(updates));
 
     const { data: task, error } = await supabase
       .from("tasks")
@@ -84,9 +97,11 @@ export async function PUT(
       .single();
 
     if (error) {
-      console.error("Error updating task:", error);
-      return NextResponse.json({ error: "Failed to update task" }, { status: 500 });
+      console.error("[Tasks API] Error updating task:", error);
+      return NextResponse.json({ error: "Failed to update task", details: error.message }, { status: 500 });
     }
+
+    console.log("[Tasks API] Task updated successfully:", task?.id, "assigned_to:", task?.assigned_to);
 
     // Log activity
     await supabase.from("activity_log").insert({
@@ -99,9 +114,9 @@ export async function PUT(
       details: { changes: Object.keys(updates).filter(k => k !== "updated_at") },
     });
 
-    return NextResponse.json({ task });
+    return NextResponse.json({ task, success: true });
   } catch (error) {
-    console.error("Error updating task:", error);
+    console.error("[Tasks API] Error updating task:", error);
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 }

@@ -73,19 +73,15 @@ interface Task {
   description: string | null;
   status: "pending" | "in_progress" | "completed" | "cancelled";
   priority: "low" | "medium" | "high" | "urgent";
-  source: "phone_call" | "email" | "document_intake" | "manual";
-  source_id: string | null;
+  source_type: "phone_call" | "email" | "document_intake" | "manual" | null;
+  source_email_id: string | null;
   client_id: string | null;
-  client_name: string | null;
-  assignee_id: string | null;
-  assignee_name: string | null;
+  assigned_to: string | null;
+  claimed_by: string | null;
   due_date: string | null;
   completed_at: string | null;
   created_at: string;
   updated_at: string;
-  tags: string[] | null;
-  estimated_minutes: number | null;
-  actual_minutes: number | null;
 }
 
 interface TeamMember {
@@ -162,7 +158,12 @@ export default function MyTasksPage() {
 
   // Fetch user's tasks
   const fetchTasks = useCallback(async () => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      console.log("[MyTasks] No user id yet, skipping fetch");
+      return;
+    }
+
+    console.log("[MyTasks] Fetching tasks for user:", user.id, user.email);
 
     try {
       const params = new URLSearchParams();
@@ -172,14 +173,27 @@ export default function MyTasksPage() {
       const response = await fetch(`/api/tasks?${params}`);
       if (response.ok) {
         const data = await response.json();
+        console.log("[MyTasks] Fetched", data.tasks?.length || 0, "total tasks");
+
         // Filter to only show tasks assigned to current user
         const myTasks = (data.tasks || []).filter(
-          (task: Task) => task.assignee_id === user.id
+          (task: Task) => task.assigned_to === user.id
         );
+        console.log("[MyTasks] Found", myTasks.length, "tasks assigned to me");
+
+        // Log task IDs and assignees for debugging
+        if (data.tasks?.length > 0) {
+          data.tasks.slice(0, 5).forEach((task: Task) => {
+            console.log("[MyTasks] Task:", task.id.slice(0, 8), "assigned_to:", task.assigned_to, "title:", task.title?.slice(0, 30));
+          });
+        }
+
         setTasks(myTasks);
+      } else {
+        console.error("[MyTasks] Failed to fetch tasks:", response.status);
       }
     } catch (error) {
-      console.error("Error fetching tasks:", error);
+      console.error("[MyTasks] Error fetching tasks:", error);
       toast.error("Failed to load tasks");
     } finally {
       setLoading(false);
@@ -288,8 +302,7 @@ export default function MyTasksPage() {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          assignee_id: newAssigneeId,
-          assignee_name: newAssigneeName,
+          assigned_to: newAssigneeId,
         }),
       });
 
@@ -352,8 +365,8 @@ export default function MyTasksPage() {
 
   // Task card component
   const TaskCard = ({ task }: { task: Task }) => {
-    const SourceIcon = sourceIcons[task.source] || ClipboardList;
-    const isTestTask = task.source_id?.startsWith("test_");
+    const SourceIcon = sourceIcons[task.source_type as keyof typeof sourceIcons] || ClipboardList;
+    const isTestTask = task.source_email_id?.startsWith("test_");
 
     return (
       <div
@@ -434,18 +447,13 @@ export default function MyTasksPage() {
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1">
               <SourceIcon className="h-3 w-3" />
-              <span className="capitalize">{task.source.replace(/_/g, " ")}</span>
+              <span className="capitalize">{(task.source_type || "manual").replace(/_/g, " ")}</span>
             </div>
           </div>
-          {task.client_name && (
-            <div className="flex items-center gap-1 truncate max-w-[100px]">
-              <Avatar className="h-4 w-4">
-                <AvatarFallback className="text-[8px] bg-muted">
-                  {task.client_name.slice(0, 2).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-              <span className="truncate">{task.client_name}</span>
-            </div>
+          {task.client_id && (
+            <span className="text-xs text-muted-foreground">
+              Client ID: {task.client_id.slice(0, 8)}
+            </span>
           )}
         </div>
 
@@ -646,11 +654,11 @@ export default function MyTasksPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label className="text-muted-foreground">Client</Label>
-                  <p>{selectedTask.client_name || "-"}</p>
+                  <p>{selectedTask.client_id ? selectedTask.client_id.slice(0, 8) + "..." : "-"}</p>
                 </div>
                 <div>
                   <Label className="text-muted-foreground">Source</Label>
-                  <p className="capitalize">{(selectedTask.source || "manual").replace(/_/g, " ")}</p>
+                  <p className="capitalize">{(selectedTask.source_type || "manual").replace(/_/g, " ")}</p>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -663,12 +671,6 @@ export default function MyTasksPage() {
                   <p>{format(new Date(selectedTask.created_at), "MMM d, yyyy")}</p>
                 </div>
               </div>
-              {selectedTask.estimated_minutes && (
-                <div>
-                  <Label className="text-muted-foreground">Estimated Time</Label>
-                  <p>{selectedTask.estimated_minutes} minutes</p>
-                </div>
-              )}
             </div>
           )}
           <DialogFooter>
