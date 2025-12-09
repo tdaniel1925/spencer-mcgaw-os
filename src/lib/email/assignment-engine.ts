@@ -490,7 +490,7 @@ export async function determineAssignment(
   if (result.assignedUserId) {
     const supabase = await createClient();
     const { data: user } = await supabase
-      .from("users")
+      .from("user_profiles")
       .select("full_name")
       .eq("id", result.assignedUserId)
       .single();

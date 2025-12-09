@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
     // Get user names for assigned users
     const userIds = [...new Set(filteredRules?.map((r) => r.assign_to_user_id).filter(Boolean))];
     const { data: users } = await supabase
-      .from("users")
+      .from("user_profiles")
       .select("id, full_name, email")
       .in("id", userIds);
 

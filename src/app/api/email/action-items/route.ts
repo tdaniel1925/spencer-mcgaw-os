@@ -97,7 +97,7 @@ export async function GET(request: NextRequest) {
 
     const [usersResult, clientsResult] = await Promise.all([
       userIds.length > 0
-        ? supabase.from("users").select("id, full_name").in("id", userIds)
+        ? supabase.from("user_profiles").select("id, full_name").in("id", userIds)
         : { data: [] },
       clientIds.length > 0
         ? supabase.from("clients").select("id, first_name, last_name").in("id", clientIds)

@@ -12,7 +12,7 @@ export async function GET() {
 
   try {
     const { data: profile, error } = await supabase
-      .from("users")
+      .from("user_profiles")
       .select("full_name, email, phone, department, job_title, avatar_url, bio")
       .eq("id", user.id)
       .single();
@@ -51,7 +51,7 @@ export async function PUT(request: NextRequest) {
     const { fullName, phone, department, jobTitle, bio } = body;
 
     const { error } = await supabase
-      .from("users")
+      .from("user_profiles")
       .update({
         full_name: fullName,
         phone,

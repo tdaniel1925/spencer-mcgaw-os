@@ -61,9 +61,9 @@ export default function SignupPage() {
       return;
     }
 
-    // Create user profile in users table
+    // Create user profile in user_profiles table
     if (data.user) {
-      await supabase.from("users").insert({
+      await supabase.from("user_profiles").insert({
         id: data.user.id,
         email: email,
         full_name: fullName,

@@ -75,7 +75,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (session?.user) {
           // Fetch user profile with role and additional info
           const { data: profile, error } = await supabase
-            .from("users")
+            .from("user_profiles")
             .select("role, full_name, avatar_url, department, job_title, phone, is_active")
             .eq("id", session.user.id)
             .single();
@@ -117,7 +117,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setSession(session);
         if (session?.user) {
           const { data: profile, error } = await supabase
-            .from("users")
+            .from("user_profiles")
             .select("role, full_name, avatar_url, department, job_title, phone, is_active")
             .eq("id", session.user.id)
             .single();
@@ -175,8 +175,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     if (!error && data.user) {
-      // Create user profile in users table
-      await supabase.from("users").insert({
+      // Create user profile in user_profiles table
+      await supabase.from("user_profiles").insert({
         id: data.user.id,
         email: email,
         full_name: fullName,

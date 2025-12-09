@@ -57,7 +57,7 @@ export async function PUT(request: NextRequest) {
 
   // Check if user is admin
   const { data: profile } = await supabase
-    .from("users")
+    .from("user_profiles")
     .select("role")
     .eq("id", user.id)
     .single();
@@ -121,7 +121,7 @@ export async function DELETE() {
 
   // Check if user is admin
   const { data: profile } = await supabase
-    .from("users")
+    .from("user_profiles")
     .select("role")
     .eq("id", user.id)
     .single();

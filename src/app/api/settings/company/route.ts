@@ -51,7 +51,7 @@ export async function PUT(request: NextRequest) {
 
   // Check if user is admin
   const { data: userProfile } = await supabase
-    .from("users")
+    .from("user_profiles")
     .select("role")
     .eq("id", user.id)
     .single();

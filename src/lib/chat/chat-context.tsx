@@ -282,7 +282,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
           } else {
             // Fetch user info
             const { data: userProfile } = await supabase
-              .from("users")
+              .from("user_profiles")
               .select("id, full_name, email, avatar_url")
               .eq("id", record.user_id)
               .single();
