@@ -28,7 +28,6 @@ import {
   Sparkles,
   MessageSquare,
   MessagesSquare,
-  Layers,
   Kanban,
 } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
@@ -96,12 +95,6 @@ const navSections: NavSection[] = [
         title: "My Tasks",
         href: "/tasks",
         icon: Kanban,
-        permission: "tasks:view",
-      },
-      {
-        title: "TaskPool",
-        href: "/taskpool-board",
-        icon: Layers,
         permission: "tasks:view",
       },
     ],
