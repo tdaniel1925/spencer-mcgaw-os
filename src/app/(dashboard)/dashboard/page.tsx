@@ -1,38 +1,32 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { useEmail } from "@/lib/email";
-import { useCalls } from "@/lib/calls/call-context";
 import { useAuth } from "@/lib/supabase/auth-context";
 import {
-  KPIRibbon,
-  PriorityTasks,
-  CompactAgenda,
-  ActivityFeed,
-  QuickActions,
-  MiniKanban,
-  RecentCalls,
-  DashboardSettings,
-} from "@/components/dashboard/widgets";
-import {
-  Sparkles,
-  Settings,
-  Loader2,
-  Mail,
-  ChevronRight,
-  Circle,
-  PlayCircle,
+  AlertTriangle,
   Clock,
-  CheckCircle,
+  CheckCircle2,
+  ChevronRight,
+  Loader2,
+  ArrowRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { format } from "date-fns";
+import { format, formatDistanceToNow, isToday, isPast } from "date-fns";
+
+interface Task {
+  id: string;
+  title: string;
+  priority: "urgent" | "high" | "medium" | "low";
+  due_date: string | null;
+  status: string;
+  client_id: string | null;
+  source_type: string | null;
+}
 
 interface TaskStats {
   total: number;
@@ -40,42 +34,25 @@ interface TaskStats {
   inProgress: number;
   completed: number;
   completedToday: number;
-  completedThisWeek: number;
   dueToday: number;
   overdue: number;
-  urgentTasks: Array<{
-    id: string;
-    title: string;
-    due_date: string;
-    priority: string;
-    client_name: string;
-    action_type?: {
-      label: string;
-      color: string;
-    };
-  }>;
 }
 
-// Greeting messages
-const greetings = {
-  morning: ["Good morning", "Rise and shine", "Morning"],
-  afternoon: ["Good afternoon", "Hope your day is going well", "Afternoon"],
-  evening: ["Good evening", "Evening", "Winding down"],
-  monday: ["Happy Monday", "New week, new wins"],
-  friday: ["Happy Friday", "TGIF", "Finish strong"],
-  weekend: ["Happy weekend", "Enjoy your weekend"],
+const priorityColors = {
+  urgent: "bg-red-500",
+  high: "bg-orange-500",
+  medium: "bg-blue-500",
+  low: "bg-slate-400",
 };
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const [mounted, setMounted] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [taskStats, setTaskStats] = useState<TaskStats | null>(null);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [stats, setStats] = useState<TaskStats | null>(null);
   const [loading, setLoading] = useState(true);
-
-  const { emails, emailTasks, getUnreadCount } = useEmail();
-  const { calls } = useCalls();
-  const { user } = useAuth();
 
   useEffect(() => {
     setMounted(true);
@@ -83,80 +60,77 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Fetch task stats
-  useEffect(() => {
-    async function fetchTaskStats() {
-      try {
-        const response = await fetch("/api/tasks/stats");
-        if (response.ok) {
-          const data = await response.json();
-          setTaskStats(data);
-        }
-      } catch (error) {
-        console.error("Failed to fetch task stats:", error);
-      } finally {
-        setLoading(false);
-      }
-    }
+  // Fetch tasks and stats
+  const fetchData = useCallback(async () => {
+    try {
+      const [tasksRes, statsRes] = await Promise.all([
+        fetch("/api/tasks?limit=50"),
+        fetch("/api/tasks/stats"),
+      ]);
 
-    fetchTaskStats();
-    const interval = setInterval(fetchTaskStats, 30000);
-    return () => clearInterval(interval);
+      if (tasksRes.ok) {
+        const data = await tasksRes.json();
+        setTasks(data.tasks || []);
+      }
+
+      if (statsRes.ok) {
+        const data = await statsRes.json();
+        setStats(data);
+      }
+    } catch (error) {
+      console.error("Failed to fetch dashboard data:", error);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  useEffect(() => {
+    fetchData();
+    const interval = setInterval(fetchData, 60000); // Refresh every minute
+    return () => clearInterval(interval);
+  }, [fetchData]);
+
+  // Get greeting based on time
   const getGreeting = () => {
     const hour = currentTime.getHours();
-    const dayOfWeek = currentTime.getDay();
-    const dayOfYear = Math.floor(
-      (currentTime.getTime() - new Date(currentTime.getFullYear(), 0, 0).getTime()) / 86400000
-    );
-
     const firstName = user?.full_name?.split(" ")[0] || "";
 
-    let greetingPool: string[];
-
-    if (dayOfWeek === 1) {
-      greetingPool = greetings.monday;
-    } else if (dayOfWeek === 5) {
-      greetingPool = greetings.friday;
-    } else if (dayOfWeek === 0 || dayOfWeek === 6) {
-      greetingPool = greetings.weekend;
-    } else if (hour < 12) {
-      greetingPool = greetings.morning;
-    } else if (hour < 17) {
-      greetingPool = greetings.afternoon;
-    } else {
-      greetingPool = greetings.evening;
-    }
-
-    const greetingIndex = dayOfYear % greetingPool.length;
-    const greeting = greetingPool[greetingIndex];
+    let greeting: string;
+    if (hour < 12) greeting = "Good morning";
+    else if (hour < 17) greeting = "Good afternoon";
+    else greeting = "Good evening";
 
     return firstName ? `${greeting}, ${firstName}` : greeting;
   };
 
-  // Calculate stats
-  const totalTasks = taskStats?.total || 0;
-  const pendingTasks = taskStats?.pending || 0;
-  const completedToday = taskStats?.completedToday || 0;
-  const overdueTasks = taskStats?.overdue || 0;
-  const dueToday = taskStats?.dueToday || 0;
-  const timeSavedHours = Math.round((completedToday * 15) / 60 * 10) / 10;
+  // Filter and sort tasks - show what needs attention
+  const needsAttention = tasks
+    .filter(t => t.status !== "completed" && t.status !== "cancelled")
+    .sort((a, b) => {
+      // Sort by: overdue first, then urgent, then high, then by due date
+      const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
 
-  // Email stats
-  const unreadEmails = getUnreadCount();
-  const emailTaskCount = emailTasks.length;
+      const aOverdue = a.due_date && isPast(new Date(a.due_date)) && !isToday(new Date(a.due_date));
+      const bOverdue = b.due_date && isPast(new Date(b.due_date)) && !isToday(new Date(b.due_date));
 
-  // Priority tasks for widget
-  const priorityTasks = taskStats?.urgentTasks?.map((task) => ({
-    id: task.id,
-    title: task.title,
-    priority: task.priority as "urgent" | "high" | "medium" | "low",
-    due_date: task.due_date,
-    client_name: task.client_name,
-    status: "open",
-    action_type: task.action_type,
-  })) || [];
+      if (aOverdue && !bOverdue) return -1;
+      if (!aOverdue && bOverdue) return 1;
+
+      const aPriority = priorityOrder[a.priority] ?? 3;
+      const bPriority = priorityOrder[b.priority] ?? 3;
+
+      if (aPriority !== bPriority) return aPriority - bPriority;
+
+      if (a.due_date && b.due_date) {
+        return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
+      }
+      return a.due_date ? -1 : 1;
+    })
+    .slice(0, 8);
+
+  const overdueCount = stats?.overdue || 0;
+  const dueTodayCount = stats?.dueToday || 0;
+  const completedTodayCount = stats?.completedToday || 0;
 
   if (!mounted) {
     return (
@@ -172,122 +146,160 @@ export default function DashboardPage() {
   return (
     <>
       <Header title="Dashboard" />
-      <main className="p-4 md:p-6 space-y-4 md:space-y-6 overflow-auto">
-        {/* Header Row: Greeting + Settings */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold">{getGreeting()}!</h1>
-            <p className="text-muted-foreground text-sm" suppressHydrationWarning>
-              {format(currentTime, "EEEE, MMMM d, yyyy")}
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Sparkles className="h-4 w-4 text-primary" />
-              <span className="hidden sm:inline">AI Active</span>
-            </div>
-            <DashboardSettings
-              trigger={
-                <Button variant="outline" size="sm">
-                  <Settings className="h-4 w-4 sm:mr-2" />
-                  <span className="hidden sm:inline">Customize</span>
-                </Button>
-              }
-            />
-          </div>
+      <main className="p-6 max-w-5xl mx-auto">
+        {/* Header with greeting and date */}
+        <div className="mb-8">
+          <h1 className="text-2xl font-semibold text-foreground">{getGreeting()}</h1>
+          <p className="text-muted-foreground mt-1" suppressHydrationWarning>
+            {format(currentTime, "EEEE, MMMM d")}
+          </p>
         </div>
 
-        {/* KPI Ribbon */}
-        <KPIRibbon
-          stats={{
-            totalTasks,
-            pendingTasks,
-            overdueTasks,
-            dueToday,
-            completedToday,
-            timeSavedHours,
-          }}
-          loading={loading}
-        />
+        {/* Three key metrics - simple and clean */}
+        <div className="grid grid-cols-3 gap-4 mb-8">
+          <button
+            onClick={() => router.push("/tasks-table?status=overdue")}
+            className={cn(
+              "p-4 rounded-xl text-left transition-all",
+              overdueCount > 0
+                ? "bg-red-50 hover:bg-red-100 border border-red-100"
+                : "bg-muted/50 hover:bg-muted border border-transparent"
+            )}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <AlertTriangle className={cn("h-4 w-4", overdueCount > 0 ? "text-red-600" : "text-muted-foreground")} />
+              <span className={cn("text-sm font-medium", overdueCount > 0 ? "text-red-600" : "text-muted-foreground")}>
+                Overdue
+              </span>
+            </div>
+            <p className={cn("text-3xl font-bold", overdueCount > 0 ? "text-red-700" : "text-foreground")}>
+              {overdueCount}
+            </p>
+          </button>
 
-        {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-6">
-          {/* Left Column - Focus Zone (8 cols on large screens) */}
-          <div className="lg:col-span-8 space-y-4 md:space-y-6">
-            {/* Priority Tasks */}
-            <PriorityTasks
-              tasks={priorityTasks}
-              loading={loading}
-              maxItems={5}
-            />
+          <button
+            onClick={() => router.push("/tasks-table?status=due_today")}
+            className={cn(
+              "p-4 rounded-xl text-left transition-all",
+              dueTodayCount > 0
+                ? "bg-amber-50 hover:bg-amber-100 border border-amber-100"
+                : "bg-muted/50 hover:bg-muted border border-transparent"
+            )}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <Clock className={cn("h-4 w-4", dueTodayCount > 0 ? "text-amber-600" : "text-muted-foreground")} />
+              <span className={cn("text-sm font-medium", dueTodayCount > 0 ? "text-amber-600" : "text-muted-foreground")}>
+                Due Today
+              </span>
+            </div>
+            <p className={cn("text-3xl font-bold", dueTodayCount > 0 ? "text-amber-700" : "text-foreground")}>
+              {dueTodayCount}
+            </p>
+          </button>
 
-            {/* Quick Actions */}
-            <QuickActions columns={6} />
+          <button
+            onClick={() => router.push("/tasks-table?status=completed")}
+            className="p-4 rounded-xl bg-muted/50 hover:bg-muted border border-transparent text-left transition-all"
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <CheckCircle2 className="h-4 w-4 text-green-600" />
+              <span className="text-sm font-medium text-muted-foreground">Done Today</span>
+            </div>
+            <p className="text-3xl font-bold text-foreground">{completedTodayCount}</p>
+          </button>
+        </div>
 
-            {/* Workflow Status (Mini Kanban) */}
-            <MiniKanban
-              columns={[
-                { id: "open", label: "Open", count: pendingTasks, color: "bg-slate-500", icon: Circle },
-                { id: "in_progress", label: "In Progress", count: taskStats?.inProgress || 0, color: "bg-blue-500", icon: PlayCircle },
-                { id: "review", label: "Review", count: 0, color: "bg-amber-500", icon: Clock },
-                { id: "completed", label: "Done", count: taskStats?.completed || 0, color: "bg-green-500", icon: CheckCircle },
-              ]}
-              loading={loading}
-            />
+        {/* Focus: Tasks needing attention */}
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-medium text-foreground">Needs Attention</h2>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => router.push("/tasks-table")}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              View all tasks
+              <ChevronRight className="h-4 w-4 ml-1" />
+            </Button>
+          </div>
 
-            {/* Email Summary Card */}
-            <Card>
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Mail className="h-4 w-4 text-blue-600" />
-                    Email Summary
-                  </CardTitle>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => router.push("/email")}
-                  >
-                    View All
-                    <ChevronRight className="h-3 w-3 ml-1" />
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 gap-4">
-                  <div
-                    onClick={() => router.push("/email")}
-                    className="p-4 rounded-lg bg-blue-50 border border-blue-100 cursor-pointer hover:bg-blue-100 transition-colors"
-                  >
-                    <p className="text-3xl font-bold text-blue-600">{unreadEmails}</p>
-                    <p className="text-sm text-muted-foreground">Unread Emails</p>
-                  </div>
-                  <div
-                    onClick={() => router.push("/email")}
-                    className="p-4 rounded-lg bg-amber-50 border border-amber-100 cursor-pointer hover:bg-amber-100 transition-colors"
-                  >
-                    <p className="text-3xl font-bold text-amber-600">{emailTaskCount}</p>
-                    <p className="text-sm text-muted-foreground">Email Tasks</p>
-                  </div>
-                </div>
+          {loading ? (
+            <div className="space-y-2">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="h-16 bg-muted animate-pulse rounded-lg" />
+              ))}
+            </div>
+          ) : needsAttention.length === 0 ? (
+            <Card className="border-dashed">
+              <CardContent className="py-12 text-center">
+                <CheckCircle2 className="h-12 w-12 text-green-500 mx-auto mb-3" />
+                <p className="text-lg font-medium text-foreground">You're all caught up</p>
+                <p className="text-sm text-muted-foreground mt-1">No urgent tasks at the moment</p>
               </CardContent>
             </Card>
-          </div>
+          ) : (
+            <div className="space-y-2">
+              {needsAttention.map((task) => {
+                const isOverdue = task.due_date && isPast(new Date(task.due_date)) && !isToday(new Date(task.due_date));
+                const isDueToday = task.due_date && isToday(new Date(task.due_date));
 
-          {/* Right Column - Context Panel (4 cols on large screens) */}
-          <div className="lg:col-span-4 space-y-4 md:space-y-6">
-            {/* Compact Agenda */}
-            <TooltipProvider>
-              <CompactAgenda maxItems={4} />
-            </TooltipProvider>
+                return (
+                  <button
+                    key={task.id}
+                    onClick={() => router.push(`/tasks-table`)}
+                    className={cn(
+                      "w-full p-4 rounded-lg border text-left transition-all group",
+                      "hover:border-primary/30 hover:shadow-sm",
+                      isOverdue && "border-red-200 bg-red-50/50",
+                      isDueToday && !isOverdue && "border-amber-200 bg-amber-50/30"
+                    )}
+                  >
+                    <div className="flex items-start gap-3">
+                      {/* Priority indicator */}
+                      <div className={cn("w-1 h-full min-h-[40px] rounded-full", priorityColors[task.priority])} />
 
-            {/* Recent Calls */}
-            <RecentCalls calls={calls} loading={false} maxItems={3} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="font-medium text-foreground truncate">{task.title}</p>
+                          <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+                        </div>
 
-            {/* Activity Feed */}
-            <ActivityFeed maxItems={5} />
-          </div>
+                        <div className="flex items-center gap-3 mt-1.5 text-sm text-muted-foreground">
+                          {task.due_date && (
+                            <span className={cn(
+                              "flex items-center gap-1",
+                              isOverdue && "text-red-600 font-medium",
+                              isDueToday && !isOverdue && "text-amber-600"
+                            )}>
+                              <Clock className="h-3 w-3" />
+                              {isOverdue
+                                ? `${formatDistanceToNow(new Date(task.due_date))} overdue`
+                                : isDueToday
+                                  ? "Due today"
+                                  : format(new Date(task.due_date), "MMM d")
+                              }
+                            </span>
+                          )}
+
+                          {task.priority === "urgent" && (
+                            <Badge variant="destructive" className="text-xs px-1.5 py-0">
+                              Urgent
+                            </Badge>
+                          )}
+                          {task.priority === "high" && (
+                            <Badge variant="secondary" className="text-xs px-1.5 py-0 bg-orange-100 text-orange-700">
+                              High
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       </main>
     </>
