@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useAuth } from "@/lib/supabase/auth-context";
 import {
   Select,
   SelectContent,
@@ -94,12 +95,6 @@ interface TeamMember {
   role: string;
 }
 
-interface CurrentUser {
-  id: string;
-  email: string;
-  full_name?: string;
-}
-
 // Config
 const statusConfig = {
   pending: {
@@ -141,10 +136,12 @@ const sourceIcons = {
 const KANBAN_STATUSES: Array<keyof typeof statusConfig> = ["pending", "in_progress", "completed"];
 
 export default function MyTasksPage() {
+  // Get current user from auth context
+  const { user } = useAuth();
+
   // Task state
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
-  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
 
   // Team members for reassignment
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
@@ -163,22 +160,9 @@ export default function MyTasksPage() {
   const [reassignDialogOpen, setReassignDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
-  // Fetch current user
-  const fetchCurrentUser = useCallback(async () => {
-    try {
-      const response = await fetch("/api/auth/me");
-      if (response.ok) {
-        const data = await response.json();
-        setCurrentUser(data.user);
-      }
-    } catch (error) {
-      console.error("Error fetching current user:", error);
-    }
-  }, []);
-
   // Fetch user's tasks
   const fetchTasks = useCallback(async () => {
-    if (!currentUser?.id) return;
+    if (!user?.id) return;
 
     try {
       const params = new URLSearchParams();
@@ -190,7 +174,7 @@ export default function MyTasksPage() {
         const data = await response.json();
         // Filter to only show tasks assigned to current user
         const myTasks = (data.tasks || []).filter(
-          (task: Task) => task.assignee_id === currentUser.id
+          (task: Task) => task.assignee_id === user.id
         );
         setTasks(myTasks);
       }
@@ -200,7 +184,7 @@ export default function MyTasksPage() {
     } finally {
       setLoading(false);
     }
-  }, [currentUser?.id, searchQuery]);
+  }, [user?.id, searchQuery]);
 
   // Fetch team members for reassignment
   const fetchTeamMembers = useCallback(async () => {
@@ -216,15 +200,11 @@ export default function MyTasksPage() {
   }, []);
 
   useEffect(() => {
-    fetchCurrentUser();
-  }, [fetchCurrentUser]);
-
-  useEffect(() => {
-    if (currentUser?.id) {
+    if (user?.id) {
       fetchTasks();
       fetchTeamMembers();
     }
-  }, [currentUser?.id, fetchTasks, fetchTeamMembers]);
+  }, [user?.id, fetchTasks, fetchTeamMembers]);
 
   // Filter tasks by status and other filters
   const getTasksByStatus = (status: string) => {
@@ -722,7 +702,7 @@ export default function MyTasksPage() {
             </p>
             <div className="space-y-2">
               {teamMembers
-                .filter((m) => m.id !== currentUser?.id)
+                .filter((m) => m.id !== user?.id)
                 .map((member) => (
                   <Button
                     key={member.id}
