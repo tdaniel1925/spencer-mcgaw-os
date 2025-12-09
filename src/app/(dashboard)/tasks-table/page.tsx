@@ -580,8 +580,39 @@ export default function TaskTablePage() {
 
   // Fetch source content (email body or call transcript)
   const fetchSourceContent = async (task: Task) => {
-    if (!task.source_email_id || task.source_email_id.startsWith("test_")) {
+    if (!task.source_email_id) {
       setSourceContent({ loading: false });
+      return;
+    }
+
+    // For test tasks, use source_metadata directly (no API fetch needed)
+    const isTestTask = task.source_email_id.startsWith("test_");
+
+    // If we have source_metadata, use it directly
+    if (task.source_metadata) {
+      if (task.source_type === "email") {
+        setSourceContent({
+          emailBody: task.source_metadata.email_body || task.source_metadata.extraction_summary || "Email content not available",
+          loading: false,
+        });
+        return;
+      } else if (task.source_type === "phone_call") {
+        setSourceContent({
+          transcript: task.source_metadata.call_transcript || "Transcript not available",
+          recordingUrl: task.source_metadata.recording_url,
+          loading: false,
+        });
+        return;
+      }
+    }
+
+    // For test tasks without metadata, show placeholder
+    if (isTestTask) {
+      setSourceContent({
+        emailBody: task.source_type === "email" ? "Test email content" : undefined,
+        transcript: task.source_type === "phone_call" ? "Test call transcript" : undefined,
+        loading: false,
+      });
       return;
     }
 
@@ -589,54 +620,37 @@ export default function TaskTablePage() {
 
     try {
       if (task.source_type === "email") {
-        // Fetch email content - check source_metadata first
-        if (task.source_metadata?.email_body) {
+        // Try to fetch from email classifications
+        const response = await fetch(`/api/email-intelligence?email_id=${task.source_email_id}`);
+        if (response.ok) {
+          const data = await response.json();
+          const email = data.intelligences?.[0];
           setSourceContent({
-            emailBody: task.source_metadata.email_body,
+            emailBody: email?.summary || "Email content not available",
             loading: false,
           });
         } else {
-          // Try to fetch from email classifications
-          const response = await fetch(`/api/email-intelligence?email_id=${task.source_email_id}`);
-          if (response.ok) {
-            const data = await response.json();
-            const email = data.intelligences?.[0];
-            setSourceContent({
-              emailBody: email?.summary || task.source_metadata?.extraction_summary || "Email content not available",
-              loading: false,
-            });
-          } else {
-            setSourceContent({
-              emailBody: task.source_metadata?.extraction_summary || "Email content not available",
-              loading: false,
-            });
-          }
+          setSourceContent({
+            emailBody: "Email content not available",
+            loading: false,
+          });
         }
       } else if (task.source_type === "phone_call") {
-        // Fetch call transcript
-        if (task.source_metadata?.call_transcript) {
+        // Try to fetch from calls API
+        const response = await fetch("/api/calls");
+        if (response.ok) {
+          const data = await response.json();
+          const call = data.calls?.find((c: { vapiCallId: string }) => c.vapiCallId === task.source_email_id);
           setSourceContent({
-            transcript: task.source_metadata.call_transcript,
-            recordingUrl: task.source_metadata.recording_url,
+            transcript: call?.transcript || "Call transcript not available",
+            recordingUrl: call?.recordingUrl,
             loading: false,
           });
         } else {
-          // Try to fetch from calls API
-          const response = await fetch("/api/calls");
-          if (response.ok) {
-            const data = await response.json();
-            const call = data.calls?.find((c: { vapiCallId: string }) => c.vapiCallId === task.source_email_id);
-            setSourceContent({
-              transcript: call?.transcript || "Call transcript not available",
-              recordingUrl: call?.recordingUrl,
-              loading: false,
-            });
-          } else {
-            setSourceContent({
-              transcript: "Call transcript not available",
-              loading: false,
-            });
-          }
+          setSourceContent({
+            transcript: "Call transcript not available",
+            loading: false,
+          });
         }
       } else {
         setSourceContent({ loading: false });
@@ -1318,7 +1332,7 @@ export default function TaskTablePage() {
               </div>
 
               {/* Source Content Section */}
-              {selectedTask.source_type && selectedTask.source_type !== "manual" && selectedTask.source_email_id && !selectedTask.source_email_id.startsWith("test_") && (
+              {selectedTask.source_type && selectedTask.source_type !== "manual" && selectedTask.source_email_id && (
                 <Collapsible
                   open={sourceContentOpen}
                   onOpenChange={(open) => {
