@@ -51,7 +51,7 @@ function generateTestTask() {
     ? getRandomItem(emailScenarios)
     : getRandomItem(phoneCallScenarios);
 
-  const source = isEmail ? "email" : "phone_call";
+  const sourceType = isEmail ? "email" : "phone_call";
   const testId = `test_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
   return {
@@ -59,15 +59,11 @@ function generateTestTask() {
     description: getRandomItem(descriptions),
     status: "pending" as const,
     priority: scenario.priority,
-    source,
-    source_id: testId,
-    client_name: scenario.client,
+    source_type: sourceType,
+    source_email_id: testId,
     client_id: null,
-    assignee_id: null,
-    assignee_name: null,
+    assigned_to: null,
     due_date: null,
-    tags: ["test"],
-    estimated_minutes: Math.floor(Math.random() * 120) + 15, // 15-135 minutes
   };
 }
 
@@ -123,7 +119,7 @@ export async function POST(request: NextRequest) {
         resource_type: "task",
         resource_id: task.id,
         resource_name: task.title,
-        details: { source: taskData.source, priority: taskData.priority, test_mode: true },
+        details: { source_type: taskData.source_type, priority: taskData.priority, test_mode: true },
       });
     }
 
@@ -158,11 +154,11 @@ export async function DELETE(request: NextRequest) {
   }
 
   try {
-    // Delete all tasks where source_id starts with 'test_'
+    // Delete all tasks where source_email_id starts with 'test_'
     const { data: deletedTasks, error } = await supabase
       .from("tasks")
       .delete()
-      .like("source_id", "test_%")
+      .like("source_email_id", "test_%")
       .select("id");
 
     if (error) {
@@ -207,13 +203,13 @@ export async function GET(request: NextRequest) {
     const { count: testTaskCount } = await supabase
       .from("tasks")
       .select("*", { count: "exact", head: true })
-      .like("source_id", "test_%");
+      .like("source_email_id", "test_%");
 
     // Count by status
     const { data: statusCounts } = await supabase
       .from("tasks")
       .select("status")
-      .like("source_id", "test_%");
+      .like("source_email_id", "test_%");
 
     const statusBreakdown = (statusCounts || []).reduce((acc, task) => {
       acc[task.status] = (acc[task.status] || 0) + 1;
@@ -224,8 +220,8 @@ export async function GET(request: NextRequest) {
     const { count: assignedCount } = await supabase
       .from("tasks")
       .select("*", { count: "exact", head: true })
-      .like("source_id", "test_%")
-      .not("assignee_id", "is", null);
+      .like("source_email_id", "test_%")
+      .not("assigned_to", "is", null);
 
     return NextResponse.json({
       total_test_tasks: testTaskCount || 0,
