@@ -2,20 +2,12 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Header } from "@/components/layout/header";
-import { StatCard } from "@/components/dashboard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -28,6 +20,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import {
   Dialog,
@@ -56,21 +49,23 @@ import {
   Search,
   Plus,
   Eye,
-  Edit,
   Trash2,
   MoreHorizontal,
-  Printer,
   Phone,
   Mail,
   FileText,
   Loader2,
   RefreshCw,
+  GripVertical,
+  ArrowRight,
+  UserPlus,
+  XCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
-// Task type definition matching API
+// Types
 interface Task {
   id: string;
   title: string;
@@ -92,42 +87,48 @@ interface Task {
   actual_minutes: number | null;
 }
 
-interface Client {
+interface TeamMember {
   id: string;
-  name: string;
+  full_name: string | null;
+  email: string;
+  role: string;
 }
 
-interface TaskStats {
-  total: number;
-  pending: number;
-  inProgress: number;
-  completed: number;
+interface CurrentUser {
+  id: string;
+  email: string;
+  full_name?: string;
 }
 
+// Config
 const statusConfig = {
   pending: {
-    label: "Pending",
+    label: "To Do",
     className: "bg-yellow-100 text-yellow-700 border-yellow-200",
+    headerBg: "bg-yellow-50 border-yellow-200",
   },
   in_progress: {
     label: "In Progress",
     className: "bg-blue-100 text-blue-700 border-blue-200",
+    headerBg: "bg-blue-50 border-blue-200",
   },
   completed: {
-    label: "Completed",
+    label: "Done",
     className: "bg-green-100 text-green-700 border-green-200",
+    headerBg: "bg-green-50 border-green-200",
   },
   cancelled: {
     label: "Cancelled",
     className: "bg-gray-100 text-gray-700 border-gray-200",
+    headerBg: "bg-gray-50 border-gray-200",
   },
 };
 
 const priorityConfig = {
-  low: { label: "Low", className: "bg-gray-100 text-gray-600" },
-  medium: { label: "Medium", className: "bg-blue-100 text-blue-600" },
-  high: { label: "High", className: "bg-orange-100 text-orange-600" },
-  urgent: { label: "Urgent", className: "bg-red-100 text-red-600" },
+  low: { label: "Low", className: "bg-gray-100 text-gray-600", dot: "bg-gray-400" },
+  medium: { label: "Medium", className: "bg-blue-100 text-blue-600", dot: "bg-blue-400" },
+  high: { label: "High", className: "bg-orange-100 text-orange-600", dot: "bg-orange-400" },
+  urgent: { label: "Urgent", className: "bg-red-100 text-red-600", dot: "bg-red-400" },
 };
 
 const sourceIcons = {
@@ -137,59 +138,61 @@ const sourceIcons = {
   manual: ClipboardList,
 };
 
-const ITEMS_PER_PAGE = 10;
+const KANBAN_STATUSES: Array<keyof typeof statusConfig> = ["pending", "in_progress", "completed"];
 
-export default function TasksPage() {
+export default function MyTasksPage() {
+  // Task state
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState<TaskStats>({ total: 0, pending: 0, inProgress: 0, completed: 0 });
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+
+  // Team members for reassignment
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
 
   // Filters
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [priorityFilter, setPriorityFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [priorityFilter, setPriorityFilter] = useState<string>("all");
 
-  // Pagination
-  const [page, setPage] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
+  // Drag state
+  const [draggedTask, setDraggedTask] = useState<Task | null>(null);
+  const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
 
   // Dialog states
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [reassignDialogOpen, setReassignDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
-  // Form state
-  const [formData, setFormData] = useState({
-    title: "",
-    description: "",
-    client_id: "",
-    client_name: "",
-    assignee_name: "",
-    priority: "medium",
-    status: "pending",
-    due_date: "",
-    source: "manual",
-  });
+  // Fetch current user
+  const fetchCurrentUser = useCallback(async () => {
+    try {
+      const response = await fetch("/api/auth/me");
+      if (response.ok) {
+        const data = await response.json();
+        setCurrentUser(data.user);
+      }
+    } catch (error) {
+      console.error("Error fetching current user:", error);
+    }
+  }, []);
 
-  // Fetch tasks
+  // Fetch user's tasks
   const fetchTasks = useCallback(async () => {
+    if (!currentUser?.id) return;
+
     try {
       const params = new URLSearchParams();
-      if (statusFilter !== "all") params.set("status", statusFilter);
-      if (priorityFilter !== "all") params.set("priority", priorityFilter);
+      params.set("limit", "100");
       if (searchQuery) params.set("search", searchQuery);
-      params.set("limit", ITEMS_PER_PAGE.toString());
-      params.set("offset", ((page - 1) * ITEMS_PER_PAGE).toString());
 
       const response = await fetch(`/api/tasks?${params}`);
       if (response.ok) {
         const data = await response.json();
-        setTasks(data.tasks || []);
-        setTotalCount(data.count || 0);
+        // Filter to only show tasks assigned to current user
+        const myTasks = (data.tasks || []).filter(
+          (task: Task) => task.assignee_id === currentUser.id
+        );
+        setTasks(myTasks);
       }
     } catch (error) {
       console.error("Error fetching tasks:", error);
@@ -197,819 +200,422 @@ export default function TasksPage() {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, priorityFilter, searchQuery, page]);
+  }, [currentUser?.id, searchQuery]);
 
-  // Fetch stats
-  const fetchStats = useCallback(async () => {
+  // Fetch team members for reassignment
+  const fetchTeamMembers = useCallback(async () => {
     try {
-      const response = await fetch("/api/tasks/stats");
+      const response = await fetch("/api/admin/users");
       if (response.ok) {
         const data = await response.json();
-        setStats({
-          total: data.total || 0,
-          pending: data.pending || 0,
-          inProgress: data.inProgress || 0,
-          completed: data.completed || 0,
-        });
+        setTeamMembers(data.users || []);
       }
     } catch (error) {
-      console.error("Error fetching stats:", error);
-    }
-  }, []);
-
-  // Fetch clients for dropdown
-  const fetchClients = useCallback(async () => {
-    try {
-      const response = await fetch("/api/clients");
-      if (response.ok) {
-        const data = await response.json();
-        setClients(data.clients || []);
-      }
-    } catch (error) {
-      console.error("Error fetching clients:", error);
+      console.error("Error fetching team members:", error);
     }
   }, []);
 
   useEffect(() => {
-    fetchTasks();
-    fetchStats();
-    fetchClients();
-  }, [fetchTasks, fetchStats, fetchClients]);
+    fetchCurrentUser();
+  }, [fetchCurrentUser]);
 
-  // Reset page when filters change
   useEffect(() => {
-    setPage(1);
-  }, [statusFilter, priorityFilter, searchQuery]);
+    if (currentUser?.id) {
+      fetchTasks();
+      fetchTeamMembers();
+    }
+  }, [currentUser?.id, fetchTasks, fetchTeamMembers]);
 
-  const resetForm = () => {
-    setFormData({
-      title: "",
-      description: "",
-      client_id: "",
-      client_name: "",
-      assignee_name: "",
-      priority: "medium",
-      status: "pending",
-      due_date: "",
-      source: "manual",
+  // Filter tasks by status and other filters
+  const getTasksByStatus = (status: string) => {
+    return tasks.filter((task) => {
+      if (task.status !== status) return false;
+      if (priorityFilter !== "all" && task.priority !== priorityFilter) return false;
+      return true;
     });
   };
 
-  const handleCreateTask = async () => {
-    if (!formData.title.trim()) {
-      toast.error("Task title is required");
+  // Drag handlers
+  const handleDragStart = (e: React.DragEvent, task: Task) => {
+    setDraggedTask(task);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", task.id);
+  };
+
+  const handleDragOver = (e: React.DragEvent, status: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverColumn(status);
+  };
+
+  const handleDragLeave = () => {
+    setDragOverColumn(null);
+  };
+
+  const handleDrop = async (e: React.DragEvent, newStatus: string) => {
+    e.preventDefault();
+    setDragOverColumn(null);
+
+    if (!draggedTask || draggedTask.status === newStatus) {
+      setDraggedTask(null);
       return;
     }
 
-    setSaving(true);
+    // Optimistic update
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.id === draggedTask.id ? { ...t, status: newStatus as Task["status"] } : t
+      )
+    );
+
     try {
-      const response = await fetch("/api/tasks", {
-        method: "POST",
+      const response = await fetch(`/api/tasks/${draggedTask.id}`, {
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: formData.title,
-          description: formData.description || null,
-          client_id: formData.client_id || null,
-          client_name: formData.client_name || null,
-          assignee_name: formData.assignee_name || null,
-          priority: formData.priority,
-          status: formData.status,
-          due_date: formData.due_date || null,
-          source: formData.source,
+          status: newStatus,
+          ...(newStatus === "completed" && { completed_at: new Date().toISOString() }),
         }),
       });
 
       if (response.ok) {
-        toast.success("Task created successfully");
-        setCreateDialogOpen(false);
-        resetForm();
-        fetchTasks();
-        fetchStats();
+        toast.success(`Moved to ${statusConfig[newStatus as keyof typeof statusConfig]?.label}`);
       } else {
-        const error = await response.json();
-        toast.error(error.error || "Failed to create task");
+        // Revert on error
+        fetchTasks();
+        toast.error("Failed to update task");
       }
     } catch (error) {
-      console.error("Error creating task:", error);
-      toast.error("Failed to create task");
-    } finally {
-      setSaving(false);
+      console.error("Error updating task:", error);
+      fetchTasks();
+      toast.error("Failed to update task");
     }
+
+    setDraggedTask(null);
   };
 
-  const handleUpdateTask = async () => {
-    if (!selectedTask || !formData.title.trim()) {
-      toast.error("Task title is required");
-      return;
-    }
+  const handleDragEnd = () => {
+    setDraggedTask(null);
+    setDragOverColumn(null);
+  };
 
-    setSaving(true);
+  // Handle task reassignment
+  const handleReassignTask = async (newAssigneeId: string, newAssigneeName: string) => {
+    if (!selectedTask) return;
+
     try {
       const response = await fetch(`/api/tasks/${selectedTask.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: formData.title,
-          description: formData.description || null,
-          client_id: formData.client_id || null,
-          client_name: formData.client_name || null,
-          assignee_name: formData.assignee_name || null,
-          priority: formData.priority,
-          status: formData.status,
-          due_date: formData.due_date || null,
-          source: formData.source,
+          assignee_id: newAssigneeId,
+          assignee_name: newAssigneeName,
         }),
       });
 
       if (response.ok) {
-        toast.success("Task updated successfully");
-        setEditDialogOpen(false);
+        toast.success(`Task passed to ${newAssigneeName}`);
+        setReassignDialogOpen(false);
         setSelectedTask(null);
-        resetForm();
-        fetchTasks();
-        fetchStats();
+        fetchTasks(); // Refresh to remove from current user's board
       } else {
-        const error = await response.json();
-        toast.error(error.error || "Failed to update task");
+        toast.error("Failed to reassign task");
       }
     } catch (error) {
-      console.error("Error updating task:", error);
-      toast.error("Failed to update task");
-    } finally {
-      setSaving(false);
+      console.error("Error reassigning task:", error);
+      toast.error("Failed to reassign task");
     }
   };
 
+  // Handle task deletion
   const handleDeleteTask = async () => {
     if (!selectedTask) return;
-
-    setSaving(true);
     try {
-      const response = await fetch(`/api/tasks/${selectedTask.id}`, {
-        method: "DELETE",
-      });
-
+      const response = await fetch(`/api/tasks/${selectedTask.id}`, { method: "DELETE" });
       if (response.ok) {
-        toast.success("Task deleted successfully");
+        toast.success("Task deleted");
         setDeleteDialogOpen(false);
         setSelectedTask(null);
         fetchTasks();
-        fetchStats();
       } else {
-        const error = await response.json();
-        toast.error(error.error || "Failed to delete task");
+        toast.error("Failed to delete task");
       }
     } catch (error) {
       console.error("Error deleting task:", error);
       toast.error("Failed to delete task");
-    } finally {
-      setSaving(false);
     }
   };
 
-  const handleMarkComplete = async (task: Task) => {
+  // Quick status change
+  const handleQuickStatusChange = async (task: Task, newStatus: string) => {
     try {
       const response = await fetch(`/api/tasks/${task.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          status: "completed",
-          completed_at: new Date().toISOString(),
+          status: newStatus,
+          ...(newStatus === "completed" && { completed_at: new Date().toISOString() }),
         }),
       });
 
       if (response.ok) {
-        toast.success("Task marked as complete");
+        toast.success(`Status updated`);
         fetchTasks();
-        fetchStats();
       } else {
         toast.error("Failed to update task");
       }
     } catch (error) {
-      console.error("Error marking task complete:", error);
+      console.error("Error updating task:", error);
       toast.error("Failed to update task");
     }
   };
 
-  const openEditDialog = (task: Task) => {
-    setSelectedTask(task);
-    setFormData({
-      title: task.title,
-      description: task.description || "",
-      client_id: task.client_id || "",
-      client_name: task.client_name || "",
-      assignee_name: task.assignee_name || "",
-      priority: task.priority,
-      status: task.status,
-      due_date: task.due_date ? task.due_date.split("T")[0] : "",
-      source: task.source,
-    });
-    setEditDialogOpen(true);
+  // Task card component
+  const TaskCard = ({ task }: { task: Task }) => {
+    const SourceIcon = sourceIcons[task.source] || ClipboardList;
+    const isTestTask = task.source_id?.startsWith("test_");
+
+    return (
+      <div
+        draggable
+        onDragStart={(e) => handleDragStart(e, task)}
+        onDragEnd={handleDragEnd}
+        className={cn(
+          "bg-white border rounded-lg p-3 cursor-grab active:cursor-grabbing shadow-sm hover:shadow-md transition-shadow",
+          draggedTask?.id === task.id && "opacity-50",
+          isTestTask && "border-amber-200 bg-amber-50/30"
+        )}
+      >
+        <div className="flex items-start justify-between gap-2 mb-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className={cn("w-2 h-2 rounded-full flex-shrink-0", priorityConfig[task.priority]?.dot)} />
+            <span className="font-medium text-sm truncate">{task.title}</span>
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-6 w-6 flex-shrink-0">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onClick={() => {
+                  setSelectedTask(task);
+                  setViewDialogOpen(true);
+                }}
+              >
+                <Eye className="h-4 w-4 mr-2" />
+                View Details
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => {
+                  setSelectedTask(task);
+                  setReassignDialogOpen(true);
+                }}
+              >
+                <UserPlus className="h-4 w-4 mr-2" />
+                Pass to Someone
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              {task.status !== "completed" && (
+                <DropdownMenuItem onClick={() => handleQuickStatusChange(task, "completed")}>
+                  <CheckCircle className="h-4 w-4 mr-2" />
+                  Mark Complete
+                </DropdownMenuItem>
+              )}
+              {task.status === "completed" && (
+                <DropdownMenuItem onClick={() => handleQuickStatusChange(task, "in_progress")}>
+                  <ArrowRight className="h-4 w-4 mr-2" />
+                  Reopen
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-destructive"
+                onClick={() => {
+                  setSelectedTask(task);
+                  setDeleteDialogOpen(true);
+                }}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
+        {task.description && (
+          <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
+            {task.description}
+          </p>
+        )}
+
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
+              <SourceIcon className="h-3 w-3" />
+              <span className="capitalize">{task.source.replace(/_/g, " ")}</span>
+            </div>
+          </div>
+          {task.client_name && (
+            <div className="flex items-center gap-1 truncate max-w-[100px]">
+              <Avatar className="h-4 w-4">
+                <AvatarFallback className="text-[8px] bg-muted">
+                  {task.client_name.slice(0, 2).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <span className="truncate">{task.client_name}</span>
+            </div>
+          )}
+        </div>
+
+        {task.due_date && (
+          <div className="mt-2 pt-2 border-t flex items-center gap-1 text-xs">
+            <Clock className="h-3 w-3 text-muted-foreground" />
+            <span className={cn(
+              new Date(task.due_date) < new Date() && task.status !== "completed"
+                ? "text-red-600 font-medium"
+                : "text-muted-foreground"
+            )}>
+              {format(new Date(task.due_date), "MMM d")}
+            </span>
+          </div>
+        )}
+
+        {isTestTask && (
+          <Badge variant="outline" className="text-[10px] mt-2 border-amber-300 text-amber-600">
+            Test
+          </Badge>
+        )}
+      </div>
+    );
   };
 
-  const openViewDialog = (task: Task) => {
-    setSelectedTask(task);
-    setViewDialogOpen(true);
-  };
-
-  const openDeleteDialog = (task: Task) => {
-    setSelectedTask(task);
-    setDeleteDialogOpen(true);
-  };
-
-  const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE);
+  // Stats
+  const totalTasks = tasks.length;
+  const todoCount = tasks.filter((t) => t.status === "pending").length;
+  const inProgressCount = tasks.filter((t) => t.status === "in_progress").length;
+  const doneCount = tasks.filter((t) => t.status === "completed").length;
 
   return (
     <>
-      <Header title="Tasks" />
+      <Header title="My Tasks" />
       <main className="p-6 space-y-6">
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <StatCard
-            title="Total Tasks"
-            value={stats.total}
-            icon={<ClipboardList className="h-6 w-6 text-primary-foreground" />}
-            iconBg="bg-primary"
-          />
-          <StatCard
-            title="Pending"
-            value={stats.pending}
-            icon={<Clock className="h-6 w-6 text-yellow-700" />}
-            iconBg="bg-yellow-100"
-          />
-          <StatCard
-            title="In Progress"
-            value={stats.inProgress}
-            icon={<AlertCircle className="h-6 w-6 text-blue-700" />}
-            iconBg="bg-blue-100"
-          />
-          <StatCard
-            title="Completed"
-            value={stats.completed}
-            icon={<CheckCircle className="h-6 w-6 text-green-700" />}
-            iconBg="bg-green-100"
-          />
+        {/* Header with stats and filters */}
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-6">
+            <div className="text-sm">
+              <span className="text-muted-foreground">Total: </span>
+              <span className="font-semibold">{totalTasks}</span>
+            </div>
+            <div className="flex items-center gap-4 text-sm">
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-yellow-400" />
+                <span>To Do: {todoCount}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-blue-400" />
+                <span>In Progress: {inProgressCount}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-green-400" />
+                <span>Done: {doneCount}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search my tasks..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 w-56"
+              />
+            </div>
+
+            {/* Priority Filter */}
+            <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+              <SelectTrigger className="w-32">
+                <SelectValue placeholder="Priority" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Priority</SelectItem>
+                <SelectItem value="urgent">Urgent</SelectItem>
+                <SelectItem value="high">High</SelectItem>
+                <SelectItem value="medium">Medium</SelectItem>
+                <SelectItem value="low">Low</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* Refresh */}
+            <Button variant="outline" size="icon" onClick={() => fetchTasks()}>
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
-        {/* Tasks Table */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-lg font-semibold">Task List</CardTitle>
-            <div className="flex items-center gap-3">
-              {/* Search */}
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search tasks..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 w-64"
-                />
-              </div>
+        {/* Kanban Board */}
+        {loading ? (
+          <div className="flex items-center justify-center py-24">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        ) : tasks.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-24 text-center">
+            <ClipboardList className="h-16 w-16 text-muted-foreground mb-4" />
+            <h3 className="text-xl font-medium">No tasks assigned to you</h3>
+            <p className="text-sm text-muted-foreground mt-2 max-w-md">
+              When tasks are assigned to you from the Task Table, they will appear here in your personal Kanban board.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {KANBAN_STATUSES.map((status) => {
+              const statusTasks = getTasksByStatus(status);
+              const config = statusConfig[status];
 
-              {/* Status Filter */}
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-36">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="pending">Pending</SelectItem>
-                  <SelectItem value="in_progress">In Progress</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
-                  <SelectItem value="cancelled">Cancelled</SelectItem>
-                </SelectContent>
-              </Select>
+              return (
+                <div
+                  key={status}
+                  className={cn(
+                    "rounded-lg border",
+                    config.headerBg,
+                    dragOverColumn === status && "ring-2 ring-primary ring-offset-2"
+                  )}
+                  onDragOver={(e) => handleDragOver(e, status)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, status)}
+                >
+                  <div className={cn("p-4 border-b", config.headerBg)}>
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-semibold text-sm">{config.label}</h3>
+                      <Badge variant="secondary" className="text-xs">
+                        {statusTasks.length}
+                      </Badge>
+                    </div>
+                  </div>
 
-              {/* Priority Filter */}
-              <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-                <SelectTrigger className="w-36">
-                  <SelectValue placeholder="Priority" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Priority</SelectItem>
-                  <SelectItem value="urgent">Urgent</SelectItem>
-                  <SelectItem value="high">High</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="low">Low</SelectItem>
-                </SelectContent>
-              </Select>
-
-              {/* Refresh */}
-              <Button variant="outline" size="icon" onClick={() => { fetchTasks(); fetchStats(); }}>
-                <RefreshCw className="h-4 w-4" />
-              </Button>
-
-              {/* Print */}
-              <Button variant="outline" size="icon" onClick={() => window.print()}>
-                <Printer className="h-4 w-4" />
-              </Button>
-
-              {/* Add Task */}
-              <Button
-                className="bg-primary hover:bg-primary/90"
-                onClick={() => {
-                  resetForm();
-                  setCreateDialogOpen(true);
-                }}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Task
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            {loading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              </div>
-            ) : tasks.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <ClipboardList className="h-12 w-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-medium">No tasks found</h3>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {searchQuery || statusFilter !== "all" || priorityFilter !== "all"
-                    ? "Try adjusting your filters"
-                    : "Create your first task to get started"}
-                </p>
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[100px]">Task ID</TableHead>
-                    <TableHead>Task</TableHead>
-                    <TableHead>Client</TableHead>
-                    <TableHead>Assignee</TableHead>
-                    <TableHead>Source</TableHead>
-                    <TableHead>Priority</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Due Date</TableHead>
-                    <TableHead className="w-[80px]">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {tasks.map((task) => {
-                    const SourceIcon = sourceIcons[task.source] || ClipboardList;
-                    return (
-                      <TableRow
-                        key={task.id}
-                        className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => setSelectedTask(task)}
-                      >
-                        <TableCell className="font-medium text-primary">
-                          #{task.id.slice(0, 8)}
-                        </TableCell>
-                        <TableCell className="max-w-[250px]">
-                          <div className="truncate font-medium">{task.title}</div>
-                          {task.description && (
-                            <div className="text-xs text-muted-foreground truncate">
-                              {task.description}
-                            </div>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {task.client_name ? (
-                            <div className="flex items-center gap-2">
-                              <Avatar className="h-7 w-7">
-                                <AvatarFallback className="text-xs bg-muted">
-                                  {task.client_name
-                                    .split(" ")
-                                    .map((n) => n[0])
-                                    .join("")
-                                    .slice(0, 2)}
-                                </AvatarFallback>
-                              </Avatar>
-                              <span className="text-sm">{task.client_name}</span>
-                            </div>
-                          ) : (
-                            <span className="text-sm text-muted-foreground">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {task.assignee_name ? (
-                            <div className="flex items-center gap-2">
-                              <Avatar className="h-7 w-7">
-                                <AvatarFallback className="text-xs bg-primary text-primary-foreground">
-                                  {task.assignee_name
-                                    .split(" ")
-                                    .map((n) => n[0])
-                                    .join("")
-                                    .slice(0, 2)}
-                                </AvatarFallback>
-                              </Avatar>
-                              <span className="text-sm">{task.assignee_name}</span>
-                            </div>
-                          ) : (
-                            <span className="text-sm text-muted-foreground">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1.5">
-                            <SourceIcon className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-xs text-muted-foreground capitalize">
-                              {(task.source || "manual").replace(/_/g, " ")}
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant="secondary"
-                            className={cn(
-                              "font-normal",
-                              priorityConfig[task.priority]?.className
-                            )}
-                          >
-                            {priorityConfig[task.priority]?.label || task.priority}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant="outline"
-                            className={cn(
-                              "font-normal",
-                              statusConfig[task.status]?.className
-                            )}
-                          >
-                            {statusConfig[task.status]?.label || task.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {task.due_date
-                            ? format(new Date(task.due_date), "MMM d, yyyy")
-                            : "-"}
-                        </TableCell>
-                        <TableCell onClick={(e) => e.stopPropagation()}>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => openViewDialog(task)}>
-                                <Eye className="h-4 w-4 mr-2" />
-                                View Details
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => openEditDialog(task)}>
-                                <Edit className="h-4 w-4 mr-2" />
-                                Edit Task
-                              </DropdownMenuItem>
-                              {task.status !== "completed" && (
-                                <DropdownMenuItem onClick={() => handleMarkComplete(task)}>
-                                  <CheckCircle className="h-4 w-4 mr-2" />
-                                  Mark Complete
-                                </DropdownMenuItem>
-                              )}
-                              <DropdownMenuItem
-                                className="text-destructive"
-                                onClick={() => openDeleteDialog(task)}
-                              >
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            )}
-
-            {/* Pagination */}
-            {tasks.length > 0 && (
-              <div className="flex items-center justify-between px-6 py-4 border-t">
-                <p className="text-sm text-muted-foreground">
-                  Showing {((page - 1) * ITEMS_PER_PAGE) + 1} to {Math.min(page * ITEMS_PER_PAGE, totalCount)} of {totalCount} entries
-                </p>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={page === 1}
-                    onClick={() => setPage(p => p - 1)}
-                  >
-                    Previous
-                  </Button>
-                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                    const pageNum = i + 1;
-                    return (
-                      <Button
-                        key={pageNum}
-                        variant="outline"
-                        size="sm"
-                        className={cn(page === pageNum && "bg-primary text-primary-foreground")}
-                        onClick={() => setPage(pageNum)}
-                      >
-                        {pageNum}
-                      </Button>
-                    );
-                  })}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={page >= totalPages}
-                    onClick={() => setPage(p => p + 1)}
-                  >
-                    Next
-                  </Button>
+                  <ScrollArea className="h-[calc(100vh-320px)]">
+                    <div className="p-3 space-y-3 min-h-[200px]">
+                      {statusTasks.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-8 text-center">
+                          <p className="text-sm text-muted-foreground">No tasks</p>
+                        </div>
+                      ) : (
+                        statusTasks.map((task) => (
+                          <TaskCard key={task.id} task={task} />
+                        ))
+                      )}
+                    </div>
+                  </ScrollArea>
                 </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+              );
+            })}
+          </div>
+        )}
       </main>
-
-      {/* Create Task Dialog */}
-      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>Create New Task</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="title">Task Title *</Label>
-              <Input
-                id="title"
-                placeholder="Enter task title"
-                value={formData.title}
-                onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                placeholder="Enter task description"
-                value={formData.description}
-                onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Client</Label>
-                <Select
-                  value={formData.client_id}
-                  onValueChange={(value) => {
-                    const client = clients.find(c => c.id === value);
-                    setFormData(prev => ({
-                      ...prev,
-                      client_id: value,
-                      client_name: client?.name || ""
-                    }));
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select client" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {clients.length > 0 ? (
-                      clients.map(client => (
-                        <SelectItem key={client.id} value={client.id}>
-                          {client.name}
-                        </SelectItem>
-                      ))
-                    ) : (
-                      <SelectItem value="none" disabled>No clients available</SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="assignee">Assignee</Label>
-                <Input
-                  id="assignee"
-                  placeholder="Assignee name"
-                  value={formData.assignee_name}
-                  onChange={(e) => setFormData(prev => ({ ...prev, assignee_name: e.target.value }))}
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Priority</Label>
-                <Select
-                  value={formData.priority}
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, priority: value }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select priority" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="low">Low</SelectItem>
-                    <SelectItem value="medium">Medium</SelectItem>
-                    <SelectItem value="high">High</SelectItem>
-                    <SelectItem value="urgent">Urgent</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Due Date</Label>
-                <Input
-                  type="date"
-                  value={formData.due_date}
-                  onChange={(e) => setFormData(prev => ({ ...prev, due_date: e.target.value }))}
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Status</Label>
-                <Select
-                  value={formData.status}
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, status: value }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="in_progress">In Progress</SelectItem>
-                    <SelectItem value="completed">Completed</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Source</Label>
-                <Select
-                  value={formData.source}
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, source: value }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select source" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="manual">Manual</SelectItem>
-                    <SelectItem value="email">Email</SelectItem>
-                    <SelectItem value="phone_call">Phone Call</SelectItem>
-                    <SelectItem value="document_intake">Document Intake</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              className="bg-primary"
-              onClick={handleCreateTask}
-              disabled={saving}
-            >
-              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Create Task
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit Task Dialog */}
-      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>Edit Task</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-title">Task Title *</Label>
-              <Input
-                id="edit-title"
-                placeholder="Enter task title"
-                value={formData.title}
-                onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-description">Description</Label>
-              <Textarea
-                id="edit-description"
-                placeholder="Enter task description"
-                value={formData.description}
-                onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Client</Label>
-                <Select
-                  value={formData.client_id}
-                  onValueChange={(value) => {
-                    const client = clients.find(c => c.id === value);
-                    setFormData(prev => ({
-                      ...prev,
-                      client_id: value,
-                      client_name: client?.name || ""
-                    }));
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select client" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {clients.length > 0 ? (
-                      clients.map(client => (
-                        <SelectItem key={client.id} value={client.id}>
-                          {client.name}
-                        </SelectItem>
-                      ))
-                    ) : (
-                      <SelectItem value="none" disabled>No clients available</SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-assignee">Assignee</Label>
-                <Input
-                  id="edit-assignee"
-                  placeholder="Assignee name"
-                  value={formData.assignee_name}
-                  onChange={(e) => setFormData(prev => ({ ...prev, assignee_name: e.target.value }))}
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Priority</Label>
-                <Select
-                  value={formData.priority}
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, priority: value }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select priority" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="low">Low</SelectItem>
-                    <SelectItem value="medium">Medium</SelectItem>
-                    <SelectItem value="high">High</SelectItem>
-                    <SelectItem value="urgent">Urgent</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Due Date</Label>
-                <Input
-                  type="date"
-                  value={formData.due_date}
-                  onChange={(e) => setFormData(prev => ({ ...prev, due_date: e.target.value }))}
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Status</Label>
-                <Select
-                  value={formData.status}
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, status: value }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="in_progress">In Progress</SelectItem>
-                    <SelectItem value="completed">Completed</SelectItem>
-                    <SelectItem value="cancelled">Cancelled</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Source</Label>
-                <Select
-                  value={formData.source}
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, source: value }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select source" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="manual">Manual</SelectItem>
-                    <SelectItem value="email">Email</SelectItem>
-                    <SelectItem value="phone_call">Phone Call</SelectItem>
-                    <SelectItem value="document_intake">Document Intake</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              className="bg-primary"
-              onClick={handleUpdateTask}
-              disabled={saving}
-            >
-              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Save Changes
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* View Task Dialog */}
       <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
@@ -1063,8 +669,8 @@ export default function TasksPage() {
                   <p>{selectedTask.client_name || "-"}</p>
                 </div>
                 <div>
-                  <Label className="text-muted-foreground">Assignee</Label>
-                  <p>{selectedTask.assignee_name || "-"}</p>
+                  <Label className="text-muted-foreground">Source</Label>
+                  <p className="capitalize">{(selectedTask.source || "manual").replace(/_/g, " ")}</p>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -1073,22 +679,16 @@ export default function TasksPage() {
                   <p>{selectedTask.due_date ? format(new Date(selectedTask.due_date), "MMM d, yyyy") : "-"}</p>
                 </div>
                 <div>
-                  <Label className="text-muted-foreground">Source</Label>
-                  <p className="capitalize">{(selectedTask.source || "manual").replace(/_/g, " ")}</p>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
                   <Label className="text-muted-foreground">Created</Label>
-                  <p>{format(new Date(selectedTask.created_at), "MMM d, yyyy h:mm a")}</p>
+                  <p>{format(new Date(selectedTask.created_at), "MMM d, yyyy")}</p>
                 </div>
-                {selectedTask.completed_at && (
-                  <div>
-                    <Label className="text-muted-foreground">Completed</Label>
-                    <p>{format(new Date(selectedTask.completed_at), "MMM d, yyyy h:mm a")}</p>
-                  </div>
-                )}
               </div>
+              {selectedTask.estimated_minutes && (
+                <div>
+                  <Label className="text-muted-foreground">Estimated Time</Label>
+                  <p>{selectedTask.estimated_minutes} minutes</p>
+                </div>
+              )}
             </div>
           )}
           <DialogFooter>
@@ -1098,11 +698,54 @@ export default function TasksPage() {
             <Button
               onClick={() => {
                 setViewDialogOpen(false);
-                if (selectedTask) openEditDialog(selectedTask);
+                if (selectedTask) {
+                  setReassignDialogOpen(true);
+                }
               }}
             >
-              <Edit className="h-4 w-4 mr-2" />
-              Edit Task
+              <UserPlus className="h-4 w-4 mr-2" />
+              Pass to Someone
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reassign Dialog */}
+      <Dialog open={reassignDialogOpen} onOpenChange={setReassignDialogOpen}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Pass Task to Another User</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm text-muted-foreground mb-4">
+              Select a team member to pass this task to. The task will be removed from your board and assigned to them.
+            </p>
+            <div className="space-y-2">
+              {teamMembers
+                .filter((m) => m.id !== currentUser?.id)
+                .map((member) => (
+                  <Button
+                    key={member.id}
+                    variant="outline"
+                    className="w-full justify-start"
+                    onClick={() => handleReassignTask(member.id, member.full_name || member.email)}
+                  >
+                    <Avatar className="h-6 w-6 mr-2">
+                      <AvatarFallback className="text-xs">
+                        {(member.full_name || member.email).slice(0, 2).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span>{member.full_name || member.email}</span>
+                    <span className="ml-auto text-xs text-muted-foreground capitalize">
+                      {member.role}
+                    </span>
+                  </Button>
+                ))}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReassignDialogOpen(false)}>
+              Cancel
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1122,9 +765,7 @@ export default function TasksPage() {
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={handleDeleteTask}
-              disabled={saving}
             >
-              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>

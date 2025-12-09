@@ -86,15 +86,22 @@ const navSections: NavSection[] = [
     label: "Tasks",
     items: [
       {
-        title: "TaskPool",
-        href: "/taskpool-board",
-        icon: Layers,
+        title: "Task Table",
+        href: "/tasks-table",
+        icon: ClipboardList,
+        permission: "tasks:view_all",
+        adminOnly: true,
+      },
+      {
+        title: "My Tasks",
+        href: "/tasks",
+        icon: Kanban,
         permission: "tasks:view",
       },
       {
-        title: "Kanban Board",
-        href: "/kanban",
-        icon: Kanban,
+        title: "TaskPool",
+        href: "/taskpool-board",
+        icon: Layers,
         permission: "tasks:view",
       },
     ],
@@ -249,6 +256,9 @@ export function Sidebar() {
         ...section,
         items: section.items
           .filter((item) => {
+            // Check admin-only restriction
+            if (item.adminOnly && !isAdmin) return false;
+            // Check permission
             if (!item.permission) return true;
             return can(item.permission);
           })
@@ -266,7 +276,7 @@ export function Sidebar() {
           }),
       }))
       .filter((section) => section.items.length > 0);
-  }, [can, user?.role]);
+  }, [can, isAdmin, user?.role]);
 
   // Filter admin nav items - include user?.role in deps to ensure recalculation
   const filteredAdminNav = useMemo(() => {
