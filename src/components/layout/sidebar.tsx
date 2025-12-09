@@ -103,12 +103,6 @@ const navSections: NavSection[] = [
     label: "Communication",
     items: [
       {
-        title: "Email Tasks",
-        href: "/email",
-        icon: Mail,
-        permission: "email:view",
-      },
-      {
         title: "Email Intelligence",
         href: "/email-intelligence",
         icon: Sparkles,
