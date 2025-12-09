@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { hasPermission, UserRole } from "@/lib/permissions";
 
 // GET - Get single user
 export async function GET(
@@ -11,6 +13,20 @@ export async function GET(
 
   if (!user) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  // Get current user's role to check permissions
+  const { data: currentUserProfile } = await supabase
+    .from("user_profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  const userRole = currentUserProfile?.role as UserRole | undefined;
+
+  // Check permission - must have users:view
+  if (!hasPermission(userRole, "users:view")) {
+    return NextResponse.json({ error: "Permission denied" }, { status: 403 });
   }
 
   const { id } = await params;
@@ -46,11 +62,58 @@ export async function PATCH(
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
+  // Get current user's role to check permissions
+  const { data: currentUserProfile } = await supabase
+    .from("user_profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  const userRole = currentUserProfile?.role as UserRole | undefined;
+
+  // Check permission - must have users:edit
+  if (!hasPermission(userRole, "users:edit")) {
+    return NextResponse.json({ error: "Permission denied" }, { status: 403 });
+  }
+
   const { id } = await params;
 
   try {
     const body = await request.json();
     const { full_name, role, department, job_title, phone, is_active, show_in_taskpool } = body;
+
+    // Get the target user's current role for role change validation
+    const { data: targetUser } = await supabase
+      .from("user_profiles")
+      .select("role")
+      .eq("id", id)
+      .single();
+
+    const targetRole = targetUser?.role as UserRole | undefined;
+
+    // Role change permission checks
+    if (role !== undefined && role !== targetRole) {
+      // Only owners can change to/from admin/owner roles
+      if ((role === "owner" || role === "admin") && userRole !== "owner") {
+        return NextResponse.json({
+          error: "Only owners can assign admin or owner roles"
+        }, { status: 403 });
+      }
+
+      // Only owners can change an admin/owner's role
+      if ((targetRole === "owner" || targetRole === "admin") && userRole !== "owner") {
+        return NextResponse.json({
+          error: "Only owners can change admin or owner roles"
+        }, { status: 403 });
+      }
+
+      // Only admins+ can assign manager role
+      if (role === "manager" && userRole !== "owner" && userRole !== "admin") {
+        return NextResponse.json({
+          error: "Only admins can assign manager role"
+        }, { status: 403 });
+      }
+    }
 
     const updateData: Record<string, any> = {
       updated_at: new Date().toISOString(),
@@ -95,6 +158,20 @@ export async function DELETE(
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
+  // Get current user's role to check permissions
+  const { data: currentUserProfile } = await supabase
+    .from("user_profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  const userRole = currentUserProfile?.role as UserRole | undefined;
+
+  // Check permission - must have users:delete
+  if (!hasPermission(userRole, "users:delete")) {
+    return NextResponse.json({ error: "Permission denied" }, { status: 403 });
+  }
+
   const { id } = await params;
 
   // Don't allow deleting yourself
@@ -103,14 +180,47 @@ export async function DELETE(
   }
 
   try {
-    const { error } = await supabase
+    // Get the target user's role to validate deletion permissions
+    const { data: targetUser } = await supabase
+      .from("user_profiles")
+      .select("role")
+      .eq("id", id)
+      .single();
+
+    const targetRole = targetUser?.role as UserRole | undefined;
+
+    // Only owners can delete admins/owners
+    if ((targetRole === "owner" || targetRole === "admin") && userRole !== "owner") {
+      return NextResponse.json({
+        error: "Only owners can delete admin or owner accounts"
+      }, { status: 403 });
+    }
+
+    // Can't delete owner accounts (there should always be at least one owner)
+    if (targetRole === "owner") {
+      return NextResponse.json({
+        error: "Cannot delete owner accounts"
+      }, { status: 403 });
+    }
+
+    // Delete from user_profiles first
+    const { error: profileError } = await supabase
       .from("user_profiles")
       .delete()
       .eq("id", id);
 
-    if (error) {
-      console.error("Error deleting user:", error);
-      return NextResponse.json({ error: "Failed to delete user" }, { status: 500 });
+    if (profileError) {
+      console.error("Error deleting user profile:", profileError);
+      return NextResponse.json({ error: "Failed to delete user profile" }, { status: 500 });
+    }
+
+    // Also delete from Supabase Auth
+    try {
+      const adminClient = createAdminClient();
+      await adminClient.auth.admin.deleteUser(id);
+    } catch (authError) {
+      console.error("Error deleting auth user (profile was deleted):", authError);
+      // Don't fail if auth deletion fails - profile is already gone
     }
 
     return NextResponse.json({ success: true });

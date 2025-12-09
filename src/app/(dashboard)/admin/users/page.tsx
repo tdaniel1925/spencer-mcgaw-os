@@ -84,6 +84,8 @@ import {
   rolePermissions,
   permissionCategories,
   permissionNames,
+  PermissionOverride,
+  getUserPermissions,
 } from "@/lib/permissions";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { BulkUploadDialog } from "@/components/bulk-upload-dialog";
@@ -150,6 +152,7 @@ export default function UserManagementPage() {
   const [newUser, setNewUser] = useState({
     email: "",
     full_name: "",
+    password: "",
     role: "staff" as UserRole,
     department: "",
     job_title: "",
@@ -157,8 +160,132 @@ export default function UserManagementPage() {
     sendInvite: true,
     show_in_taskpool: true,
   });
+  const [showPassword, setShowPassword] = useState(false);
+  const [passwordErrors, setPasswordErrors] = useState<string[]>([]);
+  const [permissionOverrides, setPermissionOverrides] = useState<PermissionOverride[]>([]);
+  const [loadingOverrides, setLoadingOverrides] = useState(false);
+  const [savingOverride, setSavingOverride] = useState<string | null>(null);
+
+  // Password validation function (matches server-side rules)
+  const validatePassword = (password: string): string[] => {
+    const errors: string[] = [];
+    if (password.length < 8) {
+      errors.push("At least 8 characters");
+    }
+    if (!/[A-Z]/.test(password)) {
+      errors.push("At least one uppercase letter");
+    }
+    if (!/[a-z]/.test(password)) {
+      errors.push("At least one lowercase letter");
+    }
+    if (!/[0-9]/.test(password)) {
+      errors.push("At least one number");
+    }
+    const commonPasswords = ["password", "password1", "password123", "123456", "12345678", "qwerty", "abc123", "letmein", "welcome", "admin"];
+    if (commonPasswords.includes(password.toLowerCase())) {
+      errors.push("Password is too common");
+    }
+    return errors;
+  };
+
+  const handlePasswordChange = (password: string) => {
+    setNewUser((prev) => ({ ...prev, password }));
+    if (password) {
+      setPasswordErrors(validatePassword(password));
+    } else {
+      setPasswordErrors([]);
+    }
+  };
 
   const { can, isAdmin, isOwner } = useAuth();
+
+  // Load permission overrides for a user
+  const loadPermissionOverrides = useCallback(async (userId: string) => {
+    setLoadingOverrides(true);
+    try {
+      const response = await fetch(`/api/admin/permissions?userId=${userId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setPermissionOverrides(data.overrides || []);
+      } else {
+        console.error("Failed to load permission overrides");
+        setPermissionOverrides([]);
+      }
+    } catch (error) {
+      console.error("Error loading permission overrides:", error);
+      setPermissionOverrides([]);
+    } finally {
+      setLoadingOverrides(false);
+    }
+  }, []);
+
+  // Toggle a permission override
+  const togglePermissionOverride = async (userId: string, permission: Permission, currentlyGranted: boolean, isFromRole: boolean) => {
+    if (!isOwner) {
+      toast.error("Only owners can modify permission overrides");
+      return;
+    }
+
+    setSavingOverride(permission);
+    try {
+      // If this permission is from the role and we want to remove it, we create a "denied" override
+      // If this permission is not from the role and we want to add it, we create a "granted" override
+      // If there's already an override and we toggle, we either delete it or flip it
+
+      const existingOverride = permissionOverrides.find(o => o.permission === permission);
+
+      if (existingOverride) {
+        // If toggling back to the role default, remove the override
+        const roleHasPermission = rolePermissions[selectedUser!.role]?.includes(permission);
+        if (currentlyGranted === roleHasPermission) {
+          // Delete the override
+          const response = await fetch(`/api/admin/permissions?id=${existingOverride.id}`, {
+            method: "DELETE",
+          });
+          if (!response.ok) {
+            throw new Error("Failed to remove override");
+          }
+        } else {
+          // Flip the override
+          const response = await fetch("/api/admin/permissions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              user_id: userId,
+              permission,
+              granted: !currentlyGranted,
+            }),
+          });
+          if (!response.ok) {
+            throw new Error("Failed to update override");
+          }
+        }
+      } else {
+        // Create new override (opposite of role default)
+        const response = await fetch("/api/admin/permissions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_id: userId,
+            permission,
+            granted: !currentlyGranted,
+          }),
+        });
+        if (!response.ok) {
+          throw new Error("Failed to create override");
+        }
+      }
+
+      // Reload overrides
+      await loadPermissionOverrides(userId);
+      toast.success("Permission updated");
+    } catch (error) {
+      console.error("Error toggling permission:", error);
+      toast.error("Failed to update permission");
+    } finally {
+      setSavingOverride(null);
+    }
+  };
 
   // Fetch users from database
   const loadUsers = useCallback(async () => {
@@ -210,6 +337,14 @@ export default function UserManagementPage() {
   };
 
   const handleAddUser = async () => {
+    // Validate password before submitting
+    const errors = validatePassword(newUser.password);
+    if (errors.length > 0) {
+      toast.error("Please fix password requirements");
+      setPasswordErrors(errors);
+      return;
+    }
+
     setSaving(true);
     try {
       const response = await fetch("/api/admin/users", {
@@ -218,6 +353,7 @@ export default function UserManagementPage() {
         body: JSON.stringify({
           email: newUser.email,
           full_name: newUser.full_name,
+          password: newUser.password,
           role: newUser.role,
           department: newUser.department,
           job_title: newUser.job_title,
@@ -227,11 +363,12 @@ export default function UserManagementPage() {
       });
 
       if (response.ok) {
-        toast.success("User added successfully");
+        toast.success("User created successfully. They can now log in with their email and password.");
         setAddUserOpen(false);
         setNewUser({
           email: "",
           full_name: "",
+          password: "",
           role: "staff",
           department: "",
           job_title: "",
@@ -239,10 +376,16 @@ export default function UserManagementPage() {
           sendInvite: true,
           show_in_taskpool: true,
         });
+        setPasswordErrors([]);
         loadUsers();
       } else {
         const data = await response.json();
-        toast.error(data.error || "Failed to add user");
+        if (data.details) {
+          // Password validation errors from server
+          toast.error(data.details.join(", "));
+        } else {
+          toast.error(data.error || "Failed to add user");
+        }
       }
     } catch (error) {
       console.error("Error adding user:", error);
@@ -558,10 +701,11 @@ export default function UserManagementPage() {
                           onClick={() => {
                             setSelectedUser(member);
                             setPermissionsOpen(true);
+                            loadPermissionOverrides(member.id);
                           }}
                         >
                           <Key className="h-4 w-4 mr-2" />
-                          View Permissions
+                          {isOwner ? "Manage Permissions" : "View Permissions"}
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
@@ -649,8 +793,7 @@ export default function UserManagementPage() {
               Add New User
             </DialogTitle>
             <DialogDescription>
-              Add a new team member to your organization. They will receive an email
-              invitation to set up their account.
+              Add a new team member to your organization. Set their password so they can log in immediately.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -678,6 +821,63 @@ export default function UserManagementPage() {
                   placeholder="john@company.com"
                 />
               </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">Password *</Label>
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  value={newUser.password}
+                  onChange={(e) => handlePasswordChange(e.target.value)}
+                  placeholder="Enter a secure password"
+                  className={cn(
+                    "pr-10",
+                    newUser.password && passwordErrors.length > 0 && "border-red-500 focus-visible:ring-red-500"
+                  )}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <Eye className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </Button>
+              </div>
+              {newUser.password && (
+                <div className="space-y-1 mt-2">
+                  {passwordErrors.length === 0 ? (
+                    <p className="text-xs text-green-600 flex items-center gap-1">
+                      <CheckCircle className="h-3 w-3" />
+                      Password meets all requirements
+                    </p>
+                  ) : (
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Password requirements:</p>
+                      {[
+                        { text: "At least 8 characters", met: newUser.password.length >= 8 },
+                        { text: "At least one uppercase letter", met: /[A-Z]/.test(newUser.password) },
+                        { text: "At least one lowercase letter", met: /[a-z]/.test(newUser.password) },
+                        { text: "At least one number", met: /[0-9]/.test(newUser.password) },
+                      ].map((req) => (
+                        <p key={req.text} className={cn(
+                          "text-xs flex items-center gap-1",
+                          req.met ? "text-green-600" : "text-red-500"
+                        )}>
+                          {req.met ? <CheckCircle className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
+                          {req.text}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -753,18 +953,6 @@ export default function UserManagementPage() {
             </div>
             <div className="flex items-center space-x-2 pt-2">
               <Checkbox
-                id="sendInvite"
-                checked={newUser.sendInvite}
-                onCheckedChange={(checked) =>
-                  setNewUser((prev) => ({ ...prev, sendInvite: !!checked }))
-                }
-              />
-              <Label htmlFor="sendInvite" className="text-sm font-normal">
-                Send email invitation to set up account
-              </Label>
-            </div>
-            <div className="flex items-center space-x-2 pt-2">
-              <Checkbox
                 id="show_in_taskpool"
                 checked={newUser.show_in_taskpool}
                 onCheckedChange={(checked) =>
@@ -782,10 +970,10 @@ export default function UserManagementPage() {
             </Button>
             <Button
               onClick={handleAddUser}
-              disabled={!newUser.email || !newUser.full_name}
+              disabled={!newUser.email || !newUser.full_name || !newUser.password || passwordErrors.length > 0 || saving}
             >
               <UserPlus className="h-4 w-4 mr-2" />
-              Add User
+              {saving ? "Creating..." : "Add User"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1004,12 +1192,17 @@ export default function UserManagementPage() {
 
       {/* Permissions Dialog */}
       {selectedUser && (
-        <Dialog open={permissionsOpen} onOpenChange={setPermissionsOpen}>
+        <Dialog open={permissionsOpen} onOpenChange={(open) => {
+          setPermissionsOpen(open);
+          if (!open) {
+            setPermissionOverrides([]);
+          }
+        }}>
           <DialogContent className="sm:max-w-2xl max-h-[80vh]">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Key className="h-5 w-5" />
-                Permissions for {selectedUser.full_name}
+                {isOwner ? "Manage" : "View"} Permissions for {selectedUser.full_name}
               </DialogTitle>
               <DialogDescription>
                 <span className="flex items-center gap-2 mt-2">
@@ -1025,55 +1218,94 @@ export default function UserManagementPage() {
                     <RoleIcon role={selectedUser.role} />
                     {roleInfo[selectedUser.role].name}
                   </Badge>
+                  {isOwner && (
+                    <span className="text-xs text-muted-foreground ml-2">
+                      Click on permissions to override
+                    </span>
+                  )}
                 </span>
               </DialogDescription>
             </DialogHeader>
-            <ScrollArea className="max-h-[50vh] pr-4">
-              <div className="space-y-6 py-4">
-                {Object.entries(permissionCategories).map(([key, category]) => {
-                  const userPerms = rolePermissions[selectedUser.role];
-                  const categoryPerms = category.permissions;
-                  const hasAny = categoryPerms.some((p) => userPerms.includes(p));
-
-                  return (
-                    <div key={key} className="space-y-2">
-                      <h4 className="font-medium text-sm flex items-center gap-2">
-                        {category.name}
-                        {hasAny ? (
-                          <CheckCircle className="h-4 w-4 text-green-500" />
-                        ) : (
-                          <XCircle className="h-4 w-4 text-muted-foreground" />
-                        )}
-                      </h4>
-                      <div className="grid grid-cols-2 gap-2">
-                        {categoryPerms.map((perm) => {
-                          const hasPermission = userPerms.includes(perm);
-                          return (
-                            <div
-                              key={perm}
-                              className={cn(
-                                "flex items-center gap-2 text-sm p-2 rounded",
-                                hasPermission
-                                  ? "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400"
-                                  : "bg-muted/50 text-muted-foreground"
-                              )}
-                            >
-                              {hasPermission ? (
-                                <CheckCircle className="h-3.5 w-3.5 flex-shrink-0" />
-                              ) : (
-                                <XCircle className="h-3.5 w-3.5 flex-shrink-0" />
-                              )}
-                              <span>{permissionNames[perm]}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
+            {loadingOverrides ? (
+              <div className="flex items-center justify-center py-8">
+                <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
-            </ScrollArea>
-            <DialogFooter>
+            ) : (
+              <ScrollArea className="max-h-[50vh] pr-4">
+                <div className="space-y-6 py-4">
+                  {Object.entries(permissionCategories).map(([key, category]) => {
+                    const rolePerms = rolePermissions[selectedUser.role] || [];
+                    const effectivePerms = getUserPermissions(selectedUser.role, permissionOverrides);
+                    const categoryPerms = category.permissions;
+                    const hasAny = categoryPerms.some((p) => effectivePerms.includes(p));
+
+                    return (
+                      <div key={key} className="space-y-2">
+                        <h4 className="font-medium text-sm flex items-center gap-2">
+                          {category.name}
+                          {hasAny ? (
+                            <CheckCircle className="h-4 w-4 text-green-500" />
+                          ) : (
+                            <XCircle className="h-4 w-4 text-muted-foreground" />
+                          )}
+                        </h4>
+                        <div className="grid grid-cols-2 gap-2">
+                          {categoryPerms.map((perm) => {
+                            const roleHasPermission = rolePerms.includes(perm);
+                            const hasOverride = permissionOverrides.some(o => o.permission === perm);
+                            const effectivePermission = effectivePerms.includes(perm);
+                            const isLoading = savingOverride === perm;
+
+                            return (
+                              <button
+                                key={perm}
+                                type="button"
+                                disabled={!isOwner || isLoading}
+                                onClick={() => isOwner && togglePermissionOverride(
+                                  selectedUser.id,
+                                  perm,
+                                  effectivePermission,
+                                  roleHasPermission
+                                )}
+                                className={cn(
+                                  "flex items-center gap-2 text-sm p-2 rounded text-left transition-colors",
+                                  effectivePermission
+                                    ? "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400"
+                                    : "bg-muted/50 text-muted-foreground",
+                                  isOwner && "hover:ring-2 hover:ring-primary/50 cursor-pointer",
+                                  hasOverride && "ring-2 ring-yellow-500/50",
+                                  isLoading && "opacity-50"
+                                )}
+                              >
+                                {isLoading ? (
+                                  <RefreshCw className="h-3.5 w-3.5 flex-shrink-0 animate-spin" />
+                                ) : effectivePermission ? (
+                                  <CheckCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                                ) : (
+                                  <XCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                                )}
+                                <span className="flex-1">{permissionNames[perm]}</span>
+                                {hasOverride && (
+                                  <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-yellow-50 text-yellow-700 border-yellow-300">
+                                    Override
+                                  </Badge>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
+            )}
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              {isOwner && permissionOverrides.length > 0 && (
+                <p className="text-xs text-muted-foreground mr-auto">
+                  {permissionOverrides.length} custom override{permissionOverrides.length !== 1 ? "s" : ""} applied
+                </p>
+              )}
               <Button variant="outline" onClick={() => setPermissionsOpen(false)}>
                 Close
               </Button>

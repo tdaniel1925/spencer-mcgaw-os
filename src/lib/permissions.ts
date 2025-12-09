@@ -291,6 +291,66 @@ export const permissionCategories = {
   },
 };
 
+// Permission override type for custom per-user permissions
+export interface PermissionOverride {
+  id: string;
+  user_id: string;
+  permission: Permission;
+  granted: boolean;
+  granted_by?: string;
+  reason?: string;
+  expires_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// Check if a permission is granted with overrides considered
+export function hasPermissionWithOverrides(
+  userRole: UserRole | undefined,
+  permission: Permission,
+  overrides: PermissionOverride[] = []
+): boolean {
+  // Check for explicit override first
+  const override = overrides.find(o => o.permission === permission);
+  if (override) {
+    // Check if override is expired
+    if (override.expires_at && new Date(override.expires_at) < new Date()) {
+      // Override expired, fall back to role-based permission
+    } else {
+      return override.granted;
+    }
+  }
+
+  // Fall back to role-based permission
+  return hasPermission(userRole, permission);
+}
+
+// Get all permissions for a user including overrides
+export function getUserPermissions(
+  userRole: UserRole | undefined,
+  overrides: PermissionOverride[] = []
+): Permission[] {
+  if (!userRole) return [];
+
+  const basePermissions = new Set(rolePermissions[userRole] || []);
+
+  // Apply overrides
+  for (const override of overrides) {
+    // Check if override is expired
+    if (override.expires_at && new Date(override.expires_at) < new Date()) {
+      continue;
+    }
+
+    if (override.granted) {
+      basePermissions.add(override.permission);
+    } else {
+      basePermissions.delete(override.permission);
+    }
+  }
+
+  return Array.from(basePermissions);
+}
+
 // Human-readable permission names
 export const permissionNames: Record<Permission, string> = {
   "dashboard:view": "View Dashboard",
