@@ -104,6 +104,11 @@ interface Task {
   client: Client | null;
   notes: { count: number }[];
   activity: { count: number }[];
+  // Handoff fields
+  handoff_to: string | null;
+  handoff_from: string | null;
+  handoff_notes: string | null;
+  handoff_at: string | null;
 }
 
 const iconMap: Record<string, React.ElementType> = {

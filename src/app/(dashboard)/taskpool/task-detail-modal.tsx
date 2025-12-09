@@ -54,6 +54,12 @@ import {
   UserPlus,
   X,
   ChevronDown,
+  ListChecks,
+  Plus,
+  GripVertical,
+  Loader2,
+  ArrowRightLeft,
+  History,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -98,6 +104,11 @@ interface Task {
   source_type: string;
   action_type: ActionType | null;
   client: Client | null;
+  // Handoff fields
+  handoff_to: string | null;
+  handoff_from: string | null;
+  handoff_notes: string | null;
+  handoff_at: string | null;
 }
 
 interface UserProfile {
@@ -114,12 +125,53 @@ interface Note {
   created_at: string;
 }
 
+interface TaskStep {
+  id: string;
+  task_id: string;
+  step_number: number;
+  description: string;
+  assigned_to: string | null;
+  is_completed: boolean;
+  completed_by: string | null;
+  completed_at: string | null;
+  created_at: string;
+  assigned_user?: {
+    id: string;
+    full_name: string | null;
+    email: string;
+    avatar_url: string | null;
+  } | null;
+  completed_user?: {
+    id: string;
+    full_name: string | null;
+    email: string;
+  } | null;
+}
+
 interface ActivityLog {
   id: string;
   action: string;
   details: Record<string, any>;
   performed_by: string;
   created_at: string;
+}
+
+interface HandoffHistory {
+  id: string;
+  notes: string | null;
+  created_at: string;
+  from_user: {
+    id: string;
+    full_name: string | null;
+    email: string;
+    avatar_url: string | null;
+  };
+  to_user: {
+    id: string;
+    full_name: string | null;
+    email: string;
+    avatar_url: string | null;
+  };
 }
 
 interface TaskDetailModalProps {
@@ -149,6 +201,12 @@ const activityIcons: Record<string, React.ElementType> = {
   routed: ArrowRight,
   assigned: UserPlus,
   unassigned: X,
+  step_added: Plus,
+  step_completed: Check,
+  step_uncompleted: X,
+  step_deleted: Trash2,
+  handed_off: ArrowRightLeft,
+  handoff_accepted: Check,
 };
 
 export function TaskDetailModal({
@@ -186,6 +244,30 @@ export function TaskDetailModal({
   const [assignPopoverOpen, setAssignPopoverOpen] = useState(false);
   const [assigning, setAssigning] = useState(false);
 
+  // Steps state
+  const [steps, setSteps] = useState<TaskStep[]>([]);
+  const [loadingSteps, setLoadingSteps] = useState(true);
+  const [newStepDescription, setNewStepDescription] = useState("");
+  const [addingStep, setAddingStep] = useState(false);
+  const [stepAssignPopover, setStepAssignPopover] = useState<string | null>(null);
+  const [stepUserSearch, setStepUserSearch] = useState("");
+
+  // Handoff state
+  const [showHandoffDialog, setShowHandoffDialog] = useState(false);
+  const [handoffTo, setHandoffTo] = useState<string>("");
+  const [handoffNotes, setHandoffNotes] = useState("");
+  const [handingOff, setHandingOff] = useState(false);
+  const [handoffHistory, setHandoffHistory] = useState<HandoffHistory[]>([]);
+  const [loadingHandoffHistory, setLoadingHandoffHistory] = useState(false);
+  const [handoffUserSearch, setHandoffUserSearch] = useState("");
+  const [handoffPopoverOpen, setHandoffPopoverOpen] = useState(false);
+
+  // AI Feedback state
+  const [aiFeedbackText, setAiFeedbackText] = useState("");
+  const [aiCorrectedType, setAiCorrectedType] = useState<string>("");
+  const [submittingFeedback, setSubmittingFeedback] = useState(false);
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+
   const loadNotesAndActivity = useCallback(async () => {
     setLoadingNotes(true);
     try {
@@ -209,9 +291,25 @@ export function TaskDetailModal({
     }
   }, [task.id]);
 
+  const loadSteps = useCallback(async () => {
+    setLoadingSteps(true);
+    try {
+      const response = await fetch(`/api/taskpool/tasks/${task.id}/steps`);
+      if (response.ok) {
+        const data = await response.json();
+        setSteps(data.steps || []);
+      }
+    } catch (error) {
+      console.error("Error loading steps:", error);
+    } finally {
+      setLoadingSteps(false);
+    }
+  }, [task.id]);
+
   useEffect(() => {
     if (open) {
       loadNotesAndActivity();
+      loadSteps();
       setEditForm({
         title: task.title,
         description: task.description || "",
@@ -221,7 +319,7 @@ export function TaskDetailModal({
         action_type_id: task.action_type_id,
       });
     }
-  }, [open, task, loadNotesAndActivity]);
+  }, [open, task, loadNotesAndActivity, loadSteps]);
 
   const handleAddNote = async () => {
     if (!newNote.trim()) return;
@@ -324,6 +422,196 @@ export function TaskDetailModal({
     }
   };
 
+  // Step handlers
+  const handleAddStep = async () => {
+    if (!newStepDescription.trim()) return;
+    setAddingStep(true);
+    try {
+      const response = await fetch(`/api/taskpool/tasks/${task.id}/steps`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description: newStepDescription.trim() }),
+      });
+      if (response.ok) {
+        setNewStepDescription("");
+        loadSteps();
+        loadNotesAndActivity(); // Refresh activity log
+        toast.success("Step added");
+      } else {
+        toast.error("Failed to add step");
+      }
+    } catch (error) {
+      console.error("Error adding step:", error);
+      toast.error("Failed to add step");
+    } finally {
+      setAddingStep(false);
+    }
+  };
+
+  const handleToggleStepComplete = async (step: TaskStep) => {
+    try {
+      const response = await fetch(`/api/taskpool/tasks/${task.id}/steps/${step.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_completed: !step.is_completed }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        loadSteps();
+        loadNotesAndActivity();
+        if (data.all_steps_completed) {
+          toast.success("All steps completed! Consider completing the task.");
+        }
+      } else {
+        toast.error("Failed to update step");
+      }
+    } catch (error) {
+      console.error("Error updating step:", error);
+      toast.error("Failed to update step");
+    }
+  };
+
+  const handleAssignStep = async (stepId: string, userId: string | null) => {
+    try {
+      const response = await fetch(`/api/taskpool/tasks/${task.id}/steps/${stepId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assigned_to: userId }),
+      });
+      if (response.ok) {
+        loadSteps();
+        setStepAssignPopover(null);
+        toast.success(userId ? "Step assigned" : "Step unassigned");
+      } else {
+        toast.error("Failed to assign step");
+      }
+    } catch (error) {
+      console.error("Error assigning step:", error);
+      toast.error("Failed to assign step");
+    }
+  };
+
+  const handleDeleteStep = async (stepId: string) => {
+    try {
+      const response = await fetch(`/api/taskpool/tasks/${task.id}/steps/${stepId}`, {
+        method: "DELETE",
+      });
+      if (response.ok) {
+        loadSteps();
+        loadNotesAndActivity();
+        toast.success("Step deleted");
+      } else {
+        toast.error("Failed to delete step");
+      }
+    } catch (error) {
+      console.error("Error deleting step:", error);
+      toast.error("Failed to delete step");
+    }
+  };
+
+  // Handoff handlers
+  const loadHandoffHistory = useCallback(async () => {
+    setLoadingHandoffHistory(true);
+    try {
+      const response = await fetch(`/api/taskpool/tasks/${task.id}/handoff`);
+      if (response.ok) {
+        const data = await response.json();
+        setHandoffHistory(data.history || []);
+      }
+    } catch (error) {
+      console.error("Error loading handoff history:", error);
+    } finally {
+      setLoadingHandoffHistory(false);
+    }
+  }, [task.id]);
+
+  const handleHandoff = async () => {
+    if (!handoffTo) {
+      toast.error("Please select a user to hand off to");
+      return;
+    }
+    setHandingOff(true);
+    try {
+      const response = await fetch(`/api/taskpool/tasks/${task.id}/handoff`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          handoff_to: handoffTo,
+          handoff_notes: handoffNotes || undefined,
+        }),
+      });
+      if (response.ok) {
+        const selectedUser = users.find(u => u.id === handoffTo);
+        toast.success(`Task handed off to ${selectedUser?.full_name || selectedUser?.email || "user"}`);
+        setShowHandoffDialog(false);
+        setHandoffTo("");
+        setHandoffNotes("");
+        onUpdate();
+      } else {
+        toast.error("Failed to hand off task");
+      }
+    } catch (error) {
+      console.error("Error handing off task:", error);
+      toast.error("Failed to hand off task");
+    } finally {
+      setHandingOff(false);
+    }
+  };
+
+  const handleAcceptHandoff = async () => {
+    try {
+      const response = await fetch(`/api/taskpool/tasks/${task.id}/handoff`, {
+        method: "DELETE",
+      });
+      if (response.ok) {
+        toast.success("Handoff accepted! You now own this task.");
+        onUpdate();
+      } else {
+        toast.error("Failed to accept handoff");
+      }
+    } catch (error) {
+      console.error("Error accepting handoff:", error);
+      toast.error("Failed to accept handoff");
+    }
+  };
+
+  // AI Feedback handlers
+  const handleSubmitAiFeedback = async (wasCorrect: boolean) => {
+    setSubmittingFeedback(true);
+    try {
+      const response = await fetch(`/api/taskpool/tasks/${task.id}/ai-feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          was_correct: wasCorrect,
+          corrected_action_type_id: wasCorrect ? undefined : aiCorrectedType || undefined,
+          feedback_text: aiFeedbackText || undefined,
+        }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setFeedbackSubmitted(true);
+        if (wasCorrect) {
+          toast.success("Thanks! AI classification confirmed as correct.");
+        } else if (data.updated) {
+          toast.success("Feedback submitted and task category updated.");
+          onUpdate();
+        } else {
+          toast.success("Feedback submitted for AI training.");
+        }
+        setAiFeedbackText("");
+        setAiCorrectedType("");
+      } else {
+        toast.error("Failed to submit feedback");
+      }
+    } catch (error) {
+      console.error("Error submitting AI feedback:", error);
+      toast.error("Failed to submit feedback");
+    } finally {
+      setSubmittingFeedback(false);
+    }
+  };
+
   // Load users for assignment dropdown
   const loadUsers = useCallback(async (search: string = "") => {
     setLoadingUsers(true);
@@ -348,6 +636,21 @@ export function TaskDetailModal({
       loadUsers(userSearch);
     }
   }, [assignPopoverOpen, userSearch, loadUsers]);
+
+  // Load users when step assign popover opens
+  useEffect(() => {
+    if (stepAssignPopover) {
+      loadUsers(stepUserSearch);
+    }
+  }, [stepAssignPopover, stepUserSearch, loadUsers]);
+
+  // Load users when handoff dialog opens
+  useEffect(() => {
+    if (showHandoffDialog) {
+      loadUsers(handoffUserSearch);
+      loadHandoffHistory();
+    }
+  }, [showHandoffDialog, handoffUserSearch, loadUsers, loadHandoffHistory]);
 
   const handleAssignTask = async (userId: string) => {
     setAssigning(true);
@@ -521,6 +824,20 @@ export function TaskDetailModal({
                 </Button>
               )}
 
+              {/* Handoff button */}
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setShowHandoffDialog(true);
+                  loadUsers("");
+                }}
+                className="h-8 px-2 text-xs"
+              >
+                <ArrowRightLeft className="h-3.5 w-3.5 mr-1" />
+                Handoff
+              </Button>
+
               <div className="flex-1" />
 
               {/* Primary action - Complete */}
@@ -541,13 +858,16 @@ export function TaskDetailModal({
         </DialogHeader>
 
         <Tabs defaultValue="details" className="px-4 pb-4">
-          <TabsList className="grid w-full grid-cols-4 mb-4">
+          <TabsList className="grid w-full grid-cols-5 mb-4">
             <TabsTrigger value="details">Details</TabsTrigger>
+            <TabsTrigger value="steps">
+              Steps {steps.length > 0 && `(${steps.filter(s => s.is_completed).length}/${steps.length})`}
+            </TabsTrigger>
             <TabsTrigger value="notes">
               Notes {notes.length > 0 && `(${notes.length})`}
             </TabsTrigger>
             <TabsTrigger value="activity">Activity</TabsTrigger>
-            <TabsTrigger value="ai">AI Data</TabsTrigger>
+            <TabsTrigger value="ai">AI</TabsTrigger>
           </TabsList>
 
           <div>
@@ -767,6 +1087,194 @@ export function TaskDetailModal({
               )}
             </TabsContent>
 
+            <TabsContent value="steps" className="mt-0 space-y-4">
+              {/* Progress indicator */}
+              {steps.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Progress</span>
+                    <span className="font-medium">
+                      {steps.filter(s => s.is_completed).length} of {steps.length} completed
+                    </span>
+                  </div>
+                  <div className="h-2 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-primary transition-all"
+                      style={{
+                        width: `${(steps.filter(s => s.is_completed).length / steps.length) * 100}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Add Step Form */}
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Add a new step..."
+                  value={newStepDescription}
+                  onChange={(e) => setNewStepDescription(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleAddStep();
+                    }
+                  }}
+                  disabled={addingStep}
+                />
+                <Button
+                  size="sm"
+                  onClick={handleAddStep}
+                  disabled={!newStepDescription.trim() || addingStep}
+                >
+                  {addingStep ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Plus className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+
+              {/* Steps List */}
+              {loadingSteps ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : steps.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <ListChecks className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">No steps yet</p>
+                  <p className="text-xs">Break this task into smaller steps</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {steps.map((step) => (
+                    <div
+                      key={step.id}
+                      className={cn(
+                        "flex items-start gap-3 p-3 rounded-lg border transition-colors",
+                        step.is_completed
+                          ? "bg-muted/30 border-muted"
+                          : "bg-background hover:bg-muted/20"
+                      )}
+                    >
+                      {/* Checkbox */}
+                      <button
+                        onClick={() => handleToggleStepComplete(step)}
+                        className={cn(
+                          "mt-0.5 h-5 w-5 rounded border-2 flex items-center justify-center shrink-0 transition-colors",
+                          step.is_completed
+                            ? "bg-primary border-primary text-primary-foreground"
+                            : "border-muted-foreground/30 hover:border-primary"
+                        )}
+                      >
+                        {step.is_completed && <Check className="h-3 w-3" />}
+                      </button>
+
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        <p
+                          className={cn(
+                            "text-sm",
+                            step.is_completed && "line-through text-muted-foreground"
+                          )}
+                        >
+                          {step.description}
+                        </p>
+                        <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                          {step.assigned_user && (
+                            <span className="flex items-center gap-1">
+                              <User className="h-3 w-3" />
+                              {step.assigned_user.full_name || step.assigned_user.email}
+                            </span>
+                          )}
+                          {step.completed_at && (
+                            <span>
+                              Completed {formatDistanceToNow(new Date(step.completed_at), { addSuffix: true })}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex items-center gap-1">
+                        {/* Assign dropdown */}
+                        <Popover
+                          open={stepAssignPopover === step.id}
+                          onOpenChange={(open) => {
+                            setStepAssignPopover(open ? step.id : null);
+                            if (!open) setStepUserSearch("");
+                          }}
+                        >
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0"
+                            >
+                              <UserPlus className="h-3.5 w-3.5" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-56 p-0" align="end">
+                            <Command>
+                              <CommandInput
+                                placeholder="Search users..."
+                                value={stepUserSearch}
+                                onValueChange={setStepUserSearch}
+                                className="h-8 text-sm"
+                              />
+                              <CommandList className="max-h-48">
+                                <CommandEmpty className="py-2 text-xs text-center">
+                                  {loadingUsers ? "Loading..." : "No users found"}
+                                </CommandEmpty>
+                                <CommandGroup>
+                                  {step.assigned_to && (
+                                    <CommandItem
+                                      onSelect={() => handleAssignStep(step.id, null)}
+                                      className="cursor-pointer py-1.5 text-muted-foreground"
+                                    >
+                                      <X className="h-3.5 w-3.5 mr-2" />
+                                      <span className="text-sm">Unassign</span>
+                                    </CommandItem>
+                                  )}
+                                  {users.map((user) => (
+                                    <CommandItem
+                                      key={user.id}
+                                      value={user.id}
+                                      onSelect={() => handleAssignStep(step.id, user.id)}
+                                      className="cursor-pointer py-1.5"
+                                    >
+                                      <User className="h-3.5 w-3.5 mr-2" />
+                                      <span className="text-sm truncate">
+                                        {user.full_name || user.email}
+                                      </span>
+                                      {step.assigned_to === user.id && (
+                                        <Check className="h-3.5 w-3.5 ml-auto" />
+                                      )}
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
+
+                        {/* Delete */}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                          onClick={() => handleDeleteStep(step.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+
             <TabsContent value="notes" className="mt-0 space-y-4">
               {/* Add Note */}
               <div className="space-y-2">
@@ -846,37 +1354,164 @@ export function TaskDetailModal({
               )}
             </TabsContent>
 
-            <TabsContent value="ai" className="mt-0">
-              {task.ai_extracted_data &&
-              Object.keys(task.ai_extracted_data).length > 0 ? (
-                <div className="space-y-4">
-                  <div className="bg-muted/50 rounded-lg p-4">
-                    <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
-                      <Sparkles className="h-4 w-4" />
-                      AI Extracted Data
+            <TabsContent value="ai" className="mt-0 space-y-4">
+              {/* AI Classification Info */}
+              {task.ai_confidence && (
+                <div className="bg-muted/30 rounded-lg p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-medium flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 text-primary" />
+                      AI Classification
                     </h4>
-                    <pre className="text-xs overflow-auto">
-                      {JSON.stringify(task.ai_extracted_data, null, 2)}
-                    </pre>
+                    <Badge variant="outline" className="text-xs">
+                      {Math.round(task.ai_confidence * 100)}% confidence
+                    </Badge>
                   </div>
-                  {task.ai_confidence && (
-                    <div>
-                      <h4 className="text-sm font-medium mb-1">Confidence Score</h4>
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-primary"
-                            style={{ width: `${task.ai_confidence * 100}%` }}
-                          />
-                        </div>
-                        <span className="text-sm font-medium">
-                          {Math.round(task.ai_confidence * 100)}%
-                        </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">Classified as:</span>
+                    <Badge
+                      variant="outline"
+                      style={{ borderColor: task.action_type?.color, color: task.action_type?.color }}
+                    >
+                      {task.action_type?.label}
+                    </Badge>
+                  </div>
+                  <div className="h-2 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-primary transition-all"
+                      style={{ width: `${task.ai_confidence * 100}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* AI Feedback Section */}
+              {task.ai_confidence && !feedbackSubmitted ? (
+                <div className="border rounded-lg p-4 space-y-4">
+                  <h4 className="text-sm font-medium flex items-center gap-2">
+                    <MessageSquare className="h-4 w-4" />
+                    Train the AI
+                  </h4>
+                  <p className="text-sm text-muted-foreground">
+                    Was the AI classification correct? Your feedback helps improve accuracy.
+                  </p>
+
+                  {/* Quick Actions */}
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 text-green-600 border-green-200 hover:bg-green-50"
+                      onClick={() => handleSubmitAiFeedback(true)}
+                      disabled={submittingFeedback}
+                    >
+                      <Check className="h-4 w-4 mr-1" />
+                      Correct
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 text-orange-600 border-orange-200 hover:bg-orange-50"
+                      onClick={() => setAiCorrectedType("show")}
+                      disabled={submittingFeedback}
+                    >
+                      <Edit className="h-4 w-4 mr-1" />
+                      Needs Correction
+                    </Button>
+                  </div>
+
+                  {/* Correction Form */}
+                  {aiCorrectedType === "show" && (
+                    <div className="space-y-3 pt-2 border-t">
+                      <div>
+                        <Label className="text-xs">Correct Category</Label>
+                        <Select
+                          value={aiCorrectedType !== "show" ? aiCorrectedType : ""}
+                          onValueChange={setAiCorrectedType}
+                        >
+                          <SelectTrigger className="h-9">
+                            <SelectValue placeholder="Select correct category..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {actionTypes
+                              .filter((at) => at.id !== task.action_type_id)
+                              .map((at) => (
+                                <SelectItem key={at.id} value={at.id}>
+                                  <div className="flex items-center gap-2">
+                                    <div
+                                      className="w-2 h-2 rounded-full"
+                                      style={{ backgroundColor: at.color }}
+                                    />
+                                    {at.label}
+                                  </div>
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label className="text-xs">Additional Feedback (optional)</Label>
+                        <Textarea
+                          value={aiFeedbackText}
+                          onChange={(e) => setAiFeedbackText(e.target.value)}
+                          placeholder="Why was this misclassified? What should the AI look for?"
+                          rows={2}
+                          className="text-sm"
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setAiCorrectedType("");
+                            setAiFeedbackText("");
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => handleSubmitAiFeedback(false)}
+                          disabled={submittingFeedback || !aiCorrectedType || aiCorrectedType === "show"}
+                        >
+                          {submittingFeedback ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                              Submitting...
+                            </>
+                          ) : (
+                            "Submit Correction"
+                          )}
+                        </Button>
                       </div>
                     </div>
                   )}
                 </div>
-              ) : (
+              ) : feedbackSubmitted ? (
+                <div className="border border-green-200 bg-green-50 rounded-lg p-4 text-center">
+                  <Check className="h-8 w-8 mx-auto mb-2 text-green-600" />
+                  <p className="text-sm font-medium text-green-800">Thanks for your feedback!</p>
+                  <p className="text-xs text-green-600">This helps improve AI accuracy.</p>
+                </div>
+              ) : null}
+
+              {/* AI Extracted Data */}
+              {task.ai_extracted_data &&
+              Object.keys(task.ai_extracted_data).length > 0 && (
+                <div className="bg-muted/50 rounded-lg p-4">
+                  <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+                    <FileText className="h-4 w-4" />
+                    Extracted Data
+                  </h4>
+                  <pre className="text-xs overflow-auto max-h-48 bg-background rounded p-2">
+                    {JSON.stringify(task.ai_extracted_data, null, 2)}
+                  </pre>
+                </div>
+              )}
+
+              {/* No AI Data */}
+              {!task.ai_confidence && (!task.ai_extracted_data || Object.keys(task.ai_extracted_data).length === 0) && (
                 <div className="text-center py-8 text-muted-foreground">
                   <Sparkles className="h-8 w-8 mx-auto mb-2 opacity-20" />
                   <p className="text-sm">No AI data available</p>
@@ -940,6 +1575,151 @@ export function TaskDetailModal({
                 </Button>
                 <Button onClick={handleComplete} disabled={completing}>
                   {completing ? "Completing..." : "Complete Task"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Handoff Dialog */}
+        {showHandoffDialog && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-background rounded-lg p-6 max-w-md w-full mx-4 space-y-4">
+              <div className="flex items-center gap-2">
+                <ArrowRightLeft className="h-5 w-5 text-primary" />
+                <h3 className="text-lg font-semibold">Hand Off Task</h3>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Transfer this task to another team member. They will be notified and can continue where you left off.
+              </p>
+
+              <div className="space-y-4">
+                {/* User selector */}
+                <div>
+                  <Label>Hand off to</Label>
+                  <Popover open={handoffPopoverOpen} onOpenChange={setHandoffPopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        className="w-full justify-between"
+                      >
+                        {handoffTo
+                          ? users.find((u) => u.id === handoffTo)?.full_name ||
+                            users.find((u) => u.id === handoffTo)?.email ||
+                            "Select user..."
+                          : "Select user..."}
+                        <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-full p-0" align="start">
+                      <Command>
+                        <CommandInput
+                          placeholder="Search users..."
+                          value={handoffUserSearch}
+                          onValueChange={setHandoffUserSearch}
+                        />
+                        <CommandList className="max-h-48">
+                          <CommandEmpty>
+                            {loadingUsers ? "Loading..." : "No users found"}
+                          </CommandEmpty>
+                          <CommandGroup>
+                            {users.map((user) => (
+                              <CommandItem
+                                key={user.id}
+                                value={user.id}
+                                onSelect={() => {
+                                  setHandoffTo(user.id);
+                                  setHandoffPopoverOpen(false);
+                                }}
+                                className="cursor-pointer"
+                              >
+                                <User className="h-4 w-4 mr-2" />
+                                <span>{user.full_name || user.email}</span>
+                                {handoffTo === user.id && (
+                                  <Check className="h-4 w-4 ml-auto" />
+                                )}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                {/* Handoff notes */}
+                <div>
+                  <Label>Notes for recipient (optional)</Label>
+                  <Textarea
+                    value={handoffNotes}
+                    onChange={(e) => setHandoffNotes(e.target.value)}
+                    placeholder="Add context or instructions for the next person..."
+                    rows={3}
+                  />
+                </div>
+
+                {/* Handoff History */}
+                {handoffHistory.length > 0 && (
+                  <div>
+                    <Label className="flex items-center gap-1 mb-2">
+                      <History className="h-3.5 w-3.5" />
+                      Previous Handoffs
+                    </Label>
+                    <div className="space-y-2 max-h-32 overflow-y-auto">
+                      {handoffHistory.map((h) => (
+                        <div
+                          key={h.id}
+                          className="text-xs bg-muted/50 rounded p-2"
+                        >
+                          <div className="flex items-center gap-1">
+                            <span className="font-medium">
+                              {h.from_user.full_name || h.from_user.email}
+                            </span>
+                            <ArrowRight className="h-3 w-3" />
+                            <span className="font-medium">
+                              {h.to_user.full_name || h.to_user.email}
+                            </span>
+                          </div>
+                          {h.notes && (
+                            <p className="text-muted-foreground mt-1">{h.notes}</p>
+                          )}
+                          <p className="text-muted-foreground mt-1">
+                            {formatDistanceToNow(new Date(h.created_at), { addSuffix: true })}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowHandoffDialog(false);
+                    setHandoffTo("");
+                    setHandoffNotes("");
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleHandoff}
+                  disabled={!handoffTo || handingOff}
+                >
+                  {handingOff ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                      Handing off...
+                    </>
+                  ) : (
+                    <>
+                      <ArrowRightLeft className="h-4 w-4 mr-1" />
+                      Hand Off
+                    </>
+                  )}
                 </Button>
               </div>
             </div>
