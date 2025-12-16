@@ -319,13 +319,46 @@ async function fetchRecordingUrl(accessToken, recordingId) {
   }
 
   const data = await response.json();
-  console.log("   Recording API response:", JSON.stringify(data, null, 2).substring(0, 300));
+  console.log("   Recording API response:", JSON.stringify(data, null, 2));
 
-  // If we get a token, construct the download URL
+  // Try different URL formats
   if (data.token?.token) {
-    const downloadUrl = `https://api.goto.com/recording/v1/recordings/${recordingId}/download?token=${encodeURIComponent(data.token.token)}`;
-    console.log("   Constructed download URL");
-    return downloadUrl;
+    // Format 1: Use token in query param
+    const url1 = `https://api.goto.com/recording/v1/recordings/${recordingId}/download?token=${encodeURIComponent(data.token.token)}`;
+
+    // Format 2: The token might BE the download URL (base64 decode it)
+    try {
+      const decoded = Buffer.from(data.token.token, 'base64').toString('utf8');
+      console.log("   Decoded token:", decoded);
+    } catch (e) {
+      console.log("   Token decode failed:", e.message);
+    }
+
+    // Format 3: Try fetching with the token as bearer
+    console.log("\n   Testing download with token...");
+    try {
+      const testResp = await fetch(url1, { method: 'HEAD' });
+      console.log(`   URL1 status: ${testResp.status}`);
+    } catch (e) {
+      console.log(`   URL1 error: ${e.message}`);
+    }
+
+    // Format 4: Try media endpoint
+    const url2 = `https://api.goto.com/recording/v1/recordings/${recordingId}/media`;
+    try {
+      const testResp2 = await fetch(url2, {
+        method: 'HEAD',
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      console.log(`   Media endpoint status: ${testResp2.status}`);
+      if (testResp2.ok) {
+        return url2;
+      }
+    } catch (e) {
+      console.log(`   Media endpoint error: ${e.message}`);
+    }
+
+    return url1;
   }
 
   return data.url || data.contentUrl || data.downloadUrl || null;

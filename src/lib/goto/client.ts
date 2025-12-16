@@ -550,35 +550,66 @@ export interface Recording {
 
 /**
  * Get recording content URL
- * GoTo API returns a token that must be used to construct the download URL
+ * Returns a proxy URL that can be used in browser audio elements
+ * The proxy handles OAuth authentication with GoTo
  */
 export async function getRecordingUrl(recordingId: string): Promise<string> {
+  // Verify the recording exists by fetching content info
   const response = await gotoApiRequest<{
     url?: string;
     token?: { token: string; expires: string };
     status?: string;
   }>(`/recording/v1/recordings/${recordingId}/content`);
 
-  // If we get a direct URL, use it
-  if (response.url) {
-    return response.url;
+  // If recording exists (has token or url), return our proxy URL
+  if (response.token?.token || response.url || response.status === "UPLOADED") {
+    // Return our proxy URL instead of the direct GoTo URL
+    // This allows browser audio elements to access the recording
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+    return `${appUrl}/api/recordings/${recordingId}`;
   }
 
-  // If we get a token, construct the download URL
-  if (response.token?.token) {
-    return `https://api.goto.com/recording/v1/recordings/${recordingId}/download?token=${encodeURIComponent(response.token.token)}`;
-  }
-
-  throw new Error("No recording URL or token returned from API");
+  throw new Error("No recording available");
 }
 
 /**
  * Get transcription for a recording
+ * GoTo returns transcription in a results array with utterances
  */
 export async function getTranscription(
   transcriptId: string
 ): Promise<{ text: string; segments?: Array<{ start: number; end: number; text: string }> }> {
-  return gotoApiRequest(`/recording/v1/transcriptions/${transcriptId}`);
+  const response = await gotoApiRequest<{
+    version?: string;
+    results?: Array<{
+      type: string;
+      transcript: string;
+      final: boolean;
+      startTimeMs: number;
+      endTimeMs: number;
+      channel: number;
+      languageCode: string;
+    }>;
+  }>(`/recording/v1/transcriptions/${transcriptId}`);
+
+  // Extract text from results array
+  if (response.results && Array.isArray(response.results)) {
+    // Sort by start time and combine transcripts
+    const sortedResults = response.results
+      .filter(r => r.type === "utterances" && r.transcript)
+      .sort((a, b) => a.startTimeMs - b.startTimeMs);
+
+    const text = sortedResults.map(r => r.transcript.trim()).join(" ");
+    const segments = sortedResults.map(r => ({
+      start: r.startTimeMs / 1000,
+      end: r.endTimeMs / 1000,
+      text: r.transcript.trim(),
+    }));
+
+    return { text, segments };
+  }
+
+  return { text: "" };
 }
 
 // =============================================================================
