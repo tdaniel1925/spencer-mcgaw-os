@@ -4,7 +4,7 @@ type: business
 created: 2024-12-16
 updated: 2024-12-16
 phase: 4-BUILD
-progress: 65%
+progress: 70%
 mode: standard
 ---
 
@@ -33,10 +33,15 @@ mode: standard
 - [x] Projects page with kanban + list views
 - [x] Projects API routes (CRUD, tasks, templates)
 - [x] GoTo disconnect functionality added
+- [x] Wire email/phone to CRM entities
+  - Added client_id to email_classifications table
+  - Auto-match phone calls to clients via phone number
+  - Client communications API (/api/clients/[id]/communications)
+  - Calls/Emails tab on client detail page with full history
+  - Unified communications view (calls + emails sorted by date)
 
 ## In Progress
 - [ ] GoTo recordings/transcripts - User re-authorizing with new scopes
-- [ ] Wire email/phone to CRM entities
 
 ## Remaining
 - [ ] Project detail page with tasks/timeline
@@ -83,3 +88,5 @@ autonomy: high
 - project_template_tasks
 - project_notes
 - project_documents
+- email_classifications (enhanced with client_id, matched_at, match_method)
+- client_communications_unified (view: unified calls + emails per client)
