@@ -78,7 +78,6 @@ import {
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow } from "date-fns";
 import { useCalls } from "@/lib/calls";
-import { WaveformPlayer } from "@/components/ui/waveform-player";
 import {
   CallRecord,
   CallCategory,
@@ -166,7 +165,6 @@ function ExpandableCallCard({
   isExpanded: boolean;
   onToggleExpand: () => void;
 }) {
-  const [isPlaying, setIsPlaying] = useState(false);
   const [note, setNote] = useState("");
   const [showTranscript, setShowTranscript] = useState(true);
 
@@ -381,19 +379,6 @@ function ExpandableCallCard({
         {/* Expanded Content */}
         {isExpanded && (
           <div className="border-t px-4 py-4 space-y-4">
-            {/* Recording Player */}
-            {call.recordingUrl ? (
-              <WaveformPlayer
-                src={call.recordingUrl}
-                onPlayStateChange={setIsPlaying}
-              />
-            ) : (
-              <div className="bg-muted/30 rounded-lg p-4 flex items-center gap-3 text-muted-foreground">
-                <Phone className="h-5 w-5" />
-                <span className="text-sm">No recording available</span>
-              </div>
-            )}
-
             {/* Key Points */}
             {call.aiAnalysis?.keyPoints && call.aiAnalysis.keyPoints.length > 0 && (
               <div>

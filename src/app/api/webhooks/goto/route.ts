@@ -207,6 +207,26 @@ export async function POST(request: NextRequest) {
     if (source === "call-events-report" && eventType === "REPORT_SUMMARY") {
       // This is a call report notification - fetch the full report
       callRecord = await processCallReport(content, webhookLogId);
+    } else if (source === "recording" && (eventType === "RECORDING_READY" || eventType === "TRANSCRIPTION_READY")) {
+      // Recording or transcription is now available - update the associated call
+      await processRecordingNotification(eventType, content, webhookLogId);
+      // Return early - this is an update, not a new call
+      if (webhookLogId) {
+        await db
+          .update(webhookLogs)
+          .set({
+            status: "stored",
+            processingTimeMs: Date.now() - startTime,
+          })
+          .where(eq(webhookLogs.id, webhookLogId));
+      }
+      return NextResponse.json({
+        success: true,
+        message: `GoTo ${eventType} notification processed`,
+        eventId,
+        eventType,
+        processingTimeMs: Date.now() - startTime,
+      });
     } else if (source === "call-events") {
       // This is a real-time call event
       callRecord = await processCallEvent(eventType || "UNKNOWN", content, notificationData, webhookLogId);
@@ -693,6 +713,122 @@ async function processUnknownEvent(
     summary: parsedData.analysis?.summary || null,
     recordingUrl: parsedData.call?.recordingUrl || null,
   };
+}
+
+/**
+ * Process recording or transcription ready notifications
+ * These are sent by GoTo when a recording/transcription becomes available for download
+ */
+async function processRecordingNotification(
+  eventType: string,
+  content: Record<string, unknown>,
+  webhookLogId: string | null
+): Promise<void> {
+  const recordingId = content.recordingId as string | undefined;
+  const transcriptId = content.transcriptId as string | undefined;
+  const conversationSpaceId = content.conversationSpaceId as string | undefined;
+  const callId = content.callId as string | undefined;
+
+  console.log("[GoTo Webhook] Processing recording notification:", {
+    eventType,
+    recordingId,
+    transcriptId,
+    conversationSpaceId,
+    callId,
+  });
+
+  if (!recordingId && !transcriptId) {
+    console.log("[GoTo Webhook] No recording or transcript ID in notification");
+    return;
+  }
+
+  // Try to find the associated call record
+  let callToUpdate: { id: string } | null = null;
+
+  // First try by conversationSpaceId
+  if (conversationSpaceId) {
+    const [found] = await db
+      .select({ id: calls.id })
+      .from(calls)
+      .where(eq(calls.vapiCallId, `goto-${conversationSpaceId}`))
+      .limit(1);
+    callToUpdate = found || null;
+  }
+
+  // If not found by conversationSpaceId, try finding by recording ID in metadata
+  if (!callToUpdate && recordingId) {
+    const results = await db
+      .select({ id: calls.id })
+      .from(calls)
+      .where(sql`${calls.metadata}::jsonb->'recordingIds' ? ${recordingId}`)
+      .limit(1);
+    callToUpdate = results[0] || null;
+  }
+
+  if (!callToUpdate) {
+    console.log("[GoTo Webhook] Could not find call record to update for recording notification");
+    return;
+  }
+
+  console.log("[GoTo Webhook] Found call to update:", callToUpdate.id);
+
+  if (eventType === "RECORDING_READY" && recordingId) {
+    // Get the recording URL and update the call
+    try {
+      const recordingUrl = await getRecordingUrl(recordingId);
+      console.log("[GoTo Webhook] Got recording URL:", recordingUrl);
+
+      await db
+        .update(calls)
+        .set({
+          recordingUrl,
+          metadata: sql`${calls.metadata}::jsonb || jsonb_build_object('recordingReady', true, 'recordingReadyAt', ${new Date().toISOString()})`,
+        })
+        .where(eq(calls.id, callToUpdate.id));
+
+      console.log("[GoTo Webhook] Updated call with recording URL");
+    } catch (error) {
+      console.error("[GoTo Webhook] Failed to get recording URL:", error);
+    }
+  }
+
+  if ((eventType === "TRANSCRIPTION_READY" || eventType === "RECORDING_READY") && (transcriptId || recordingId)) {
+    // Try to get transcription
+    const idToUse = transcriptId || recordingId;
+    if (idToUse) {
+      try {
+        console.log("[GoTo Webhook] Fetching transcription for:", idToUse);
+        const transcriptData = await getTranscription(idToUse);
+
+        if (transcriptData.text) {
+          await db
+            .update(calls)
+            .set({
+              transcription: transcriptData.text,
+              metadata: sql`${calls.metadata}::jsonb || jsonb_build_object('transcriptionReady', true, 'transcriptionReadyAt', ${new Date().toISOString()})`,
+            })
+            .where(eq(calls.id, callToUpdate.id));
+
+          console.log("[GoTo Webhook] Updated call with transcription");
+        }
+      } catch (error) {
+        console.error("[GoTo Webhook] Failed to get transcription:", error);
+      }
+    }
+  }
+
+  // Log activity
+  await db.insert(activityLogs).values({
+    type: "webhook_received",
+    description: `GoTo ${eventType} notification processed for call ${callToUpdate.id}`,
+    metadata: {
+      callId: callToUpdate.id,
+      recordingId,
+      transcriptId,
+      eventType,
+      webhookLogId,
+    },
+  });
 }
 
 // GET endpoint for health check and verification

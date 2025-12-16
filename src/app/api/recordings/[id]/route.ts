@@ -18,12 +18,30 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: "Recording ID required" }, { status: 400 });
   }
 
+  // Check for debug mode
+  const debug = request.nextUrl.searchParams.get("debug") === "true";
+
   console.log("[Recording Proxy] Fetching recording:", recordingId);
 
   try {
     // Get OAuth access token
     const accessToken = await getAccessToken();
     console.log("[Recording Proxy] Got access token");
+
+    // First, try to get recording info to check if it exists and is ready
+    const infoResponse = await fetch(
+      `https://api.goto.com/recording/v1/recordings/${recordingId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }
+    );
+
+    if (debug) {
+      const infoData = infoResponse.ok ? await infoResponse.clone().json() : await infoResponse.text();
+      console.log("[Recording Proxy] Recording info response:", infoResponse.status, infoData);
+    }
 
     // Fetch the recording content info to get the token
     const contentResponse = await fetch(
@@ -38,8 +56,22 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     if (!contentResponse.ok) {
       const error = await contentResponse.text();
       console.error("[Recording Proxy] Failed to get content token:", contentResponse.status, error);
+
+      // If 404, the recording might not exist or might be from a different service
+      if (contentResponse.status === 404) {
+        return NextResponse.json(
+          {
+            error: "Recording not found",
+            details: "This recording may still be processing, may have expired, or the ID format may be incorrect.",
+            recordingId,
+            rawError: error,
+          },
+          { status: 404 }
+        );
+      }
+
       return NextResponse.json(
-        { error: `Failed to get recording access: ${contentResponse.status}` },
+        { error: `Failed to get recording access: ${contentResponse.status}`, details: error },
         { status: contentResponse.status }
       );
     }
