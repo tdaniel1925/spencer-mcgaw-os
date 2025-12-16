@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  isAuthenticated,
-  getAccountKey,
+  isAuthenticatedAsync,
   setupGoToIntegration,
   getAuthorizationUrl,
   getRecentCallReports,
+  getIntegrationStatus,
 } from "@/lib/goto";
 
 /**
@@ -14,8 +14,9 @@ import {
  */
 export async function GET() {
   try {
-    const authenticated = isAuthenticated();
-    const accountKey = getAccountKey();
+    // Get status from database
+    const status = await getIntegrationStatus();
+    const authenticated = await isAuthenticatedAsync();
 
     // Get recent call stats if authenticated
     let recentCalls = 0;
@@ -31,10 +32,12 @@ export async function GET() {
 
     return NextResponse.json({
       status: authenticated ? "connected" : "disconnected",
-      accountKey: authenticated ? accountKey : null,
+      accountKey: status.accountKey,
+      channelId: status.channelId,
+      webhookUrl: status.webhookUrl || `${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/goto`,
+      errorMessage: status.errorMessage,
       recentCalls,
-      webhookUrl: `${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/goto`,
-      authUrl: !authenticated ? getAuthorizationUrl() : null,
+      authUrl: getAuthorizationUrl(),
       features: {
         callEvents: true,
         callReports: true,
@@ -64,9 +67,17 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     const action = body.action as string | undefined;
 
+    // Action: get_auth_url - Return authorization URL for OAuth flow
+    if (action === "get_auth_url") {
+      return NextResponse.json({
+        authUrl: getAuthorizationUrl(),
+      });
+    }
+
     if (action === "setup" || action === "reconnect") {
-      // Check if authenticated
-      if (!isAuthenticated()) {
+      // Check if authenticated (async version that checks database)
+      const authenticated = await isAuthenticatedAsync();
+      if (!authenticated) {
         return NextResponse.json(
           {
             error: "Not authenticated",
@@ -93,8 +104,23 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Action: test - Test connection by checking status
+    if (action === "test") {
+      const authenticated = await isAuthenticatedAsync();
+      const status = await getIntegrationStatus();
+
+      return NextResponse.json({
+        success: authenticated,
+        status: authenticated ? "connected" : "disconnected",
+        accountKey: status.accountKey,
+        channelId: status.channelId,
+        webhookUrl: status.webhookUrl,
+        errorMessage: status.errorMessage,
+      });
+    }
+
     return NextResponse.json(
-      { error: "Invalid action. Use 'setup' or 'reconnect'" },
+      { error: "Invalid action. Use 'setup', 'reconnect', 'test', or 'get_auth_url'" },
       { status: 400 }
     );
   } catch (error) {

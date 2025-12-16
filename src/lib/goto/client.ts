@@ -7,10 +7,13 @@
  * API Documentation: https://developer.goto.com/GoToConnect
  */
 
+import { db } from "@/db";
+import { sql } from "drizzle-orm";
+
 const GOTO_API_BASE = "https://api.goto.com";
 const GOTO_AUTH_BASE = "https://authentication.logmeininc.com";
 
-// OAuth token storage (in production, store in database)
+// OAuth token storage interface
 interface TokenData {
   accessToken: string;
   refreshToken: string;
@@ -18,6 +21,7 @@ interface TokenData {
   accountKey: string;
 }
 
+// In-memory cache for quick access (backed by database)
 let tokenCache: TokenData | null = null;
 
 /**
@@ -72,6 +76,70 @@ export function getAuthorizationUrl(state?: string): string {
 }
 
 /**
+ * Save tokens to database
+ */
+async function saveTokensToDatabase(tokens: TokenData, channelId?: string, webhookUrl?: string): Promise<void> {
+  try {
+    await db.execute(sql`
+      UPDATE integrations
+      SET
+        access_token = ${tokens.accessToken},
+        refresh_token = ${tokens.refreshToken},
+        token_expires_at = ${new Date(tokens.expiresAt).toISOString()}::timestamptz,
+        account_key = ${tokens.accountKey},
+        channel_id = COALESCE(${channelId || null}, channel_id),
+        webhook_url = COALESCE(${webhookUrl || null}, webhook_url),
+        is_connected = true,
+        error_message = NULL,
+        updated_at = NOW()
+      WHERE provider = 'goto'
+    `);
+    console.log("[GoTo Client] Tokens saved to database");
+  } catch (error) {
+    console.error("[GoTo Client] Failed to save tokens to database:", error);
+    throw error;
+  }
+}
+
+/**
+ * Load tokens from database
+ */
+async function loadTokensFromDatabase(): Promise<TokenData | null> {
+  try {
+    const result = await db.execute<{
+      access_token: string | null;
+      refresh_token: string | null;
+      token_expires_at: string | null;
+      account_key: string | null;
+    }>(sql`
+      SELECT
+        access_token,
+        refresh_token,
+        token_expires_at,
+        account_key
+      FROM integrations
+      WHERE provider = 'goto' AND is_connected = true
+    `);
+
+    const row = result[0];
+
+    if (!row || !row.access_token || !row.refresh_token) {
+      return null;
+    }
+
+    return {
+      accessToken: row.access_token,
+      refreshToken: row.refresh_token,
+      expiresAt: row.token_expires_at ? new Date(row.token_expires_at).getTime() : 0,
+      accountKey: row.account_key || "",
+    };
+  } catch (error) {
+    console.error("[GoTo Client] Failed to load tokens from database:", error);
+    return null;
+  }
+}
+
+/**
  * Exchange authorization code for tokens
  */
 export async function exchangeCodeForTokens(code: string): Promise<TokenData> {
@@ -104,6 +172,9 @@ export async function exchangeCodeForTokens(code: string): Promise<TokenData> {
     accountKey: data.account_key || config.accountKey,
   };
 
+  // Save to database for persistence
+  await saveTokensToDatabase(tokenCache);
+
   return tokenCache;
 }
 
@@ -111,6 +182,11 @@ export async function exchangeCodeForTokens(code: string): Promise<TokenData> {
  * Refresh access token
  */
 export async function refreshAccessToken(): Promise<TokenData> {
+  // Try to load from database if not in cache
+  if (!tokenCache) {
+    tokenCache = await loadTokensFromDatabase();
+  }
+
   if (!tokenCache?.refreshToken) {
     throw new Error("No refresh token available. Re-authorization required.");
   }
@@ -132,6 +208,12 @@ export async function refreshAccessToken(): Promise<TokenData> {
   if (!response.ok) {
     const error = await response.text();
     tokenCache = null;
+    // Mark integration as disconnected in database
+    await db.execute(sql`
+      UPDATE integrations
+      SET is_connected = false, error_message = ${`Token refresh failed: ${error}`}
+      WHERE provider = 'goto'
+    `);
     throw new Error(`Failed to refresh token: ${error}`);
   }
 
@@ -144,6 +226,9 @@ export async function refreshAccessToken(): Promise<TokenData> {
     accountKey: tokenCache.accountKey,
   };
 
+  // Save refreshed tokens to database
+  await saveTokensToDatabase(tokenCache);
+
   return tokenCache;
 }
 
@@ -151,12 +236,19 @@ export async function refreshAccessToken(): Promise<TokenData> {
  * Get valid access token (refresh if needed)
  */
 export async function getAccessToken(): Promise<string> {
+  // Try to load from database if not in cache
+  if (!tokenCache) {
+    console.log("[GoTo Client] Loading tokens from database...");
+    tokenCache = await loadTokensFromDatabase();
+  }
+
   if (!tokenCache) {
     throw new Error("Not authenticated with GoTo Connect. Authorization required.");
   }
 
   // Refresh if token expires in less than 5 minutes
   if (tokenCache.expiresAt - Date.now() < 5 * 60 * 1000) {
+    console.log("[GoTo Client] Token expiring soon, refreshing...");
     await refreshAccessToken();
   }
 
@@ -171,7 +263,32 @@ export function setTokens(tokens: TokenData): void {
 }
 
 /**
- * Check if authenticated
+ * Check if authenticated (async version that checks database)
+ */
+export async function isAuthenticatedAsync(): Promise<boolean> {
+  if (tokenCache && tokenCache.expiresAt > Date.now()) {
+    return true;
+  }
+  // Try to load from database
+  const dbTokens = await loadTokensFromDatabase();
+  if (dbTokens && dbTokens.expiresAt > Date.now()) {
+    tokenCache = dbTokens;
+    return true;
+  }
+  // Try to refresh if we have a refresh token
+  if (dbTokens?.refreshToken) {
+    try {
+      await refreshAccessToken();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+/**
+ * Check if authenticated (sync version, uses cache only)
  */
 export function isAuthenticated(): boolean {
   return tokenCache !== null && tokenCache.expiresAt > Date.now();
@@ -179,6 +296,21 @@ export function isAuthenticated(): boolean {
 
 /**
  * Get account key
+ */
+export async function getAccountKeyAsync(): Promise<string> {
+  if (tokenCache?.accountKey) {
+    return tokenCache.accountKey;
+  }
+  const dbTokens = await loadTokensFromDatabase();
+  if (dbTokens?.accountKey) {
+    tokenCache = dbTokens;
+    return dbTokens.accountKey;
+  }
+  return process.env.GOTO_ACCOUNT_KEY || "";
+}
+
+/**
+ * Get account key (sync version)
  */
 export function getAccountKey(): string {
   return tokenCache?.accountKey || process.env.GOTO_ACCOUNT_KEY || "";
@@ -425,6 +557,11 @@ export async function setupGoToIntegration(webhookUrl: string): Promise<SetupRes
   console.log("[GoTo Setup] Subscribing to call reports...");
   await subscribeToCallReports(channel.channelId);
 
+  // Update database with channel info
+  if (tokenCache) {
+    await saveTokensToDatabase(tokenCache, channel.channelId, webhookUrl);
+  }
+
   console.log("[GoTo Setup] Setup complete!");
 
   return {
@@ -432,4 +569,76 @@ export async function setupGoToIntegration(webhookUrl: string): Promise<SetupRes
     webhookUrl,
     subscriptions: ["call-events", "call-reports"],
   };
+}
+
+/**
+ * Get integration status from database
+ */
+export async function getIntegrationStatus(): Promise<{
+  isConnected: boolean;
+  accountKey: string | null;
+  channelId: string | null;
+  webhookUrl: string | null;
+  lastSyncedAt: string | null;
+  errorMessage: string | null;
+}> {
+  try {
+    const result = await db.execute<{
+      is_connected: boolean;
+      account_key: string | null;
+      channel_id: string | null;
+      webhook_url: string | null;
+      last_synced_at: string | null;
+      error_message: string | null;
+      token_expires_at: string | null;
+    }>(sql`
+      SELECT
+        is_connected,
+        account_key,
+        channel_id,
+        webhook_url,
+        last_synced_at,
+        error_message,
+        token_expires_at
+      FROM integrations
+      WHERE provider = 'goto'
+    `);
+
+    const row = result[0];
+
+    if (!row) {
+      return {
+        isConnected: false,
+        accountKey: null,
+        channelId: null,
+        webhookUrl: null,
+        lastSyncedAt: null,
+        errorMessage: null,
+      };
+    }
+
+    // Check if token is expired
+    const tokenExpired = row.token_expires_at
+      ? new Date(row.token_expires_at).getTime() < Date.now()
+      : true;
+
+    return {
+      isConnected: row.is_connected && !tokenExpired,
+      accountKey: row.account_key,
+      channelId: row.channel_id,
+      webhookUrl: row.webhook_url,
+      lastSyncedAt: row.last_synced_at,
+      errorMessage: tokenExpired ? "Token expired, please reconnect" : row.error_message,
+    };
+  } catch (error) {
+    console.error("[GoTo Client] Failed to get integration status:", error);
+    return {
+      isConnected: false,
+      accountKey: null,
+      channelId: null,
+      webhookUrl: null,
+      lastSyncedAt: null,
+      errorMessage: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
 }

@@ -92,6 +92,11 @@ import {
   GripVertical,
   ThumbsUp,
   ThumbsDown,
+  Wifi,
+  WifiOff,
+  RefreshCw,
+  Loader2,
+  ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow } from "date-fns";
@@ -767,9 +772,72 @@ export default function CallsPage() {
   const { confirmDelete, state: deleteState, setOpen: setDeleteOpen } = useDeleteConfirmation();
   const { confirmBulkAction, state: bulkState, setOpen: setBulkOpen } = useBulkActionConfirmation();
 
+  // GoTo integration state
+  const [gotoStatus, setGotoStatus] = useState<{
+    status: "connected" | "disconnected" | "loading" | "error";
+    accountKey?: string | null;
+    errorMessage?: string | null;
+    authUrl?: string;
+  }>({ status: "loading" });
+  const [isTestingConnection, setIsTestingConnection] = useState(false);
+
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Fetch GoTo integration status on mount
+  useEffect(() => {
+    async function fetchGotoStatus() {
+      try {
+        const res = await fetch("/api/integrations/goto");
+        const data = await res.json();
+        setGotoStatus({
+          status: data.status === "connected" ? "connected" : "disconnected",
+          accountKey: data.accountKey,
+          errorMessage: data.errorMessage,
+          authUrl: data.authUrl,
+        });
+      } catch (error) {
+        setGotoStatus({
+          status: "error",
+          errorMessage: error instanceof Error ? error.message : "Failed to fetch status",
+        });
+      }
+    }
+    fetchGotoStatus();
+  }, []);
+
+  // Test GoTo connection
+  const testGotoConnection = useCallback(async () => {
+    setIsTestingConnection(true);
+    try {
+      const res = await fetch("/api/integrations/goto", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "test" }),
+      });
+      const data = await res.json();
+      setGotoStatus({
+        status: data.success ? "connected" : "disconnected",
+        accountKey: data.accountKey,
+        errorMessage: data.errorMessage,
+      });
+    } catch (error) {
+      setGotoStatus({
+        status: "error",
+        errorMessage: error instanceof Error ? error.message : "Connection test failed",
+      });
+    } finally {
+      setIsTestingConnection(false);
+    }
+  }, []);
+
+  // Reconnect GoTo (redirect to OAuth)
+  const reconnectGoto = useCallback(() => {
+    if (gotoStatus.authUrl) {
+      window.location.href = gotoStatus.authUrl;
+    }
+  }, [gotoStatus.authUrl]);
 
   // Reset visible count when folder changes
   useEffect(() => {
@@ -1052,6 +1120,90 @@ export default function CallsPage() {
           </div>
 
           <div className="flex-1" />
+
+          {/* GoTo Connection Status */}
+          <div className="flex items-center gap-2">
+            {gotoStatus.status === "loading" ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Checking...</span>
+              </div>
+            ) : gotoStatus.status === "connected" ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="flex items-center gap-1.5 text-sm text-green-600 dark:text-green-400">
+                    <Wifi className="h-4 w-4" />
+                    <span>GoTo Connected</span>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>GoTo Connect is active and receiving calls</p>
+                  {gotoStatus.accountKey && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Account: {gotoStatus.accountKey}
+                    </p>
+                  )}
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="flex items-center gap-1.5 text-sm text-amber-600 dark:text-amber-400">
+                    <WifiOff className="h-4 w-4" />
+                    <span>GoTo Disconnected</span>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>GoTo Connect is not connected</p>
+                  {gotoStatus.errorMessage && (
+                    <p className="text-xs text-destructive mt-1">
+                      {gotoStatus.errorMessage}
+                    </p>
+                  )}
+                </TooltipContent>
+              </Tooltip>
+            )}
+
+            {/* Test Connection Button */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8"
+                  onClick={testGotoConnection}
+                  disabled={isTestingConnection}
+                >
+                  {isTestingConnection ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Test Connection</TooltipContent>
+            </Tooltip>
+
+            {/* Reconnect Button (only show if disconnected) */}
+            {gotoStatus.status !== "connected" && gotoStatus.authUrl && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8"
+                    onClick={reconnectGoto}
+                  >
+                    <ExternalLink className="h-4 w-4 mr-1.5" />
+                    Reconnect GoTo
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Connect to GoTo Connect</TooltipContent>
+              </Tooltip>
+            )}
+          </div>
+
+          <div className="h-4 border-l mx-2" />
 
           {/* Total count */}
           <span className="text-sm text-muted-foreground">

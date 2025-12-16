@@ -233,7 +233,7 @@ export async function POST(request: NextRequest) {
 
 /**
  * Process a call report summary notification
- * Fetches the full report and stores the call record
+ * The REPORT_SUMMARY webhook contains all call data including recordings
  */
 async function processCallReport(
   content: Record<string, unknown>,
@@ -254,95 +254,117 @@ async function processCallReport(
     throw new Error("Missing conversationSpaceId in call report notification");
   }
 
-  console.log("[GoTo Webhook] Fetching call report:", conversationSpaceId);
+  console.log("[GoTo Webhook] Processing call report:", conversationSpaceId);
 
-  // Fetch the full call report
-  let report;
-  try {
-    report = await getCallReport(conversationSpaceId);
-  } catch (error) {
-    console.error("[GoTo Webhook] Failed to fetch call report:", error);
-    // Store what we have
-    report = {
-      conversationSpaceId,
-      callCreated: new Date().toISOString(),
-      callEnded: new Date().toISOString(),
-      direction: "INBOUND" as const,
-      accountKey: "",
-      participants: [],
-    };
-  }
+  // Extract data directly from webhook content (more complete than API fetch)
+  const callCreated = content.callCreated as string || new Date().toISOString();
+  const callEnded = content.callEnded as string || new Date().toISOString();
+  const callAnswered = content.callAnswered as string | undefined;
+  const accountKey = content.accountKey as string || "";
 
   // Calculate duration from timestamps
-  const startTime = new Date(report.callCreated);
-  const endTime = new Date(report.callEnded);
+  const startTime = new Date(callAnswered || callCreated);
+  const endTime = new Date(callEnded);
   const duration = Math.round((endTime.getTime() - startTime.getTime()) / 1000);
 
   // Determine direction
+  const rawDirection = content.direction as string | undefined;
   const direction: "inbound" | "outbound" =
-    report.direction === "OUTBOUND" ? "outbound" : "inbound";
+    rawDirection === "OUTBOUND" ? "outbound" : "inbound";
 
-  // Try to get recording and transcription if available
+  // Extract caller info from the webhook content
+  const caller = content.caller as Record<string, unknown> | undefined;
+  const participants = content.participants as Array<Record<string, unknown>> || [];
+
+  const callerName = (caller?.name as string) || null;
+  const callerPhone = (caller?.number as string) || null;
+
+  // Extract recording IDs from caller and participants
+  const recordingIds: string[] = [];
+  if (caller?.recordingId) {
+    recordingIds.push(caller.recordingId as string);
+  }
+  for (const participant of participants) {
+    if (participant.recordingId) {
+      recordingIds.push(participant.recordingId as string);
+    }
+  }
+
+  console.log("[GoTo Webhook] Found recording IDs:", recordingIds);
+
+  // Try to get recording URLs
   let recordingUrl: string | null = null;
   let transcript: string | null = null;
 
-  // Note: GoTo Connect recording/transcription IDs come from separate notifications
-  // We'll need to correlate them later or fetch from the recordings API
-  const recordingId = content.recordingId as string | undefined;
-  const transcriptId = content.transcriptId as string | undefined;
-
-  if (recordingId) {
+  for (const recordingId of recordingIds) {
+    if (recordingUrl) break; // Only need one recording URL
     try {
+      console.log("[GoTo Webhook] Fetching recording URL for:", recordingId);
       recordingUrl = await getRecordingUrl(recordingId);
+      console.log("[GoTo Webhook] Got recording URL:", recordingUrl);
     } catch (error) {
-      console.error("[GoTo Webhook] Failed to get recording URL:", error);
+      console.error("[GoTo Webhook] Failed to get recording URL:", recordingId, error);
+    }
+
+    // Try to get transcription for this recording
+    if (!transcript) {
+      try {
+        console.log("[GoTo Webhook] Fetching transcription for:", recordingId);
+        const transcriptData = await getTranscription(recordingId);
+        transcript = transcriptData.text;
+        console.log("[GoTo Webhook] Got transcript:", transcript?.substring(0, 100));
+      } catch (error) {
+        console.error("[GoTo Webhook] Failed to get transcription:", recordingId, error);
+      }
     }
   }
 
-  if (transcriptId) {
-    try {
-      const transcriptData = await getTranscription(transcriptId);
-      transcript = transcriptData.text;
-    } catch (error) {
-      console.error("[GoTo Webhook] Failed to get transcription:", error);
-    }
-  }
+  // Extract GoTo's built-in AI analysis if available
+  const gotoAiAnalysis = content.aiAnalysis as Record<string, unknown> | undefined;
+  const gotoSummary = gotoAiAnalysis?.summary as string | undefined;
+  const gotoSentiment = gotoAiAnalysis?.sentiment as string | undefined;
+  const gotoTopics = gotoAiAnalysis?.topics as string[] | undefined;
 
-  // Try AI parsing if available
+  // Use our AI parsing for additional analysis if needed
   let parsedData: ParsedWebhookData | null = null;
-  if (isAIParsingAvailable()) {
+  if (isAIParsingAvailable() && (transcript || !gotoSummary)) {
     parsedData = await parseWebhookWithAI({
       source: "goto_connect",
       type: "call_report",
-      report,
+      content,
       transcript,
+      caller,
+      participants,
     });
   }
 
-  // Extract caller info from participants
-  const callerParticipant = report.participants.find((p) => p.originator);
-  const callerPhone = (callerParticipant?.id as string) || null;
+  // Prefer GoTo's analysis, fallback to our AI, then generic
+  const summary = gotoSummary || parsedData?.analysis?.summary || `GoTo Connect call - ${duration}s`;
+  const sentiment = gotoSentiment?.toLowerCase() !== "unavailable" ? gotoSentiment?.toLowerCase() : (parsedData?.analysis?.sentiment || null);
 
   // Store call record
   const [insertedCall] = await db
     .insert(calls)
     .values({
       vapiCallId: `goto-${conversationSpaceId}`,
-      callerPhone: parsedData?.contact?.phone || callerPhone,
-      callerName: parsedData?.contact?.name || null,
+      callerPhone: callerPhone || parsedData?.contact?.phone || null,
+      callerName: callerName || parsedData?.contact?.name || null,
       status: "completed",
       direction,
       duration,
       transcription: transcript,
-      summary: parsedData?.analysis?.summary || `GoTo Connect call - ${duration}s`,
-      intent: parsedData?.analysis?.category || null,
-      sentiment: parsedData?.analysis?.sentiment || null,
+      summary,
+      intent: parsedData?.analysis?.category || (gotoTopics?.length ? gotoTopics[0] : null),
+      sentiment,
       recordingUrl,
       metadata: {
         sourceProvider: "goto",
         gotoConversationSpaceId: conversationSpaceId,
-        gotoAccountKey: report.accountKey,
-        participants: report.participants,
+        gotoAccountKey: accountKey,
+        caller,
+        participants,
+        recordingIds,
+        gotoAiAnalysis,
         analysis: parsedData?.analysis || null,
         parsedAt: new Date().toISOString(),
         confidence: parsedData?.confidence || null,
@@ -357,7 +379,7 @@ async function processCallReport(
   // Log activity
   await db.insert(activityLogs).values({
     type: direction === "inbound" ? "call_received" : "call_made",
-    description: `${direction === "inbound" ? "Inbound" : "Outbound"} GoTo Connect call${callerPhone ? ` from ${callerPhone}` : ""} - ${duration}s`,
+    description: `${direction === "inbound" ? "Inbound" : "Outbound"} GoTo Connect call${callerName ? ` with ${callerName}` : ""}${callerPhone ? ` (${callerPhone})` : ""} - ${duration}s`,
     metadata: {
       callId: recordId,
       gotoConversationSpaceId: conversationSpaceId,
@@ -369,12 +391,12 @@ async function processCallReport(
 
   return {
     id: recordId || "",
-    callerPhone: parsedData?.contact?.phone || callerPhone,
-    callerName: parsedData?.contact?.name || null,
+    callerPhone,
+    callerName,
     direction,
     duration,
     transcript,
-    summary: parsedData?.analysis?.summary || null,
+    summary,
     recordingUrl,
   };
 }
