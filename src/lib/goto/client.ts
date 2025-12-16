@@ -58,10 +58,18 @@ function getConfig(): GoToConfig {
 export function getAuthorizationUrl(state?: string): string {
   const config = getConfig();
   const scopes = [
+    // Call events
     "call-events.v1.notifications.manage",
     "call-events.v1.events.read",
+    // Call history/reports
     "cr.v1.read",
+    "call-history.v1.notifications.manage",
+    // Recordings & Transcripts
     "recording.v1.read",
+    "recording.v1.notifications.manage",
+    // Voicemail access
+    "voicemail.v1.voicemails.read",
+    "voicemail.v1.notifications.manage",
   ].join(" ");
 
   const params = new URLSearchParams({
