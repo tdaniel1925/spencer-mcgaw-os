@@ -817,16 +817,19 @@ export default function CallsPage() {
         body: JSON.stringify({ action: "test" }),
       });
       const data = await res.json();
-      setGotoStatus({
+      setGotoStatus((prev) => ({
+        ...prev,
         status: data.success ? "connected" : "disconnected",
         accountKey: data.accountKey,
         errorMessage: data.errorMessage,
-      });
+        authUrl: data.authUrl || prev.authUrl,
+      }));
     } catch (error) {
-      setGotoStatus({
+      setGotoStatus((prev) => ({
+        ...prev,
         status: "error",
         errorMessage: error instanceof Error ? error.message : "Connection test failed",
-      });
+      }));
     } finally {
       setIsTestingConnection(false);
     }

@@ -116,6 +116,7 @@ export async function POST(request: NextRequest) {
         channelId: status.channelId,
         webhookUrl: status.webhookUrl,
         errorMessage: status.errorMessage,
+        authUrl: getAuthorizationUrl(),
       });
     }
 
