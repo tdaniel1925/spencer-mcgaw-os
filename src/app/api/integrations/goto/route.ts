@@ -5,6 +5,7 @@ import {
   getAuthorizationUrl,
   getRecentCallReports,
   getIntegrationStatus,
+  disconnectGoTo,
 } from "@/lib/goto";
 
 /**
@@ -120,8 +121,18 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Action: disconnect - Clear tokens and mark as disconnected
+    if (action === "disconnect") {
+      await disconnectGoTo();
+      return NextResponse.json({
+        success: true,
+        message: "GoTo Connect disconnected successfully",
+        authUrl: getAuthorizationUrl(),
+      });
+    }
+
     return NextResponse.json(
-      { error: "Invalid action. Use 'setup', 'reconnect', 'test', or 'get_auth_url'" },
+      { error: "Invalid action. Use 'setup', 'reconnect', 'test', 'disconnect', or 'get_auth_url'" },
       { status: 400 }
     );
   } catch (error) {

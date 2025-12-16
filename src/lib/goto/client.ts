@@ -679,3 +679,28 @@ export async function getIntegrationStatus(): Promise<{
     };
   }
 }
+
+/**
+ * Disconnect GoTo integration - clears tokens and marks as disconnected
+ */
+export async function disconnectGoTo(): Promise<void> {
+  console.log("[GoTo Client] Disconnecting integration...");
+
+  // Clear in-memory token cache
+  tokenCache = null;
+
+  // Update database to clear tokens and mark disconnected
+  await db.execute(sql`
+    UPDATE integrations
+    SET
+      is_connected = false,
+      access_token = NULL,
+      refresh_token = NULL,
+      token_expires_at = NULL,
+      channel_id = NULL,
+      error_message = 'Disconnected by user'
+    WHERE provider = 'goto'
+  `);
+
+  console.log("[GoTo Client] Integration disconnected");
+}
