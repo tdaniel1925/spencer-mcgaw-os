@@ -16,19 +16,18 @@ export async function GET(request: NextRequest) {
   // Handle OAuth errors
   if (error) {
     console.error("[GoTo Callback] OAuth error:", error, errorDescription);
-    const redirectUrl = new URL("/settings/integrations", request.url);
-    redirectUrl.searchParams.set("error", error);
-    if (errorDescription) {
-      redirectUrl.searchParams.set("error_description", errorDescription);
-    }
+    const redirectUrl = new URL("/calls", request.url);
+    redirectUrl.searchParams.set("goto_error", "true");
+    redirectUrl.searchParams.set("error_message", errorDescription || error);
     return NextResponse.redirect(redirectUrl);
   }
 
   // Verify authorization code
   if (!code) {
     console.error("[GoTo Callback] Missing authorization code");
-    const redirectUrl = new URL("/settings/integrations", request.url);
-    redirectUrl.searchParams.set("error", "missing_code");
+    const redirectUrl = new URL("/calls", request.url);
+    redirectUrl.searchParams.set("goto_error", "true");
+    redirectUrl.searchParams.set("error_message", "Missing authorization code");
     return NextResponse.redirect(redirectUrl);
   }
 
@@ -45,59 +44,21 @@ export async function GET(request: NextRequest) {
     const setupResult = await setupGoToIntegration(webhookUrl);
     console.log("[GoTo Callback] Setup complete:", setupResult);
 
-    // TODO: Store tokens in database for persistence
-    // For now, they're stored in memory and will be lost on restart
+    // Tokens are now stored in database via exchangeCodeForTokens
+    // Redirect back to Phone Agent page with success indicator
+    const redirectUrl = new URL("/calls", request.url);
+    redirectUrl.searchParams.set("goto_connected", "true");
+    redirectUrl.searchParams.set("account_key", tokens.accountKey);
 
-    // Return success page with account key visible
-    // This allows user to copy the account key for their .env file
-    const html = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>GoTo Connect - Connected Successfully</title>
-          <style>
-            body { font-family: system-ui, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
-            .success { color: #22c55e; font-size: 24px; margin-bottom: 20px; }
-            .info { background: #f1f5f9; padding: 15px; border-radius: 8px; margin: 15px 0; }
-            .info label { font-weight: 600; display: block; margin-bottom: 5px; }
-            .info code { background: #e2e8f0; padding: 4px 8px; border-radius: 4px; font-size: 14px; }
-            .btn { background: #3b82f6; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; margin-top: 20px; }
-          </style>
-        </head>
-        <body>
-          <div class="success">✓ GoTo Connect Connected Successfully!</div>
-          <div class="info">
-            <label>Account Key (add to .env.local):</label>
-            <code>GOTO_ACCOUNT_KEY=${tokens.accountKey}</code>
-          </div>
-          <div class="info">
-            <label>Channel ID:</label>
-            <code>${setupResult.channelId}</code>
-          </div>
-          <div class="info">
-            <label>Webhook URL:</label>
-            <code>${webhookUrl}</code>
-          </div>
-          <div class="info">
-            <label>Subscriptions:</label>
-            <code>${setupResult.subscriptions.join(", ")}</code>
-          </div>
-          <p>The integration is now active. Call events will be sent to your webhook.</p>
-          <button class="btn" onclick="window.location.href='/settings/integrations'">Go to Settings</button>
-        </body>
-      </html>
-    `;
-
-    return new NextResponse(html, {
-      headers: { "Content-Type": "text/html" },
-    });
+    console.log("[GoTo Callback] Redirecting to Phone Agent page");
+    return NextResponse.redirect(redirectUrl);
   } catch (err) {
     console.error("[GoTo Callback] Error processing callback:", err);
-    const redirectUrl = new URL("/settings/integrations", request.url);
-    redirectUrl.searchParams.set("error", "token_exchange_failed");
+    const redirectUrl = new URL("/calls", request.url);
+    redirectUrl.searchParams.set("goto_error", "true");
     redirectUrl.searchParams.set(
-      "error_description",
-      err instanceof Error ? err.message : "Unknown error"
+      "error_message",
+      err instanceof Error ? err.message : "Failed to connect"
     );
     return NextResponse.redirect(redirectUrl);
   }

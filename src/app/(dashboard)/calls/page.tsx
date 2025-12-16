@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import React, { Suspense, useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { Header } from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -737,8 +739,10 @@ function CallDetailModal({
   );
 }
 
-export default function CallsPage() {
+function CallsPageContent() {
   const [mounted, setMounted] = useState(false);
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const {
     calls,
     updateCallStatus,
@@ -784,6 +788,39 @@ export default function CallsPage() {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Handle OAuth callback parameters (success or error)
+  useEffect(() => {
+    const gotoConnected = searchParams.get("goto_connected");
+    const gotoError = searchParams.get("goto_error");
+    const errorMessage = searchParams.get("error_message");
+    const accountKey = searchParams.get("account_key");
+
+    if (gotoConnected === "true") {
+      // Successfully connected to GoTo
+      toast.success("GoTo Connect Connected!", {
+        description: accountKey
+          ? `Account ${accountKey} is now connected`
+          : "Your phone system is now integrated",
+      });
+      // Update local state
+      setGotoStatus((prev) => ({
+        ...prev,
+        status: "connected",
+        accountKey: accountKey || prev.accountKey,
+        errorMessage: null,
+      }));
+      // Clear URL parameters
+      router.replace("/calls", { scroll: false });
+    } else if (gotoError === "true") {
+      // Error connecting to GoTo
+      toast.error("Failed to connect GoTo", {
+        description: errorMessage || "Please try again",
+      });
+      // Clear URL parameters
+      router.replace("/calls", { scroll: false });
+    }
+  }, [searchParams, router]);
 
   // Fetch GoTo integration status on mount
   useEffect(() => {
@@ -1503,5 +1540,14 @@ export default function CallsPage() {
         />
       </main>
     </TooltipProvider>
+  );
+}
+
+// Wrap in Suspense for useSearchParams() support
+export default function CallsPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center h-screen">Loading...</div>}>
+      <CallsPageContent />
+    </Suspense>
   );
 }
