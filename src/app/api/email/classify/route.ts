@@ -27,6 +27,8 @@ import {
 } from "@/lib/email/assignment-engine";
 import { classifyEmail } from "@/lib/email/email-classifier";
 import type { EmailMessage } from "@/lib/email/types";
+import { db } from "@/db";
+import { tasks } from "@/db/schema";
 
 // Classification response type
 interface ClassificationResponse {
@@ -277,6 +279,38 @@ export async function POST(request: NextRequest): Promise<NextResponse<Classific
         }));
 
         await supabase.from("email_action_items").insert(actionItemsToInsert);
+
+        // Auto-create tasks from action items
+        console.log("[Email Classify] Creating tasks from action items:", aiResult.actionItems.length);
+        for (const item of aiResult.actionItems) {
+          try {
+            await db.insert(tasks).values({
+              title: item.title,
+              description: item.description || `AI-extracted task from email: ${email.subject || "No subject"}`,
+              status: "pending",
+              priority: item.priority === "urgent" ? "urgent" :
+                       item.priority === "high" ? "high" :
+                       item.priority === "medium" ? "medium" : "low",
+              source: "email",
+              clientId: clientMatchResult.primaryMatch?.clientId,
+              assignedToId: assignmentResult.assignedUserId,
+              dueDate: item.dueDate ? new Date(item.dueDate) : undefined,
+              metadata: {
+                aiSuggested: true,
+                aiConfidence: item.confidence,
+                aiSourceType: "email_extraction",
+                emailMessageId: email.messageId,
+                emailSubject: email.subject,
+                senderEmail: email.from?.email,
+                senderName: email.from?.name,
+                actionType: item.type,
+              },
+            });
+          } catch (taskError) {
+            console.error("[Email Classify] Failed to create task:", item.title, taskError);
+          }
+        }
+        console.log("[Email Classify] Created", aiResult.actionItems.length, "tasks from email");
       }
     }
 

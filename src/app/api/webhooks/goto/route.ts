@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { calls, activityLogs, webhookLogs, clients } from "@/db/schema";
+import { calls, activityLogs, webhookLogs, clients, tasks } from "@/db/schema";
 import { parseWebhookWithAI, isAIParsingAvailable } from "@/lib/ai";
 import type { ParsedWebhookData } from "@/lib/ai";
 import { getCallReport, getRecordingUrl, getTranscription } from "@/lib/goto";
@@ -449,6 +449,39 @@ async function processCallReport(
       webhookLogId,
     },
   });
+
+  // Auto-create tasks from AI suggested actions
+  const suggestedActions = parsedData?.analysis?.suggestedActions || [];
+  if (suggestedActions.length > 0 && recordId) {
+    console.log("[GoTo Webhook] Creating tasks from suggested actions:", suggestedActions.length);
+
+    for (const action of suggestedActions) {
+      try {
+        await db.insert(tasks).values({
+          title: action,
+          description: `AI-suggested task from call with ${callerName || callerPhone || "unknown caller"}`,
+          status: "pending",
+          priority: parsedData?.analysis?.urgency === "urgent" ? "urgent" :
+                   parsedData?.analysis?.urgency === "high" ? "high" : "medium",
+          source: "phone_call",
+          sourceReferenceId: recordId,
+          clientId: matchedClientId,
+          metadata: {
+            aiSuggested: true,
+            aiConfidence: parsedData?.confidence || 0.8,
+            aiSourceType: "call_analysis",
+            callSummary: summary,
+            callerPhone: finalCallerPhone,
+            callerName,
+          },
+        });
+      } catch (taskError) {
+        console.error("[GoTo Webhook] Failed to create task:", action, taskError);
+      }
+    }
+
+    console.log("[GoTo Webhook] Created", suggestedActions.length, "tasks from call");
+  }
 
   return {
     id: recordId || "",
