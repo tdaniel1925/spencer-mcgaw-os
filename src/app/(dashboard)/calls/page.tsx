@@ -257,9 +257,18 @@ function CallCard({
                 <span className="font-medium text-sm truncate">
                   {call.callerName || call.callerPhone}
                 </span>
+                {call.lineUser?.name && (
+                  <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                    <ArrowRight className="h-2.5 w-2.5" />
+                    {call.lineUser.name}
+                  </span>
+                )}
               </div>
               <p className="text-[11px] text-muted-foreground">
                 {call.callerPhone} • {formatDuration(call.durationSeconds)}
+                {call.lineUser?.extension && (
+                  <span> • Ext. {call.lineUser.extension}</span>
+                )}
               </p>
             </div>
 
@@ -461,6 +470,12 @@ function CallDetailModal({
           <DialogDescription>
             {format(call.callStartedAt, "MMMM d, yyyy 'at' h:mm a")} •{" "}
             {formatDuration(call.durationSeconds)}
+            {call.lineUser?.name && (
+              <span className="ml-2">
+                • Handled by <span className="font-medium">{call.lineUser.name}</span>
+                {call.lineUser.extension && ` (Ext. ${call.lineUser.extension})`}
+              </span>
+            )}
           </DialogDescription>
         </DialogHeader>
 

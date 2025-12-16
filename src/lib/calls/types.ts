@@ -19,6 +19,15 @@ export interface ContactInfo {
   company?: string;
 }
 
+// Phone line/user info from GoTo Connect (the internal employee who handled the call)
+export interface LineUserInfo {
+  name?: string;
+  number?: string;
+  extension?: string;
+  userId?: string;
+  type?: string; // e.g., "USER", "QUEUE", "EXTENSION"
+}
+
 // Parsed call/interaction record (renamed from CallRecord to support all sources)
 export interface CallRecord {
   id: string;
@@ -27,11 +36,14 @@ export interface CallRecord {
   source: IncomingSource;
   sourceProvider?: string; // e.g., "vapi", "twilio", "typeform", "jotform"
 
-  // Caller/Contact information
+  // Caller/Contact information (external party)
   callerPhone: string;
   callerName?: string;
   callerEmail?: string;
   contact?: ContactInfo;
+
+  // Internal line/user who handled the call
+  lineUser?: LineUserInfo;
 
   // Call metadata (for phone_call source)
   callStartedAt: Date;

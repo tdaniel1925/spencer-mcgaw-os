@@ -18,6 +18,27 @@ export async function GET() {
       const metadata = call.metadata as Record<string, unknown> | null;
       const analysis = metadata?.analysis as Record<string, unknown> | null;
 
+      // Extract line/user info from participants (GoTo Connect)
+      const participants = metadata?.participants as Array<Record<string, unknown>> | undefined;
+      let lineUser: { name?: string; number?: string; extension?: string; userId?: string; type?: string } | undefined;
+
+      if (participants && participants.length > 0) {
+        // Find the internal user (non-originator in inbound, or originator in outbound)
+        const internalUser = participants.find(p =>
+          call.direction === "inbound" ? !p.originator : p.originator
+        ) || participants[0];
+
+        if (internalUser) {
+          lineUser = {
+            name: internalUser.name as string | undefined,
+            number: internalUser.number as string | undefined,
+            extension: internalUser.extension as string | undefined,
+            userId: internalUser.id as string | undefined,
+            type: internalUser.type as string | undefined,
+          };
+        }
+      }
+
       return {
         id: call.id,
         source: "phone_call" as const,
@@ -25,6 +46,7 @@ export async function GET() {
         callerPhone: call.callerPhone || "Unknown",
         callerName: call.callerName || undefined,
         callerEmail: undefined,
+        lineUser,
         callStartedAt: call.createdAt,
         callEndedAt: undefined,
         durationSeconds: call.duration || 0,
