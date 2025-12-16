@@ -13,26 +13,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogDescription,
-} from "@/components/ui/dialog";
-import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -55,21 +40,16 @@ import {
   Bot,
   Clock,
   User,
-  Play,
-  Pause,
   FileText,
   ArrowRight,
   AlertTriangle,
   DollarSign,
   Calendar,
   HelpCircle,
-  Filter,
   Archive,
   Trash2,
   UserPlus,
   MoreHorizontal,
-  CheckSquare,
-  XSquare,
   ListTodo,
   PhoneCall,
   PhoneIncoming,
@@ -81,17 +61,10 @@ import {
   Search,
   ChevronDown,
   ChevronUp,
-  Settings,
-  Eye,
   FormInput,
   Globe,
-  Folder,
-  FolderPlus,
-  FolderOpen,
-  Inbox,
   Pencil,
   X,
-  GripVertical,
   ThumbsUp,
   ThumbsDown,
   Wifi,
@@ -99,6 +72,8 @@ import {
   RefreshCw,
   Loader2,
   ExternalLink,
+  Plus,
+  GripVertical,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow } from "date-fns";
@@ -108,20 +83,26 @@ import {
   CallRecord,
   CallCategory,
   callCategoryInfo,
-  callStatusInfo,
-  urgencyInfo,
 } from "@/lib/calls/types";
 
-// Folder type
-interface CallFolder {
+// Bucket type for bottom tray
+interface CallBucket {
   id: string;
   name: string;
   color: string;
   callIds: string[];
+  isDefault?: boolean;
 }
 
-// Available folder colors
-const folderColors = [
+// Default buckets
+const defaultBuckets: CallBucket[] = [
+  { id: "follow-up", name: "Follow Up", color: "bg-amber-500", callIds: [], isDefault: true },
+  { id: "callback", name: "Callback Needed", color: "bg-blue-500", callIds: [], isDefault: true },
+  { id: "archive", name: "Archive", color: "bg-slate-500", callIds: [], isDefault: true },
+];
+
+// Available bucket colors
+const bucketColors = [
   { name: "gray", class: "bg-gray-500" },
   { name: "red", class: "bg-red-500" },
   { name: "orange", class: "bg-orange-500" },
@@ -161,42 +142,36 @@ function formatDuration(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
-// Call Card Component
-function CallCard({
+// Expandable Call Card Component
+function ExpandableCallCard({
   call,
   selected,
   onSelect,
-  onClick,
   onQuickAction,
   onActionFeedback,
   onDragStart,
   onDragEnd,
   isDragging,
+  isExpanded,
+  onToggleExpand,
 }: {
   call: CallRecord;
   selected: boolean;
   onSelect: (selected: boolean) => void;
-  onClick: () => void;
   onQuickAction: (action: string) => void;
   onActionFeedback: (actionId: string, feedback: "approved" | "rejected") => void;
   onDragStart?: () => void;
   onDragEnd?: () => void;
   isDragging?: boolean;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
 }) {
   const [isPlaying, setIsPlaying] = useState(false);
-  const audioRef = useRef<HTMLAudioElement>(null);
+  const [note, setNote] = useState("");
+  const [showTranscript, setShowTranscript] = useState(true);
 
-  const toggleAudio = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (audioRef.current) {
-      if (isPlaying) {
-        audioRef.current.pause();
-      } else {
-        audioRef.current.play();
-      }
-      setIsPlaying(!isPlaying);
-    }
-  };
+  const category = call.aiAnalysis?.category || "other";
+  const categoryInfo = callCategoryInfo[category];
 
   return (
     <Card
@@ -208,551 +183,606 @@ function CallCard({
       }}
       onDragEnd={() => onDragEnd?.()}
       className={cn(
-        "transition-all hover:bg-muted/50 cursor-pointer border-border/50",
+        "transition-all border-border/50",
         selected && "ring-2 ring-primary bg-primary/5",
-        isDragging && "opacity-50 ring-2 ring-primary"
+        isDragging && "opacity-50 ring-2 ring-primary",
+        isExpanded && "bg-muted/30"
       )}
     >
-      <CardContent className="p-3">
-        <div className="flex items-center gap-2">
-          {/* Checkbox */}
-          <div onClick={(e) => e.stopPropagation()}>
-            <Checkbox
-              checked={selected}
-              onCheckedChange={(checked) => onSelect(checked === true)}
-            />
-          </div>
+      <CardContent className="p-0">
+        {/* Main Card Header - Always Visible */}
+        <div
+          className="p-3 cursor-pointer hover:bg-muted/50 transition-colors"
+          onClick={onToggleExpand}
+        >
+          <div className="flex items-start gap-3">
+            {/* Checkbox */}
+            <div onClick={(e) => e.stopPropagation()} className="pt-1">
+              <Checkbox
+                checked={selected}
+                onCheckedChange={(checked) => onSelect(checked === true)}
+              />
+            </div>
 
-          {/* Avatar - smaller */}
-          <Avatar className="h-8 w-8 flex-shrink-0" onClick={onClick}>
-            <AvatarFallback
-              className={cn(
-                "text-xs",
-                call.matchedClientId
-                  ? "bg-primary/20 text-primary"
-                  : "bg-muted text-muted-foreground"
-              )}
-            >
-              {call.callerName
-                ? call.callerName
-                    .split(" ")
-                    .map((n) => n[0])
-                    .join("")
-                    .slice(0, 2)
-                    .toUpperCase()
-                : <Phone className="h-3 w-3" />}
-            </AvatarFallback>
-          </Avatar>
+            {/* Drag Handle */}
+            <div className="pt-1 cursor-grab text-muted-foreground/50 hover:text-muted-foreground">
+              <GripVertical className="h-4 w-4" />
+            </div>
 
-          {/* Main content - single row layout */}
-          <div className="flex-1 min-w-0 flex items-center gap-3" onClick={onClick}>
-            {/* Name and phone */}
-            <div className="min-w-[140px]">
-              <div className="flex items-center gap-1.5">
-                {call.direction === "inbound" ? (
-                  <PhoneIncoming className="h-3 w-3 text-primary flex-shrink-0" />
-                ) : (
-                  <PhoneOutgoing className="h-3 w-3 text-primary/70 flex-shrink-0" />
+            {/* Avatar */}
+            <Avatar className="h-10 w-10 flex-shrink-0">
+              <AvatarFallback
+                className={cn(
+                  call.matchedClientId
+                    ? "bg-primary/20 text-primary"
+                    : "bg-muted text-muted-foreground"
                 )}
-                <span className="font-medium text-sm truncate">
+              >
+                {call.callerName
+                  ? call.callerName
+                      .split(" ")
+                      .map((n) => n[0])
+                      .join("")
+                      .slice(0, 2)
+                      .toUpperCase()
+                  : <Phone className="h-4 w-4" />}
+              </AvatarFallback>
+            </Avatar>
+
+            {/* Main Content */}
+            <div className="flex-1 min-w-0">
+              {/* Header Row */}
+              <div className="flex items-center gap-2 mb-1">
+                {call.direction === "inbound" ? (
+                  <PhoneIncoming className="h-4 w-4 text-green-600 flex-shrink-0" />
+                ) : (
+                  <PhoneOutgoing className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                )}
+                <span className="font-medium">
                   {call.callerName || call.callerPhone}
                 </span>
                 {call.lineUser?.name && (
-                  <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-                    <ArrowRight className="h-2.5 w-2.5" />
+                  <span className="text-xs text-muted-foreground flex items-center gap-1">
+                    <ArrowRight className="h-3 w-3" />
                     {call.lineUser.name}
                   </span>
                 )}
+                <span className="text-xs text-muted-foreground ml-auto" suppressHydrationWarning>
+                  {formatDistanceToNow(call.callStartedAt, { addSuffix: true })}
+                </span>
+                {/* Expand indicator */}
+                {isExpanded ? (
+                  <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                )}
               </div>
-              <p className="text-[11px] text-muted-foreground">
+
+              {/* Phone and Duration */}
+              <div className="text-xs text-muted-foreground mb-2">
                 {call.callerPhone} • {formatDuration(call.durationSeconds)}
                 {call.lineUser?.extension && (
                   <span> • Ext. {call.lineUser.extension}</span>
                 )}
-              </p>
-            </div>
-
-            {/* AI Summary - compact */}
-            {call.aiAnalysis && (
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-muted-foreground line-clamp-1">
-                  {call.aiAnalysis.summary}
-                </p>
               </div>
-            )}
-          </div>
 
-          {/* Actionable Items Quick Feedback */}
-          {call.aiAnalysis?.suggestedActions && call.aiAnalysis.suggestedActions.length > 0 && (
-            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-              {call.aiAnalysis.suggestedActions.slice(0, 1).map((action) => (
-                <div
-                  key={action.id}
-                  className="flex items-center gap-1 px-2 py-0.5 bg-primary/5 rounded-full border border-primary/20"
-                >
-                  <span className="text-[10px] text-primary font-medium truncate max-w-[80px]">
-                    {action.label}
-                  </span>
-                  <div className="flex items-center gap-0.5">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
+              {/* Full AI Summary - Always Visible */}
+              {call.aiAnalysis && (
+                <div className="bg-primary/5 rounded-lg p-3 border border-primary/10">
+                  <div className="flex items-start gap-2">
+                    <Bot className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-foreground">
+                        {call.aiAnalysis.summary}
+                      </p>
+                      {/* Category and Sentiment Badges */}
+                      <div className="flex flex-wrap items-center gap-2 mt-2">
+                        <Badge variant="secondary" className="text-[10px]">
+                          {categoryIcons[category]}
+                          <span className="ml-1">{categoryInfo.label}</span>
+                        </Badge>
+                        <Badge
+                          variant="outline"
                           className={cn(
-                            "h-5 w-5",
-                            action.userFeedback === "approved"
-                              ? "text-green-600 bg-green-100 hover:bg-green-200"
-                              : "text-muted-foreground hover:text-green-600 hover:bg-green-50"
+                            "text-[10px]",
+                            call.aiAnalysis.sentiment === "positive" &&
+                              "bg-green-100 text-green-700 border-green-200",
+                            call.aiAnalysis.sentiment === "negative" &&
+                              "bg-red-100 text-red-700 border-red-200",
+                            call.aiAnalysis.sentiment === "frustrated" &&
+                              "bg-orange-100 text-orange-700 border-orange-200",
+                            call.aiAnalysis.sentiment === "neutral" &&
+                              "bg-slate-100 text-slate-700 border-slate-200"
                           )}
-                          onClick={() => onActionFeedback(action.id, "approved")}
                         >
-                          <ThumbsUp className="h-3 w-3" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Relevant action</TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
+                          {call.aiAnalysis.sentiment}
+                        </Badge>
+                        <Badge
+                          variant="outline"
                           className={cn(
-                            "h-5 w-5",
-                            action.userFeedback === "rejected"
-                              ? "text-red-600 bg-red-100 hover:bg-red-200"
-                              : "text-muted-foreground hover:text-red-600 hover:bg-red-50"
+                            "text-[10px]",
+                            call.aiAnalysis.urgency === "high" &&
+                              "bg-red-100 text-red-700 border-red-200",
+                            call.aiAnalysis.urgency === "medium" &&
+                              "bg-amber-100 text-amber-700 border-amber-200",
+                            call.aiAnalysis.urgency === "low" &&
+                              "bg-green-100 text-green-700 border-green-200"
                           )}
-                          onClick={() => onActionFeedback(action.id, "rejected")}
                         >
-                          <ThumbsDown className="h-3 w-3" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Not relevant</TooltipContent>
-                    </Tooltip>
+                          {call.aiAnalysis.urgency} priority
+                        </Badge>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              ))}
-              {call.aiAnalysis.suggestedActions.length > 1 && (
-                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-5">
-                  +{call.aiAnalysis.suggestedActions.length - 1}
-                </Badge>
+              )}
+
+              {/* Suggested Actions Preview */}
+              {call.aiAnalysis?.suggestedActions && call.aiAnalysis.suggestedActions.length > 0 && !isExpanded && (
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="text-xs text-muted-foreground">Actions:</span>
+                  {call.aiAnalysis.suggestedActions.slice(0, 2).map((action) => (
+                    <Badge
+                      key={action.id}
+                      variant="outline"
+                      className="text-[10px] bg-background"
+                    >
+                      {action.label}
+                    </Badge>
+                  ))}
+                  {call.aiAnalysis.suggestedActions.length > 2 && (
+                    <span className="text-[10px] text-muted-foreground">
+                      +{call.aiAnalysis.suggestedActions.length - 2} more
+                    </span>
+                  )}
+                </div>
               )}
             </div>
-          )}
 
-          {/* Audio player button */}
-          {call.recordingUrl && (
-            <div onClick={(e) => e.stopPropagation()}>
-              <audio
-                ref={audioRef}
-                src={call.recordingUrl}
-                onEnded={() => setIsPlaying(false)}
-                onPause={() => setIsPlaying(false)}
-                onPlay={() => setIsPlaying(true)}
-              />
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 text-primary hover:text-primary hover:bg-primary/10"
-                onClick={toggleAudio}
-                aria-label={isPlaying ? "Pause audio" : "Play audio"}
-              >
-                {isPlaying ? (
-                  <Pause className="h-3.5 w-3.5" />
-                ) : (
-                  <Play className="h-3.5 w-3.5" />
-                )}
-              </Button>
+            {/* Quick Actions */}
+            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem onClick={() => onQuickAction("call_back")}>
+                    <PhoneCall className="h-4 w-4 mr-2" />
+                    Call Back
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onQuickAction("send_email")}>
+                    <Mail className="h-4 w-4 mr-2" />
+                    Send Email
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onQuickAction("create_task")}>
+                    <ListTodo className="h-4 w-4 mr-2" />
+                    Add to Tasks
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => onQuickAction("complete")}>
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    Mark Complete
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => onQuickAction("delete")}
+                    className="text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
-          )}
-
-          {/* Time */}
-          <span className="text-[10px] text-muted-foreground w-20 text-right flex-shrink-0" suppressHydrationWarning>
-            {formatDistanceToNow(call.callStartedAt, { addSuffix: true })}
-          </span>
-
-          {/* Actions Menu */}
-          <div onClick={(e) => e.stopPropagation()}>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Call actions menu">
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem onClick={() => onQuickAction("view")}>
-                  <Eye className="h-4 w-4 mr-2" />
-                  View Details
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onQuickAction("call_back")}>
-                  <PhoneCall className="h-4 w-4 mr-2" />
-                  Call Back
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onQuickAction("send_email")}>
-                  <Mail className="h-4 w-4 mr-2" />
-                  Send Email
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onQuickAction("assign")}>
-                  <UserPlus className="h-4 w-4 mr-2" />
-                  Assign To...
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onQuickAction("create_task")}>
-                  <ListTodo className="h-4 w-4 mr-2" />
-                  Add to Tasks
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => onQuickAction("complete")}>
-                  <CheckCircle className="h-4 w-4 mr-2" />
-                  Mark Complete
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onQuickAction("archive")}>
-                  <Archive className="h-4 w-4 mr-2" />
-                  Archive
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => onQuickAction("delete")}
-                  className="text-destructive"
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
           </div>
         </div>
-      </CardContent>
-    </Card>
-  );
-}
 
-// Call Detail Modal
-function CallDetailModal({
-  call,
-  open,
-  onClose,
-  onAction,
-  onActionFeedback,
-}: {
-  call: CallRecord | null;
-  open: boolean;
-  onClose: () => void;
-  onAction: (action: string) => void;
-  onActionFeedback: (actionId: string, feedback: "approved" | "rejected") => void;
-}) {
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [showTranscript, setShowTranscript] = useState(true);
-  const [note, setNote] = useState("");
-
-  if (!call) return null;
-
-  const category = call.aiAnalysis?.category || "other";
-  const categoryInfo = callCategoryInfo[category];
-
-  return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col">
-        <DialogHeader className="flex-shrink-0">
-          <DialogTitle className="flex items-center gap-2">
-            {call.direction === "inbound" ? (
-              <PhoneIncoming className="h-5 w-5 text-green-600" />
-            ) : (
-              <PhoneOutgoing className="h-5 w-5 text-blue-600" />
-            )}
-            {call.callerName || call.callerPhone}
-            {call.matchedClientName && (
-              <Badge variant="outline" className="ml-2">
-                <User className="h-3 w-3 mr-1" />
-                {call.matchedClientName}
-              </Badge>
-            )}
-          </DialogTitle>
-          <DialogDescription>
-            {format(call.callStartedAt, "MMMM d, yyyy 'at' h:mm a")} •{" "}
-            {formatDuration(call.durationSeconds)}
-            {call.lineUser?.name && (
-              <span className="ml-2">
-                • Handled by <span className="font-medium">{call.lineUser.name}</span>
-                {call.lineUser.extension && ` (Ext. ${call.lineUser.extension})`}
-              </span>
-            )}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="flex-1 min-h-0 overflow-y-auto -mx-6 px-6">
-          <div className="space-y-4 pb-4">
-            {/* Recording Player with Waveform */}
+        {/* Expanded Content */}
+        {isExpanded && (
+          <div className="border-t px-4 py-4 space-y-4">
+            {/* Recording Player */}
             {call.recordingUrl ? (
               <WaveformPlayer
                 src={call.recordingUrl}
                 onPlayStateChange={setIsPlaying}
               />
             ) : (
-              <Card className="bg-muted/30">
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3 text-muted-foreground">
-                    <Phone className="h-5 w-5" />
-                    <span className="text-sm">No recording available for this call</span>
-                  </div>
-                </CardContent>
-              </Card>
+              <div className="bg-muted/30 rounded-lg p-4 flex items-center gap-3 text-muted-foreground">
+                <Phone className="h-5 w-5" />
+                <span className="text-sm">No recording available</span>
+              </div>
             )}
 
-            {/* AI Analysis */}
-            {call.aiAnalysis && (
-              <Card className="bg-primary/5 border-primary/20">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    <Bot className="h-4 w-4 text-primary" />
-                    AI Analysis
-                    <span className="text-xs text-muted-foreground ml-auto">
-                      {Math.round(call.aiAnalysis.confidence * 100)}% confidence
-                    </span>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div>
-                    <p className="text-sm font-medium mb-1">Summary</p>
-                    <p className="text-sm text-muted-foreground">
-                      {call.aiAnalysis.summary}
-                    </p>
-                  </div>
-                  {call.aiAnalysis.keyPoints.length > 0 && (
-                    <div>
-                      <p className="text-sm font-medium mb-1">Key Points</p>
-                      <ul className="space-y-1">
-                        {call.aiAnalysis.keyPoints.map((point, idx) => (
-                          <li
-                            key={idx}
-                            className="text-sm text-muted-foreground flex items-center gap-2"
-                          >
-                            <ArrowRight className="h-3 w-3 text-primary" />
-                            {point}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  <div>
-                    <p className="text-sm font-medium mb-1">Caller Sentiment</p>
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        call.aiAnalysis.sentiment === "positive" &&
-                          "bg-green-100 text-green-700",
-                        call.aiAnalysis.sentiment === "negative" &&
-                          "bg-red-100 text-red-700",
-                        call.aiAnalysis.sentiment === "frustrated" &&
-                          "bg-orange-100 text-orange-700"
-                      )}
+            {/* Key Points */}
+            {call.aiAnalysis?.keyPoints && call.aiAnalysis.keyPoints.length > 0 && (
+              <div>
+                <h4 className="text-sm font-medium mb-2">Key Points</h4>
+                <ul className="space-y-1">
+                  {call.aiAnalysis.keyPoints.map((point, idx) => (
+                    <li
+                      key={idx}
+                      className="text-sm text-muted-foreground flex items-start gap-2"
                     >
-                      {call.aiAnalysis.sentiment}
-                    </Badge>
-                  </div>
-                </CardContent>
-              </Card>
+                      <ArrowRight className="h-3 w-3 mt-1 text-primary flex-shrink-0" />
+                      {point}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
 
             {/* Suggested Actions with Feedback */}
-            {call.aiAnalysis?.suggestedActions &&
-              call.aiAnalysis.suggestedActions.length > 0 && (
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm flex items-center gap-2">
-                      <Bot className="h-4 w-4 text-primary" />
-                      AI Suggested Actions
-                      <span className="text-xs font-normal text-muted-foreground ml-auto">
-                        Rate to improve AI
-                      </span>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      {call.aiAnalysis.suggestedActions.map((action) => (
-                        <div
-                          key={action.id}
-                          className={cn(
-                            "flex items-center gap-3 p-3 rounded-lg border transition-colors",
-                            action.userFeedback === "approved" && "bg-green-50 border-green-200",
-                            action.userFeedback === "rejected" && "bg-red-50 border-red-200 opacity-60",
-                            !action.userFeedback && "bg-muted/30"
-                          )}
-                        >
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium text-sm">{action.label}</span>
-                              <Badge
-                                variant="outline"
-                                className={cn(
-                                  "text-[10px]",
-                                  action.priority === "high" && "border-orange-300 text-orange-600",
-                                  action.priority === "medium" && "border-amber-300 text-amber-600",
-                                  action.priority === "low" && "border-slate-300 text-slate-500"
-                                )}
-                              >
-                                {action.priority}
-                              </Badge>
-                              {action.userFeedback && (
-                                <Badge
-                                  variant="secondary"
-                                  className={cn(
-                                    "text-[10px]",
-                                    action.userFeedback === "approved" && "bg-green-100 text-green-700",
-                                    action.userFeedback === "rejected" && "bg-red-100 text-red-700"
-                                  )}
-                                >
-                                  {action.userFeedback === "approved" ? "Helpful" : "Not helpful"}
-                                </Badge>
-                              )}
-                            </div>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              {action.description}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <TooltipProvider delayDuration={0}>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className={cn(
-                                      "h-8 w-8",
-                                      action.userFeedback === "approved"
-                                        ? "text-green-600 bg-green-100 hover:bg-green-200"
-                                        : "text-muted-foreground hover:text-green-600 hover:bg-green-50"
-                                    )}
-                                    onClick={() => onActionFeedback(action.id, "approved")}
-                                  >
-                                    <ThumbsUp className="h-4 w-4" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>This is helpful</TooltipContent>
-                              </Tooltip>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className={cn(
-                                      "h-8 w-8",
-                                      action.userFeedback === "rejected"
-                                        ? "text-red-600 bg-red-100 hover:bg-red-200"
-                                        : "text-muted-foreground hover:text-red-600 hover:bg-red-50"
-                                    )}
-                                    onClick={() => onActionFeedback(action.id, "rejected")}
-                                  >
-                                    <ThumbsDown className="h-4 w-4" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>Not helpful</TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          </div>
-                          <Button
+            {call.aiAnalysis?.suggestedActions && call.aiAnalysis.suggestedActions.length > 0 && (
+              <div>
+                <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+                  <Bot className="h-4 w-4 text-primary" />
+                  Suggested Actions
+                  <span className="text-xs font-normal text-muted-foreground">
+                    (Rate to improve AI)
+                  </span>
+                </h4>
+                <div className="space-y-2">
+                  {call.aiAnalysis.suggestedActions.map((action) => (
+                    <div
+                      key={action.id}
+                      className={cn(
+                        "flex items-center gap-3 p-3 rounded-lg border transition-colors",
+                        action.userFeedback === "approved" && "bg-green-50 border-green-200",
+                        action.userFeedback === "rejected" && "bg-red-50 border-red-200 opacity-60",
+                        !action.userFeedback && "bg-muted/30"
+                      )}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-sm">{action.label}</span>
+                          <Badge
                             variant="outline"
-                            size="sm"
-                            onClick={() => onAction(action.type)}
-                            disabled={action.userFeedback === "rejected"}
+                            className={cn(
+                              "text-[10px]",
+                              action.priority === "high" && "border-orange-300 text-orange-600",
+                              action.priority === "medium" && "border-amber-300 text-amber-600",
+                              action.priority === "low" && "border-slate-300 text-slate-500"
+                            )}
                           >
-                            <CheckCircle className="h-3.5 w-3.5 mr-1.5" />
-                            Do it
-                          </Button>
+                            {action.priority}
+                          </Badge>
                         </div>
-                      ))}
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {action.description}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className={cn(
+                                "h-8 w-8",
+                                action.userFeedback === "approved"
+                                  ? "text-green-600 bg-green-100 hover:bg-green-200"
+                                  : "text-muted-foreground hover:text-green-600 hover:bg-green-50"
+                              )}
+                              onClick={() => onActionFeedback(action.id, "approved")}
+                            >
+                              <ThumbsUp className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Helpful</TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className={cn(
+                                "h-8 w-8",
+                                action.userFeedback === "rejected"
+                                  ? "text-red-600 bg-red-100 hover:bg-red-200"
+                                  : "text-muted-foreground hover:text-red-600 hover:bg-red-50"
+                              )}
+                              onClick={() => onActionFeedback(action.id, "rejected")}
+                            >
+                              <ThumbsDown className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Not helpful</TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onQuickAction(action.type)}
+                        disabled={action.userFeedback === "rejected"}
+                      >
+                        <CheckCircle className="h-3.5 w-3.5 mr-1.5" />
+                        Do it
+                      </Button>
                     </div>
-                  </CardContent>
-                </Card>
-              )}
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Transcript */}
             <Collapsible open={showTranscript} onOpenChange={setShowTranscript}>
-              <Card>
-                <CollapsibleTrigger asChild>
-                  <CardHeader className="pb-2 cursor-pointer hover:bg-muted/50 rounded-t-lg">
-                    <CardTitle className="text-sm flex items-center justify-between">
-                      <span className="flex items-center gap-2">
-                        <FileText className="h-4 w-4" />
-                        Call Transcript
-                        {call.transcript && (
-                          <Badge variant="secondary" className="text-[10px] px-1.5">
-                            Available
-                          </Badge>
-                        )}
-                      </span>
-                      {showTranscript ? (
-                        <ChevronUp className="h-4 w-4" />
-                      ) : (
-                        <ChevronDown className="h-4 w-4" />
-                      )}
-                    </CardTitle>
-                  </CardHeader>
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  <CardContent>
-                    {call.transcript ? (
-                      <pre className="text-sm whitespace-pre-wrap font-sans bg-muted/50 p-3 rounded-lg max-h-[300px] overflow-y-auto">
-                        {call.transcript}
-                      </pre>
-                    ) : (
-                      <div className="text-sm text-muted-foreground bg-muted/30 p-4 rounded-lg text-center">
-                        <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                        <p>No transcript available for this call</p>
-                        <p className="text-xs mt-1">Transcripts are generated automatically when recordings are processed</p>
-                      </div>
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" className="w-full justify-between p-2 h-auto">
+                  <span className="flex items-center gap-2 text-sm font-medium">
+                    <FileText className="h-4 w-4" />
+                    Transcript
+                    {call.transcript && (
+                      <Badge variant="secondary" className="text-[10px]">Available</Badge>
                     )}
-                  </CardContent>
-                </CollapsibleContent>
-              </Card>
+                  </span>
+                  {showTranscript ? (
+                    <ChevronUp className="h-4 w-4" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4" />
+                  )}
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                {call.transcript ? (
+                  <pre className="text-sm whitespace-pre-wrap font-sans bg-muted/50 p-3 rounded-lg max-h-[300px] overflow-y-auto mt-2">
+                    {call.transcript}
+                  </pre>
+                ) : (
+                  <div className="text-sm text-muted-foreground bg-muted/30 p-4 rounded-lg text-center mt-2">
+                    <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p>No transcript available</p>
+                  </div>
+                )}
+              </CollapsibleContent>
             </Collapsible>
 
             {/* Notes */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Notes</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {call.notes && (
-                  <pre className="text-sm whitespace-pre-wrap font-sans bg-muted/50 p-3 rounded-lg mb-2">
-                    {call.notes}
-                  </pre>
-                )}
+            <div>
+              <h4 className="text-sm font-medium mb-2">Notes</h4>
+              {call.notes && (
+                <pre className="text-sm whitespace-pre-wrap font-sans bg-muted/50 p-3 rounded-lg mb-2">
+                  {call.notes}
+                </pre>
+              )}
+              <div className="flex gap-2">
                 <Textarea
                   placeholder="Add a note..."
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
                   rows={2}
+                  className="flex-1"
                 />
                 <Button
                   size="sm"
                   disabled={!note.trim()}
                   onClick={() => {
-                    onAction("add_note:" + note);
+                    onQuickAction("add_note:" + note);
                     setNote("");
                   }}
                 >
-                  Add Note
+                  Add
                 </Button>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center gap-2 pt-2 border-t">
+              <Button variant="outline" size="sm" onClick={() => onQuickAction("call_back")}>
+                <PhoneCall className="h-4 w-4 mr-2" />
+                Call Back
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => onQuickAction("send_email")}>
+                <Mail className="h-4 w-4 mr-2" />
+                Email
+              </Button>
+              <div className="flex-1" />
+              <Button size="sm" onClick={() => onQuickAction("complete")}>
+                <CheckCircle className="h-4 w-4 mr-2" />
+                Mark Complete
+              </Button>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Bottom Bucket Component
+function BucketTray({
+  buckets,
+  onDrop,
+  onCreateBucket,
+  onDeleteBucket,
+  onRenameBucket,
+  dragOverBucketId,
+  onDragOver,
+  onDragLeave,
+}: {
+  buckets: CallBucket[];
+  onDrop: (bucketId: string, callId: string) => void;
+  onCreateBucket: (name: string, color: string) => void;
+  onDeleteBucket: (bucketId: string) => void;
+  onRenameBucket: (bucketId: string, name: string) => void;
+  dragOverBucketId: string | null;
+  onDragOver: (bucketId: string) => void;
+  onDragLeave: () => void;
+}) {
+  const [isCreating, setIsCreating] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newColor, setNewColor] = useState("blue");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState("");
+
+  return (
+    <div className="h-24 border-t bg-muted/30 flex items-center px-4 gap-3 overflow-x-auto">
+      {/* Existing Buckets */}
+      {buckets.map((bucket) => (
+        <div
+          key={bucket.id}
+          className={cn(
+            "flex-shrink-0 min-w-[140px] h-16 rounded-lg border-2 border-dashed transition-all flex flex-col items-center justify-center gap-1",
+            dragOverBucketId === bucket.id
+              ? "border-primary bg-primary/10 scale-105"
+              : "border-muted-foreground/30 bg-background hover:border-muted-foreground/50"
+          )}
+          onDragOver={(e) => {
+            e.preventDefault();
+            onDragOver(bucket.id);
+          }}
+          onDragLeave={onDragLeave}
+          onDrop={(e) => {
+            e.preventDefault();
+            const callId = e.dataTransfer.getData("callId");
+            if (callId) {
+              onDrop(bucket.id, callId);
+            }
+            onDragLeave();
+          }}
+        >
+          {editingId === bucket.id ? (
+            <div className="flex items-center gap-1 px-2">
+              <Input
+                value={editingName}
+                onChange={(e) => setEditingName(e.target.value)}
+                className="h-6 text-xs w-20"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    onRenameBucket(bucket.id, editingName);
+                    setEditingId(null);
+                  } else if (e.key === "Escape") {
+                    setEditingId(null);
+                  }
+                }}
+              />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-5 w-5"
+                onClick={() => {
+                  onRenameBucket(bucket.id, editingName);
+                  setEditingId(null);
+                }}
+              >
+                <CheckCircle className="h-3 w-3" />
+              </Button>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center gap-2">
+                <div className={cn("w-2 h-2 rounded-full", bucket.color)} />
+                <span className="text-xs font-medium">{bucket.name}</span>
+                <Badge variant="secondary" className="text-[10px] px-1.5 h-4">
+                  {bucket.callIds.length}
+                </Badge>
+              </div>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-5 w-5 opacity-50 hover:opacity-100"
+                  onClick={() => {
+                    setEditingId(bucket.id);
+                    setEditingName(bucket.name);
+                  }}
+                >
+                  <Pencil className="h-2.5 w-2.5" />
+                </Button>
+                {!bucket.isDefault && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-5 w-5 opacity-50 hover:opacity-100 text-destructive"
+                    onClick={() => onDeleteBucket(bucket.id)}
+                  >
+                    <X className="h-2.5 w-2.5" />
+                  </Button>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      ))}
+
+      {/* Create New Bucket */}
+      {isCreating ? (
+        <div className="flex-shrink-0 min-w-[180px] h-16 rounded-lg border bg-background p-2 flex flex-col gap-1">
+          <Input
+            placeholder="Bucket name..."
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            className="h-6 text-xs"
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && newName.trim()) {
+                onCreateBucket(newName.trim(), newColor);
+                setNewName("");
+                setIsCreating(false);
+              } else if (e.key === "Escape") {
+                setIsCreating(false);
+                setNewName("");
+              }
+            }}
+          />
+          <div className="flex items-center gap-1">
+            {bucketColors.slice(0, 6).map((color) => (
+              <button
+                key={color.name}
+                onClick={() => setNewColor(color.class)}
+                className={cn(
+                  "w-4 h-4 rounded transition-all",
+                  color.class,
+                  newColor === color.class && "ring-2 ring-offset-1 ring-primary"
+                )}
+              />
+            ))}
+            <div className="flex-1" />
+            <Button
+              size="sm"
+              className="h-5 text-[10px] px-2"
+              onClick={() => {
+                if (newName.trim()) {
+                  onCreateBucket(newName.trim(), newColor);
+                  setNewName("");
+                  setIsCreating(false);
+                }
+              }}
+              disabled={!newName.trim()}
+            >
+              Add
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-5 text-[10px] px-2"
+              onClick={() => {
+                setIsCreating(false);
+                setNewName("");
+              }}
+            >
+              <X className="h-3 w-3" />
+            </Button>
           </div>
         </div>
+      ) : (
+        <Button
+          variant="outline"
+          size="sm"
+          className="flex-shrink-0 h-16 px-4 border-dashed"
+          onClick={() => setIsCreating(true)}
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          Add Bucket
+        </Button>
+      )}
 
-        <DialogFooter className="flex-shrink-0 gap-2">
-          <Button variant="outline" onClick={onClose}>
-            Close
-          </Button>
-          <Button variant="outline" onClick={() => onAction("call_back")}>
-            <PhoneCall className="h-4 w-4 mr-2" />
-            Call Back
-          </Button>
-          <Button onClick={() => onAction("complete")}>
-            <CheckCircle className="h-4 w-4 mr-2" />
-            Mark Complete
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      {/* Drag hint */}
+      <div className="flex-shrink-0 text-xs text-muted-foreground ml-auto">
+        Drag calls here to organize
+      </div>
+    </div>
   );
 }
 
@@ -770,19 +800,13 @@ function CallsPageContent() {
   } = useCalls();
 
   const [selectedCalls, setSelectedCalls] = useState<Set<string>>(new Set());
-  const [selectedCall, setSelectedCall] = useState<CallRecord | null>(null);
+  const [expandedCallId, setExpandedCallId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Folder state
-  const [folders, setFolders] = useState<CallFolder[]>([]);
-  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  // Bucket state
+  const [buckets, setBuckets] = useState<CallBucket[]>(defaultBuckets);
   const [draggingCallId, setDraggingCallId] = useState<string | null>(null);
-  const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
-  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
-  const [newFolderName, setNewFolderName] = useState("");
-  const [newFolderColor, setNewFolderColor] = useState("blue");
-  const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
-  const [editingFolderName, setEditingFolderName] = useState("");
+  const [dragOverBucketId, setDragOverBucketId] = useState<string | null>(null);
 
   // Infinite scroll state
   const ITEMS_PER_PAGE = 20;
@@ -806,7 +830,7 @@ function CallsPageContent() {
     setMounted(true);
   }, []);
 
-  // Handle OAuth callback parameters (success or error)
+  // Handle OAuth callback parameters
   useEffect(() => {
     const gotoConnected = searchParams.get("goto_connected");
     const gotoError = searchParams.get("goto_error");
@@ -814,32 +838,27 @@ function CallsPageContent() {
     const accountKey = searchParams.get("account_key");
 
     if (gotoConnected === "true") {
-      // Successfully connected to GoTo
       toast.success("GoTo Connect Connected!", {
         description: accountKey
           ? `Account ${accountKey} is now connected`
           : "Your phone system is now integrated",
       });
-      // Update local state
       setGotoStatus((prev) => ({
         ...prev,
         status: "connected",
         accountKey: accountKey || prev.accountKey,
         errorMessage: null,
       }));
-      // Clear URL parameters
       router.replace("/calls", { scroll: false });
     } else if (gotoError === "true") {
-      // Error connecting to GoTo
       toast.error("Failed to connect GoTo", {
         description: errorMessage || "Please try again",
       });
-      // Clear URL parameters
       router.replace("/calls", { scroll: false });
     }
   }, [searchParams, router]);
 
-  // Fetch GoTo integration status on mount
+  // Fetch GoTo integration status
   useEffect(() => {
     async function fetchGotoStatus() {
       try {
@@ -889,33 +908,24 @@ function CallsPageContent() {
     }
   }, []);
 
-  // Reconnect GoTo (redirect to OAuth)
   const reconnectGoto = useCallback(() => {
     if (gotoStatus.authUrl) {
       window.location.href = gotoStatus.authUrl;
     }
   }, [gotoStatus.authUrl]);
 
-  // Reset visible count when folder changes
+  // Reset visible count when search changes
   useEffect(() => {
     setVisibleCount(ITEMS_PER_PAGE);
-  }, [selectedFolderId, searchQuery]);
+  }, [searchQuery]);
 
-  // Filter calls by folder and search
+  // Filter calls
   const filteredCalls = useMemo(() => {
     let result = calls;
 
-    // Filter by selected folder
-    if (selectedFolderId === "inbox") {
-      // Show only calls not in any folder
-      const allFolderCallIds = new Set(folders.flatMap(f => f.callIds));
-      result = result.filter(c => !allFolderCallIds.has(c.id));
-    } else if (selectedFolderId !== null) {
-      const folder = folders.find(f => f.id === selectedFolderId);
-      if (folder) {
-        result = result.filter(c => folder.callIds.includes(c.id));
-      }
-    }
+    // Filter out calls in buckets (show only "inbox" calls in main list)
+    const allBucketCallIds = new Set(buckets.flatMap((b) => b.callIds));
+    result = result.filter((c) => !allBucketCallIds.has(c.id));
 
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
@@ -927,20 +937,12 @@ function CallsPageContent() {
       );
     }
 
-    // Sort by newest first
     return [...result].sort(
       (a, b) =>
         new Date(b.callStartedAt).getTime() - new Date(a.callStartedAt).getTime()
     );
-  }, [calls, selectedFolderId, folders, searchQuery]);
+  }, [calls, buckets, searchQuery]);
 
-  // Get calls not in any folder (inbox)
-  const inboxCalls = useMemo(() => {
-    const allFolderCallIds = new Set(folders.flatMap(f => f.callIds));
-    return calls.filter(c => !allFolderCallIds.has(c.id));
-  }, [calls, folders]);
-
-  // Visible calls for infinite scroll
   const visibleCalls = useMemo(() => {
     return filteredCalls.slice(0, visibleCount);
   }, [filteredCalls, visibleCount]);
@@ -955,7 +957,7 @@ function CallsPageContent() {
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && hasMoreCalls) {
-          setVisibleCount(prev => Math.min(prev + ITEMS_PER_PAGE, filteredCalls.length));
+          setVisibleCount((prev) => Math.min(prev + ITEMS_PER_PAGE, filteredCalls.length));
         }
       },
       { threshold: 0.1 }
@@ -965,68 +967,38 @@ function CallsPageContent() {
     return () => observer.disconnect();
   }, [hasMoreCalls, filteredCalls.length]);
 
-  // Folder management handlers
-  const createFolder = useCallback(() => {
-    if (!newFolderName.trim()) return;
-    const newFolder: CallFolder = {
-      id: `folder-${Date.now()}`,
-      name: newFolderName.trim(),
-      color: newFolderColor,
+  // Bucket handlers
+  const handleCreateBucket = useCallback((name: string, color: string) => {
+    const newBucket: CallBucket = {
+      id: `bucket-${Date.now()}`,
+      name,
+      color,
       callIds: [],
     };
-    setFolders(prev => [...prev, newFolder]);
-    setNewFolderName("");
-    setNewFolderColor("blue");
-    setIsCreatingFolder(false);
-  }, [newFolderName, newFolderColor]);
-
-  const updateFolderName = useCallback((folderId: string, name: string) => {
-    setFolders(prev => prev.map(f =>
-      f.id === folderId ? { ...f, name } : f
-    ));
-    setEditingFolderId(null);
-    setEditingFolderName("");
+    setBuckets((prev) => [...prev, newBucket]);
   }, []);
 
-  const deleteFolder = useCallback((folderId: string) => {
-    setFolders(prev => prev.filter(f => f.id !== folderId));
-    if (selectedFolderId === folderId) {
-      setSelectedFolderId(null);
-    }
-  }, [selectedFolderId]);
-
-  const addCallToFolder = useCallback((callId: string, folderId: string) => {
-    setFolders(prev => prev.map(f => {
-      if (f.id === folderId) {
-        // Remove from any other folder first
-        return { ...f, callIds: [...new Set([...f.callIds, callId])] };
-      }
-      // Remove from other folders
-      return { ...f, callIds: f.callIds.filter(id => id !== callId) };
-    }));
+  const handleDeleteBucket = useCallback((bucketId: string) => {
+    setBuckets((prev) => prev.filter((b) => b.id !== bucketId));
   }, []);
 
-  const removeCallFromFolder = useCallback((callId: string) => {
-    setFolders(prev => prev.map(f => ({
-      ...f,
-      callIds: f.callIds.filter(id => id !== callId)
-    })));
+  const handleRenameBucket = useCallback((bucketId: string, name: string) => {
+    setBuckets((prev) =>
+      prev.map((b) => (b.id === bucketId ? { ...b, name } : b))
+    );
   }, []);
 
-  const handleDrop = useCallback((folderId: string, e: React.DragEvent) => {
-    e.preventDefault();
-    const callId = e.dataTransfer.getData("callId");
-    if (callId) {
-      addCallToFolder(callId, folderId);
-    }
-    setDragOverFolderId(null);
-    setDraggingCallId(null);
-  }, [addCallToFolder]);
-
-  const handleDragOver = useCallback((folderId: string, e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    setDragOverFolderId(folderId);
+  const handleDropToBucket = useCallback((bucketId: string, callId: string) => {
+    setBuckets((prev) =>
+      prev.map((b) => {
+        if (b.id === bucketId) {
+          return { ...b, callIds: [...new Set([...b.callIds, callId])] };
+        }
+        // Remove from other buckets
+        return { ...b, callIds: b.callIds.filter((id) => id !== callId) };
+      })
+    );
+    toast.success("Call moved to bucket");
   }, []);
 
   // Selection handlers
@@ -1042,14 +1014,6 @@ function CallsPageContent() {
     });
   }, []);
 
-  const handleSelectAll = useCallback(() => {
-    setSelectedCalls(new Set(filteredCalls.map((c) => c.id)));
-  }, [filteredCalls]);
-
-  const handleDeselectAll = useCallback(() => {
-    setSelectedCalls(new Set());
-  }, []);
-
   // Quick action handler
   const handleQuickAction = useCallback(
     (callId: string, action: string) => {
@@ -1063,20 +1027,18 @@ function CallsPageContent() {
       }
 
       switch (action) {
-        case "view":
-          setSelectedCall(call);
-          break;
         case "complete":
           updateCallStatus(callId, "completed");
+          setExpandedCallId(null);
           break;
         case "archive":
           archiveCall(callId);
+          setExpandedCallId(null);
           break;
         case "delete":
-          // Use confirmation dialog for delete
           confirmDelete({
             title: "Delete Call Record",
-            description: `Are you sure you want to delete the call from ${call?.callerName || "Unknown Caller"}? This action cannot be undone.`,
+            description: `Are you sure you want to delete the call from ${call?.callerName || "Unknown Caller"}?`,
             onConfirm: () => {
               deleteCall(callId);
               setSelectedCalls((prev) => {
@@ -1084,73 +1046,22 @@ function CallsPageContent() {
                 next.delete(callId);
                 return next;
               });
+              setExpandedCallId(null);
             },
           });
           break;
         case "call_back":
-          // Would trigger call functionality
+          toast.info("Call back feature coming soon");
           break;
         case "send_email":
-          // Would open email compose
-          break;
-        case "assign":
-          // Would open assign dialog
+          toast.info("Email feature coming soon");
           break;
         case "create_task":
-          // Would create task
+          toast.info("Task creation coming soon");
           break;
       }
     },
     [calls, updateCallStatus, archiveCall, deleteCall, addCallNote, confirmDelete]
-  );
-
-  // Bulk action handler with confirmation
-  const handleBulkAction = useCallback(
-    async (action: string) => {
-      const selectedIds = Array.from(selectedCalls);
-      const count = selectedIds.length;
-
-      // Actions requiring confirmation
-      if (action === "delete" || action === "archive" || action === "complete") {
-        await confirmBulkAction({
-          action: action as "delete" | "archive" | "complete",
-          itemCount: count,
-          itemName: "call",
-          onConfirm: () => {
-            switch (action) {
-              case "complete":
-                selectedIds.forEach((id) => updateCallStatus(id, "completed"));
-                break;
-              case "archive":
-                selectedIds.forEach((id) => archiveCall(id));
-                break;
-              case "delete":
-                selectedIds.forEach((id) => deleteCall(id));
-                break;
-            }
-            setSelectedCalls(new Set());
-          },
-        });
-      } else {
-        // Non-destructive actions execute immediately
-        setSelectedCalls(new Set());
-      }
-    },
-    [selectedCalls, updateCallStatus, archiveCall, deleteCall, confirmBulkAction]
-  );
-
-  // Single item delete with confirmation
-  const handleDeleteCall = useCallback(
-    (callId: string, callerName?: string) => {
-      confirmDelete({
-        title: "Delete Call Record",
-        description: `Are you sure you want to delete the call from ${callerName || "Unknown Caller"}? This action cannot be undone.`,
-        onConfirm: () => {
-          deleteCall(callId);
-        },
-      });
-    },
-    [deleteCall, confirmDelete]
   );
 
   return (
@@ -1166,13 +1077,12 @@ function CallsPageContent() {
 
           {/* Search */}
           <div className="relative ml-4">
-            <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+            <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Search calls..."
-              aria-label="Search calls by name or phone number"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-[200px] h-8 pl-9 text-sm"
+              className="w-[250px] h-8 pl-9 text-sm"
             />
           </div>
 
@@ -1188,13 +1098,13 @@ function CallsPageContent() {
             ) : gotoStatus.status === "connected" ? (
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <div className="flex items-center gap-1.5 text-sm text-green-600 dark:text-green-400">
+                  <div className="flex items-center gap-1.5 text-sm text-green-600">
                     <Wifi className="h-4 w-4" />
                     <span>GoTo Connected</span>
                   </div>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>GoTo Connect is active and receiving calls</p>
+                  <p>GoTo Connect is active</p>
                   {gotoStatus.accountKey && (
                     <p className="text-xs text-muted-foreground mt-1">
                       Account: {gotoStatus.accountKey}
@@ -1205,7 +1115,7 @@ function CallsPageContent() {
             ) : (
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <div className="flex items-center gap-1.5 text-sm text-amber-600 dark:text-amber-400">
+                  <div className="flex items-center gap-1.5 text-sm text-amber-600">
                     <WifiOff className="h-4 w-4" />
                     <span>GoTo Disconnected</span>
                   </div>
@@ -1221,7 +1131,6 @@ function CallsPageContent() {
               </Tooltip>
             )}
 
-            {/* Test Connection Button */}
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -1241,293 +1150,84 @@ function CallsPageContent() {
               <TooltipContent>Test Connection</TooltipContent>
             </Tooltip>
 
-            {/* Reconnect Button (only show if disconnected) */}
             {gotoStatus.status !== "connected" && gotoStatus.authUrl && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8"
-                    onClick={reconnectGoto}
-                  >
-                    <ExternalLink className="h-4 w-4 mr-1.5" />
-                    Reconnect GoTo
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Connect to GoTo Connect</TooltipContent>
-              </Tooltip>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8"
+                onClick={reconnectGoto}
+              >
+                <ExternalLink className="h-4 w-4 mr-1.5" />
+                Reconnect
+              </Button>
             )}
           </div>
 
           <div className="h-4 border-l mx-2" />
 
-          {/* Total count */}
           <span className="text-sm text-muted-foreground">
-            {calls.length} calls
+            {filteredCalls.length} calls
           </span>
         </div>
 
-        {/* Main Content */}
-        <div className="flex-1 flex overflow-hidden">
-          {/* Folders Sidebar */}
-          <div className="w-[200px] flex-shrink-0 border-r bg-muted/30 p-3 flex flex-col">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-xs font-medium text-muted-foreground">
-                FOLDERS
-              </h3>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6"
-                    onClick={() => setIsCreatingFolder(true)}
-                  >
-                    <FolderPlus className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Create folder</TooltipContent>
-              </Tooltip>
-            </div>
-
-            <ScrollArea className="flex-1">
-              <div className="space-y-1">
-                {/* All Calls */}
-                <Button
-                  variant={selectedFolderId === null ? "secondary" : "ghost"}
-                  size="sm"
-                  className="w-full justify-start"
-                  onClick={() => setSelectedFolderId(null)}
-                >
-                  <Inbox className="h-4 w-4 mr-2" />
-                  <span className="flex-1 text-left">All Calls</span>
-                  <span className="text-xs text-muted-foreground">{calls.length}</span>
-                </Button>
-
-                {/* Inbox (uncategorized) */}
-                <div
-                  className={cn(
-                    "flex items-center rounded-md",
-                    dragOverFolderId === "inbox" && "ring-2 ring-primary bg-primary/10"
-                  )}
-                  onDragOver={(e) => handleDragOver("inbox", e)}
-                  onDragLeave={() => setDragOverFolderId(null)}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    const callId = e.dataTransfer.getData("callId");
-                    if (callId) {
-                      removeCallFromFolder(callId);
+        {/* Main Calls List */}
+        <div className="flex-1 overflow-hidden">
+          <ScrollArea className="h-full">
+            <div className="p-4 space-y-2 max-w-4xl mx-auto">
+              {mounted && filteredCalls.length === 0 && (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Phone className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>No calls to show</p>
+                  <p className="text-sm mt-1">New calls will appear here</p>
+                </div>
+              )}
+              {mounted &&
+                visibleCalls.map((call) => (
+                  <ExpandableCallCard
+                    key={call.id}
+                    call={call}
+                    selected={selectedCalls.has(call.id)}
+                    onSelect={(selected) => handleSelect(call.id, selected)}
+                    onQuickAction={(action) => handleQuickAction(call.id, action)}
+                    onActionFeedback={(actionId, feedback) =>
+                      updateActionFeedback(call.id, actionId, feedback)
                     }
-                    setDragOverFolderId(null);
-                    setDraggingCallId(null);
-                  }}
-                >
-                  <Button
-                    variant={selectedFolderId === "inbox" ? "secondary" : "ghost"}
-                    size="sm"
-                    className="w-full justify-start"
-                    onClick={() => setSelectedFolderId("inbox")}
-                  >
-                    <Phone className="h-4 w-4 mr-2 text-muted-foreground" />
-                    <span className="flex-1 text-left">Inbox</span>
-                    <span className="text-xs text-muted-foreground">{inboxCalls.length}</span>
-                  </Button>
-                </div>
-
-                {/* Custom Folders */}
-                {folders.map((folder) => (
-                  <div
-                    key={folder.id}
-                    className={cn(
-                      "group flex items-center rounded-md",
-                      dragOverFolderId === folder.id && "ring-2 ring-primary bg-primary/10"
-                    )}
-                    onDragOver={(e) => handleDragOver(folder.id, e)}
-                    onDragLeave={() => setDragOverFolderId(null)}
-                    onDrop={(e) => handleDrop(folder.id, e)}
-                  >
-                    {editingFolderId === folder.id ? (
-                      <div className="flex items-center gap-1 w-full p-1">
-                        <Input
-                          value={editingFolderName}
-                          onChange={(e) => setEditingFolderName(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              updateFolderName(folder.id, editingFolderName);
-                            } else if (e.key === "Escape") {
-                              setEditingFolderId(null);
-                            }
-                          }}
-                          className="h-6 text-sm"
-                          autoFocus
-                        />
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6"
-                          onClick={() => updateFolderName(folder.id, editingFolderName)}
-                        >
-                          <CheckCircle className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    ) : (
-                      <Button
-                        variant={selectedFolderId === folder.id ? "secondary" : "ghost"}
-                        size="sm"
-                        className="w-full justify-start group"
-                        onClick={() => setSelectedFolderId(folder.id)}
-                      >
-                        <div className={cn(
-                          "w-3 h-3 rounded mr-2",
-                          folderColors.find(c => c.name === folder.color)?.class || "bg-gray-500"
-                        )} />
-                        <Folder className="h-4 w-4 mr-1.5 text-muted-foreground" />
-                        <span className="flex-1 text-left truncate">{folder.name}</span>
-                        <span className="text-xs text-muted-foreground mr-1">
-                          {folder.callIds.length}
-                        </span>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                            <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                              <MoreHorizontal className="h-3 w-3" />
-                            </div>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-32">
-                            <DropdownMenuItem onClick={() => {
-                              setEditingFolderId(folder.id);
-                              setEditingFolderName(folder.name);
-                            }}>
-                              <Pencil className="h-3 w-3 mr-2" />
-                              Rename
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => deleteFolder(folder.id)}
-                              className="text-destructive"
-                            >
-                              <Trash2 className="h-3 w-3 mr-2" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </Button>
-                    )}
-                  </div>
+                    onDragStart={() => setDraggingCallId(call.id)}
+                    onDragEnd={() => setDraggingCallId(null)}
+                    isDragging={draggingCallId === call.id}
+                    isExpanded={expandedCallId === call.id}
+                    onToggleExpand={() =>
+                      setExpandedCallId(expandedCallId === call.id ? null : call.id)
+                    }
+                  />
                 ))}
-              </div>
-            </ScrollArea>
-
-            {/* Create Folder Form */}
-            {isCreatingFolder && (
-              <div className="mt-3 p-2 border rounded-md bg-background space-y-2">
-                <Input
-                  placeholder="Folder name"
-                  value={newFolderName}
-                  onChange={(e) => setNewFolderName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") createFolder();
-                    if (e.key === "Escape") setIsCreatingFolder(false);
-                  }}
-                  className="h-8 text-sm"
-                  autoFocus
-                />
-                <div className="flex gap-1 flex-wrap">
-                  {folderColors.map((color) => (
-                    <button
-                      key={color.name}
-                      onClick={() => setNewFolderColor(color.name)}
-                      className={cn(
-                        "w-5 h-5 rounded transition-all",
-                        color.class,
-                        newFolderColor === color.name && "ring-2 ring-offset-1 ring-primary"
-                      )}
-                    />
-                  ))}
+              {mounted && hasMoreCalls && (
+                <div
+                  ref={loadMoreRef}
+                  className="py-4 text-center text-sm text-muted-foreground"
+                >
+                  Loading more...
                 </div>
-                <div className="flex gap-1">
-                  <Button
-                    size="sm"
-                    className="flex-1 h-7 text-xs"
-                    onClick={createFolder}
-                    disabled={!newFolderName.trim()}
-                  >
-                    Create
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => setIsCreatingFolder(false)}
-                  >
-                    Cancel
-                  </Button>
+              )}
+              {mounted && filteredCalls.length > 0 && !hasMoreCalls && (
+                <div className="py-4 text-center text-xs text-muted-foreground">
+                  Showing all {filteredCalls.length} calls
                 </div>
-              </div>
-            )}
-          </div>
-
-          {/* Calls List */}
-          <div className="flex-1 overflow-hidden">
-            <ScrollArea className="h-full">
-              <div className="p-2 space-y-1.5">
-                {mounted && filteredCalls.length === 0 && (
-                  <div className="text-center py-12 text-muted-foreground">
-                    <Phone className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                    <p>No calls match your filters</p>
-                  </div>
-                )}
-                {mounted &&
-                  visibleCalls.map((call) => (
-                    <CallCard
-                      key={call.id}
-                      call={call}
-                      selected={selectedCalls.has(call.id)}
-                      onSelect={(selected) => handleSelect(call.id, selected)}
-                      onClick={() => setSelectedCall(call)}
-                      onQuickAction={(action) => handleQuickAction(call.id, action)}
-                      onActionFeedback={(actionId, feedback) => updateActionFeedback(call.id, actionId, feedback)}
-                      onDragStart={() => setDraggingCallId(call.id)}
-                      onDragEnd={() => setDraggingCallId(null)}
-                      isDragging={draggingCallId === call.id}
-                    />
-                  ))}
-                {/* Infinite scroll trigger */}
-                {mounted && hasMoreCalls && (
-                  <div
-                    ref={loadMoreRef}
-                    className="py-4 text-center text-sm text-muted-foreground"
-                  >
-                    Loading more...
-                  </div>
-                )}
-                {mounted && filteredCalls.length > 0 && !hasMoreCalls && (
-                  <div className="py-4 text-center text-xs text-muted-foreground">
-                    Showing all {filteredCalls.length} calls
-                  </div>
-                )}
-              </div>
-            </ScrollArea>
-          </div>
+              )}
+            </div>
+          </ScrollArea>
         </div>
 
-        {/* Call Detail Modal */}
-        <CallDetailModal
-          call={selectedCall}
-          open={!!selectedCall}
-          onClose={() => setSelectedCall(null)}
-          onAction={(action) => {
-            if (selectedCall) {
-              handleQuickAction(selectedCall.id, action);
-              if (action === "complete" || action === "archive" || action === "delete") {
-                setSelectedCall(null);
-              }
-            }
-          }}
-          onActionFeedback={(actionId, feedback) => {
-            if (selectedCall) {
-              updateActionFeedback(selectedCall.id, actionId, feedback);
-            }
-          }}
+        {/* Bottom Bucket Tray */}
+        <BucketTray
+          buckets={buckets}
+          onDrop={handleDropToBucket}
+          onCreateBucket={handleCreateBucket}
+          onDeleteBucket={handleDeleteBucket}
+          onRenameBucket={handleRenameBucket}
+          dragOverBucketId={dragOverBucketId}
+          onDragOver={setDragOverBucketId}
+          onDragLeave={() => setDragOverBucketId(null)}
         />
 
         {/* Confirmation Dialogs */}
@@ -1560,7 +1260,6 @@ function CallsPageContent() {
   );
 }
 
-// Wrap in Suspense for useSearchParams() support
 export default function CallsPage() {
   return (
     <Suspense fallback={<div className="flex items-center justify-center h-screen">Loading...</div>}>
