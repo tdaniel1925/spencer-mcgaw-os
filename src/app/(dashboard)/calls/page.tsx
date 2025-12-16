@@ -170,8 +170,8 @@ function ExpandableCallCard({
   const [note, setNote] = useState("");
   const [showTranscript, setShowTranscript] = useState(true);
 
-  const category = call.aiAnalysis?.category || "other";
-  const categoryInfo = callCategoryInfo[category];
+  const category = (call.aiAnalysis?.category as CallCategory) || "other";
+  const categoryInfo = callCategoryInfo[category] || callCategoryInfo["other"];
 
   return (
     <Card
@@ -278,8 +278,8 @@ function ExpandableCallCard({
                       {/* Category and Sentiment Badges */}
                       <div className="flex flex-wrap items-center gap-2 mt-2">
                         <Badge variant="secondary" className="text-[10px]">
-                          {categoryIcons[category]}
-                          <span className="ml-1">{categoryInfo.label}</span>
+                          {categoryIcons[category] || <Phone className="h-4 w-4" />}
+                          <span className="ml-1">{categoryInfo?.label || "Other"}</span>
                         </Badge>
                         <Badge
                           variant="outline"
