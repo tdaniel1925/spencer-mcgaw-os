@@ -259,6 +259,24 @@ interface SMSMessage {
   created_at: string;
 }
 
+interface Communication {
+  type: "call" | "email";
+  id: string;
+  createdAt: string;
+  direction: string;
+  contactInfo: string | null;
+  contactName: string | null;
+  summary: string | null;
+  duration: number | null;
+  recordingUrl: string | null;
+  content: string | null;
+  sentiment: string | null;
+  category: string | null;
+  messageId?: string;
+  priorityScore?: number;
+  keyPoints?: string[];
+}
+
 // Note types configuration
 const noteTypes = [
   { value: "general", label: "General", icon: StickyNote, color: "bg-slate-100 text-slate-700" },
@@ -327,6 +345,9 @@ export default function ClientDetailPage() {
   const [smsConversations, setSmsConversations] = useState<SMSConversation[]>([]);
   const [smsMessages, setSmsMessages] = useState<Record<string, SMSMessage[]>>({});
   const [loadingSms, setLoadingSms] = useState(false);
+  const [communications, setCommunications] = useState<Communication[]>([]);
+  const [communicationsStats, setCommunicationsStats] = useState({ totalCalls: 0, totalEmails: 0, total: 0 });
+  const [loadingCommunications, setLoadingCommunications] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("overview");
@@ -523,6 +544,23 @@ export default function ClientDetailPage() {
       console.error("Error loading SMS conversations:", error);
     } finally {
       setLoadingSms(false);
+    }
+  }, [clientId]);
+
+  // Load communications (calls + emails) for this client
+  const loadCommunications = useCallback(async () => {
+    setLoadingCommunications(true);
+    try {
+      const res = await fetch(`/api/clients/${clientId}/communications`);
+      if (res.ok) {
+        const data = await res.json();
+        setCommunications(data.communications || []);
+        setCommunicationsStats(data.stats || { totalCalls: 0, totalEmails: 0, total: 0 });
+      }
+    } catch (error) {
+      console.error("Error loading communications:", error);
+    } finally {
+      setLoadingCommunications(false);
     }
   }, [clientId]);
 
@@ -1150,6 +1188,12 @@ export default function ClientDetailPage() {
                   )}
                 </TabsTrigger>
                 <TabsTrigger value="activity" className="data-[state=active]:bg-background">Activity</TabsTrigger>
+                <TabsTrigger value="communications" className="data-[state=active]:bg-background" onClick={() => !communications.length && loadCommunications()}>
+                  Calls/Emails
+                  {communicationsStats.total > 0 && (
+                    <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5">{communicationsStats.total}</Badge>
+                  )}
+                </TabsTrigger>
                 <TabsTrigger value="sms" className="data-[state=active]:bg-background" onClick={() => !smsConversations.length && loadSmsConversations()}>
                   SMS
                   {smsConversations.reduce((acc, c) => acc + c.unread_count, 0) > 0 && (
@@ -2025,6 +2069,127 @@ export default function ClientDetailPage() {
                         </div>
                       );
                     })}
+                  </div>
+                )}
+              </TabsContent>
+
+              {/* Communications Tab - Calls & Emails */}
+              <TabsContent value="communications" className="m-0 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold">Call & Email History</h2>
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground mr-4">
+                      <div className="flex items-center gap-1">
+                        <PhoneCall className="h-4 w-4" />
+                        <span>{communicationsStats.totalCalls} calls</span>
+                      </div>
+                      <span>•</span>
+                      <div className="flex items-center gap-1">
+                        <MailOpen className="h-4 w-4" />
+                        <span>{communicationsStats.totalEmails} emails</span>
+                      </div>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={loadCommunications}>
+                      <RefreshCw className="h-4 w-4 mr-1.5" />
+                      Refresh
+                    </Button>
+                  </div>
+                </div>
+
+                {loadingCommunications ? (
+                  <div className="space-y-4">
+                    {[1, 2, 3].map(i => (
+                      <Skeleton key={i} className="h-24 w-full" />
+                    ))}
+                  </div>
+                ) : communications.length === 0 ? (
+                  <Card>
+                    <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                      <MessageSquare className="h-12 w-12 mb-4 opacity-30" />
+                      <p className="text-lg font-medium">No Communications Yet</p>
+                      <p className="text-sm">Calls and emails linked to this client will appear here.</p>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <div className="space-y-3">
+                    {communications.map((comm) => (
+                      <Card key={comm.id} className="hover:shadow-md transition-shadow">
+                        <CardContent className="p-4">
+                          <div className="flex items-start gap-4">
+                            <div className={cn(
+                              "p-2 rounded-full shrink-0",
+                              comm.type === "call" ? "bg-green-100 text-green-700" : "bg-purple-100 text-purple-700"
+                            )}>
+                              {comm.type === "call" ? <PhoneCall className="h-5 w-5" /> : <MailOpen className="h-5 w-5" />}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <Badge variant={comm.type === "call" ? "default" : "secondary"} className="text-xs">
+                                  {comm.type === "call" ? "Phone Call" : "Email"}
+                                </Badge>
+                                <Badge variant="outline" className="text-xs">
+                                  {comm.direction === "inbound" ? "Incoming" : "Outgoing"}
+                                </Badge>
+                                {comm.sentiment && (
+                                  <Badge variant="outline" className={cn(
+                                    "text-xs",
+                                    comm.sentiment === "positive" && "border-green-500 text-green-600",
+                                    comm.sentiment === "negative" && "border-red-500 text-red-600"
+                                  )}>
+                                    {comm.sentiment}
+                                  </Badge>
+                                )}
+                                {comm.category && (
+                                  <Badge variant="outline" className="text-xs">{comm.category}</Badge>
+                                )}
+                              </div>
+                              {comm.summary && (
+                                <p className="text-sm mt-2 text-foreground">{comm.summary}</p>
+                              )}
+                              <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground flex-wrap">
+                                <span>{format(parseISO(comm.createdAt), "MMM d, yyyy 'at' h:mm a")}</span>
+                                {comm.duration && (
+                                  <span>• {Math.floor(comm.duration / 60)}:{String(comm.duration % 60).padStart(2, '0')} duration</span>
+                                )}
+                                {comm.contactInfo && (
+                                  <span>• {comm.contactInfo}</span>
+                                )}
+                              </div>
+                              {comm.type === "call" && comm.recordingUrl && (
+                                <div className="mt-3">
+                                  <audio controls className="w-full h-8" src={comm.recordingUrl}>
+                                    Your browser does not support audio playback.
+                                  </audio>
+                                </div>
+                              )}
+                              {comm.type === "call" && comm.content && (
+                                <details className="mt-3">
+                                  <summary className="cursor-pointer text-sm text-muted-foreground hover:text-foreground">
+                                    View Transcript
+                                  </summary>
+                                  <div className="mt-2 p-3 bg-muted rounded-md text-sm whitespace-pre-wrap max-h-48 overflow-y-auto">
+                                    {comm.content}
+                                  </div>
+                                </details>
+                              )}
+                              {comm.keyPoints && comm.keyPoints.length > 0 && (
+                                <div className="mt-3">
+                                  <p className="text-xs font-medium text-muted-foreground mb-1">Key Points:</p>
+                                  <ul className="text-sm space-y-1">
+                                    {comm.keyPoints.map((point, idx) => (
+                                      <li key={idx} className="flex items-start gap-2">
+                                        <span className="text-primary">•</span>
+                                        <span>{point}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
                   </div>
                 )}
               </TabsContent>

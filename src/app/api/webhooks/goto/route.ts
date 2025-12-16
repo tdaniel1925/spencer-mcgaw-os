@@ -1,11 +1,47 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { calls, activityLogs, webhookLogs } from "@/db/schema";
+import { calls, activityLogs, webhookLogs, clients } from "@/db/schema";
 import { parseWebhookWithAI, isAIParsingAvailable } from "@/lib/ai";
 import type { ParsedWebhookData } from "@/lib/ai";
 import { getCallReport, getRecordingUrl, getTranscription } from "@/lib/goto";
-import { eq } from "drizzle-orm";
+import { eq, or, sql } from "drizzle-orm";
 import crypto from "crypto";
+
+/**
+ * Try to match a phone number to an existing client
+ */
+async function matchPhoneToClient(phone: string | null): Promise<string | null> {
+  if (!phone) return null;
+
+  // Normalize phone number (remove non-digits)
+  const normalizedPhone = phone.replace(/\D/g, "");
+  if (normalizedPhone.length < 7) return null;
+
+  try {
+    // Try matching against client phone numbers
+    const matchedClients = await db
+      .select({ id: clients.id })
+      .from(clients)
+      .where(
+        or(
+          sql`regexp_replace(${clients.phone}, '[^0-9]', '', 'g') = ${normalizedPhone}`,
+          sql`regexp_replace(${clients.phone}, '[^0-9]', '', 'g') LIKE ${'%' + normalizedPhone.slice(-10)}`,
+          sql`regexp_replace(${clients.alternatePhone}, '[^0-9]', '', 'g') = ${normalizedPhone}`,
+          sql`regexp_replace(${clients.alternatePhone}, '[^0-9]', '', 'g') LIKE ${'%' + normalizedPhone.slice(-10)}`
+        )
+      )
+      .limit(1);
+
+    if (matchedClients.length > 0) {
+      console.log(`[GoTo Webhook] Matched phone ${phone} to client ${matchedClients[0].id}`);
+      return matchedClients[0].id;
+    }
+  } catch (error) {
+    console.error("[GoTo Webhook] Error matching phone to client:", error);
+  }
+
+  return null;
+}
 
 // Store processed webhook IDs to prevent replay
 const processedWebhooks = new Set<string>();
@@ -342,12 +378,17 @@ async function processCallReport(
   const summary = gotoSummary || parsedData?.analysis?.summary || `GoTo Connect call - ${duration}s`;
   const sentiment = gotoSentiment?.toLowerCase() !== "unavailable" ? gotoSentiment?.toLowerCase() : (parsedData?.analysis?.sentiment || null);
 
+  // Try to auto-match caller to an existing client
+  const finalCallerPhone = callerPhone || parsedData?.contact?.phone || null;
+  const matchedClientId = await matchPhoneToClient(finalCallerPhone);
+
   // Store call record
   const [insertedCall] = await db
     .insert(calls)
     .values({
       vapiCallId: `goto-${conversationSpaceId}`,
-      callerPhone: callerPhone || parsedData?.contact?.phone || null,
+      clientId: matchedClientId,
+      callerPhone: finalCallerPhone,
       callerName: callerName || parsedData?.contact?.name || null,
       status: "completed",
       direction,
@@ -391,7 +432,7 @@ async function processCallReport(
 
   return {
     id: recordId || "",
-    callerPhone,
+    callerPhone: finalCallerPhone,
     callerName,
     direction,
     duration,
@@ -463,12 +504,17 @@ async function processCallEvent(
     });
   }
 
+  // Try to auto-match caller to an existing client
+  const finalCallerPhone = parsedData?.contact?.phone || callerPhone;
+  const matchedClientId = await matchPhoneToClient(finalCallerPhone);
+
   // Store call record
   const [insertedCall] = await db
     .insert(calls)
     .values({
       vapiCallId: conversationSpaceId ? `goto-${conversationSpaceId}` : `goto-${Date.now()}`,
-      callerPhone: parsedData?.contact?.phone || callerPhone,
+      clientId: matchedClientId,
+      callerPhone: finalCallerPhone,
       callerName: parsedData?.contact?.name || null,
       status: "completed",
       direction,
@@ -507,7 +553,7 @@ async function processCallEvent(
 
   return {
     id: recordId || "",
-    callerPhone: parsedData?.contact?.phone || callerPhone,
+    callerPhone: finalCallerPhone,
     callerName: parsedData?.contact?.name || null,
     direction,
     duration: parsedData?.call?.duration || null,
@@ -553,11 +599,16 @@ async function processUnknownEvent(
   const direction: "inbound" | "outbound" =
     parsedData.call?.direction || "inbound";
 
+  // Try to auto-match caller to an existing client
+  const finalCallerPhone = parsedData.contact?.phone || null;
+  const matchedClientId = await matchPhoneToClient(finalCallerPhone);
+
   const [insertedCall] = await db
     .insert(calls)
     .values({
       vapiCallId: `goto-unknown-${Date.now()}`,
-      callerPhone: parsedData.contact?.phone || null,
+      clientId: matchedClientId,
+      callerPhone: finalCallerPhone,
       callerName: parsedData.contact?.name || null,
       status: "completed",
       direction,
@@ -581,7 +632,7 @@ async function processUnknownEvent(
 
   return {
     id: insertedCall?.id || "",
-    callerPhone: parsedData.contact?.phone || null,
+    callerPhone: finalCallerPhone,
     callerName: parsedData.contact?.name || null,
     direction,
     duration: parsedData.call?.duration || null,
