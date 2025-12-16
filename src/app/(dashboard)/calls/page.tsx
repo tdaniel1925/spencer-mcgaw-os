@@ -616,16 +616,16 @@ function BucketTray({
   const [editingName, setEditingName] = useState("");
 
   return (
-    <div className="h-24 border-t bg-muted/30 flex items-center px-4 gap-3 overflow-x-auto">
+    <div className="h-20 border-t bg-muted/20 flex items-center px-6 gap-4 overflow-x-auto">
       {/* Existing Buckets */}
       {buckets.map((bucket) => (
         <div
           key={bucket.id}
           className={cn(
-            "flex-shrink-0 min-w-[140px] h-16 rounded-lg border-2 border-dashed transition-all flex flex-col items-center justify-center gap-1",
+            "group relative flex-shrink-0 min-w-[160px] h-14 rounded-xl border transition-all flex items-center justify-center gap-2 px-4",
             dragOverBucketId === bucket.id
-              ? "border-primary bg-primary/10 scale-105"
-              : "border-muted-foreground/30 bg-background hover:border-muted-foreground/50"
+              ? "border-primary bg-primary/10 scale-105 shadow-md"
+              : "border-border bg-card hover:bg-accent/50 hover:border-border/80"
           )}
           onDragOver={(e) => {
             e.preventDefault();
@@ -642,11 +642,11 @@ function BucketTray({
           }}
         >
           {editingId === bucket.id ? (
-            <div className="flex items-center gap-1 px-2">
+            <div className="flex items-center gap-2">
               <Input
                 value={editingName}
                 onChange={(e) => setEditingName(e.target.value)}
-                className="h-6 text-xs w-20"
+                className="h-7 text-sm w-24"
                 autoFocus
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
@@ -660,44 +660,43 @@ function BucketTray({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-5 w-5"
+                className="h-6 w-6"
                 onClick={() => {
                   onRenameBucket(bucket.id, editingName);
                   setEditingId(null);
                 }}
               >
-                <CheckCircle className="h-3 w-3" />
+                <CheckCircle className="h-4 w-4" />
               </Button>
             </div>
           ) : (
             <>
-              <div className="flex items-center gap-2">
-                <div className={cn("w-2 h-2 rounded-full", bucket.color)} />
-                <span className="text-xs font-medium">{bucket.name}</span>
-                <Badge variant="secondary" className="text-[10px] px-1.5 h-4">
-                  {bucket.callIds.length}
-                </Badge>
-              </div>
-              <div className="flex items-center gap-1">
+              <div className={cn("w-3 h-3 rounded-full flex-shrink-0", bucket.color)} />
+              <span className="text-sm font-medium truncate">{bucket.name}</span>
+              <Badge variant="secondary" className="text-xs px-2 h-5 ml-1">
+                {bucket.callIds.length}
+              </Badge>
+              {/* Edit/Delete buttons - shown on hover */}
+              <div className="absolute -top-2 -right-2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                 <Button
-                  variant="ghost"
+                  variant="secondary"
                   size="icon"
-                  className="h-5 w-5 opacity-50 hover:opacity-100"
+                  className="h-6 w-6 rounded-full shadow-sm"
                   onClick={() => {
                     setEditingId(bucket.id);
                     setEditingName(bucket.name);
                   }}
                 >
-                  <Pencil className="h-2.5 w-2.5" />
+                  <Pencil className="h-3 w-3" />
                 </Button>
                 {!bucket.isDefault && (
                   <Button
-                    variant="ghost"
+                    variant="secondary"
                     size="icon"
-                    className="h-5 w-5 opacity-50 hover:opacity-100 text-destructive"
+                    className="h-6 w-6 rounded-full shadow-sm text-destructive hover:bg-destructive hover:text-destructive-foreground"
                     onClick={() => onDeleteBucket(bucket.id)}
                   >
-                    <X className="h-2.5 w-2.5" />
+                    <X className="h-3 w-3" />
                   </Button>
                 )}
               </div>
@@ -708,12 +707,12 @@ function BucketTray({
 
       {/* Create New Bucket */}
       {isCreating ? (
-        <div className="flex-shrink-0 min-w-[180px] h-16 rounded-lg border bg-background p-2 flex flex-col gap-1">
+        <div className="flex-shrink-0 min-w-[200px] h-14 rounded-xl border bg-card p-2 flex items-center gap-2">
           <Input
             placeholder="Bucket name..."
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            className="h-6 text-xs"
+            className="h-8 text-sm flex-1"
             autoFocus
             onKeyDown={(e) => {
               if (e.key === "Enter" && newName.trim()) {
@@ -727,60 +726,58 @@ function BucketTray({
             }}
           />
           <div className="flex items-center gap-1">
-            {bucketColors.slice(0, 6).map((color) => (
+            {bucketColors.slice(0, 4).map((color) => (
               <button
                 key={color.name}
                 onClick={() => setNewColor(color.class)}
                 className={cn(
-                  "w-4 h-4 rounded transition-all",
+                  "w-5 h-5 rounded-full transition-all",
                   color.class,
                   newColor === color.class && "ring-2 ring-offset-1 ring-primary"
                 )}
               />
             ))}
-            <div className="flex-1" />
-            <Button
-              size="sm"
-              className="h-5 text-[10px] px-2"
-              onClick={() => {
-                if (newName.trim()) {
-                  onCreateBucket(newName.trim(), newColor);
-                  setNewName("");
-                  setIsCreating(false);
-                }
-              }}
-              disabled={!newName.trim()}
-            >
-              Add
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-5 text-[10px] px-2"
-              onClick={() => {
-                setIsCreating(false);
-                setNewName("");
-              }}
-            >
-              <X className="h-3 w-3" />
-            </Button>
           </div>
+          <Button
+            size="sm"
+            className="h-8 px-3"
+            onClick={() => {
+              if (newName.trim()) {
+                onCreateBucket(newName.trim(), newColor);
+                setNewName("");
+                setIsCreating(false);
+              }
+            }}
+            disabled={!newName.trim()}
+          >
+            Add
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => {
+              setIsCreating(false);
+              setNewName("");
+            }}
+          >
+            <X className="h-4 w-4" />
+          </Button>
         </div>
       ) : (
         <Button
           variant="outline"
-          size="sm"
-          className="flex-shrink-0 h-16 px-4 border-dashed"
+          className="flex-shrink-0 h-14 px-5 rounded-xl border-dashed hover:bg-accent/50"
           onClick={() => setIsCreating(true)}
         >
           <Plus className="h-4 w-4 mr-2" />
-          Add Bucket
+          New Bucket
         </Button>
       )}
 
       {/* Drag hint */}
-      <div className="flex-shrink-0 text-xs text-muted-foreground ml-auto">
-        Drag calls here to organize
+      <div className="flex-shrink-0 text-xs text-muted-foreground/70 ml-auto italic">
+        Drag calls to organize
       </div>
     </div>
   );
@@ -1173,7 +1170,7 @@ function CallsPageContent() {
         {/* Main Calls List */}
         <div className="flex-1 overflow-hidden">
           <ScrollArea className="h-full">
-            <div className="p-4 space-y-2 max-w-4xl mx-auto">
+            <div className="p-4 space-y-2 max-w-6xl mx-auto">
               {mounted && filteredCalls.length === 0 && (
                 <div className="text-center py-12 text-muted-foreground">
                   <Phone className="h-12 w-12 mx-auto mb-4 opacity-50" />
