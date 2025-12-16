@@ -575,10 +575,11 @@ export async function getRecordingUrl(recordingId: string): Promise<string> {
 /**
  * Get transcription for a recording
  * GoTo returns transcription in a results array with utterances
+ * Channel 0 = Staff (internal user), Channel 1 = Caller (external)
  */
 export async function getTranscription(
   transcriptId: string
-): Promise<{ text: string; segments?: Array<{ start: number; end: number; text: string }> }> {
+): Promise<{ text: string; segments?: Array<{ start: number; end: number; text: string; speaker: string }> }> {
   const response = await gotoApiRequest<{
     version?: string;
     results?: Array<{
@@ -599,11 +600,44 @@ export async function getTranscription(
       .filter(r => r.type === "utterances" && r.transcript)
       .sort((a, b) => a.startTimeMs - b.startTimeMs);
 
-    const text = sortedResults.map(r => r.transcript.trim()).join(" ");
+    // Format with speaker labels
+    // Channel 0 = Staff (internal user receiving/making call)
+    // Channel 1 = Caller (external party)
+    const getSpeaker = (channel: number) => channel === 0 ? "Staff" : "Caller";
+
+    // Group consecutive utterances from same speaker
+    const formattedLines: string[] = [];
+    let currentSpeaker: string | null = null;
+    let currentText: string[] = [];
+
+    for (const r of sortedResults) {
+      const speaker = getSpeaker(r.channel);
+      const text = r.transcript.trim();
+
+      if (speaker !== currentSpeaker) {
+        // New speaker - save previous if exists
+        if (currentSpeaker && currentText.length > 0) {
+          formattedLines.push(`${currentSpeaker}: ${currentText.join(" ")}`);
+        }
+        currentSpeaker = speaker;
+        currentText = [text];
+      } else {
+        // Same speaker - append to current
+        currentText.push(text);
+      }
+    }
+
+    // Don't forget the last speaker
+    if (currentSpeaker && currentText.length > 0) {
+      formattedLines.push(`${currentSpeaker}: ${currentText.join(" ")}`);
+    }
+
+    const text = formattedLines.join("\n\n");
     const segments = sortedResults.map(r => ({
       start: r.startTimeMs / 1000,
       end: r.endTimeMs / 1000,
       text: r.transcript.trim(),
+      speaker: getSpeaker(r.channel),
     }));
 
     return { text, segments };
