@@ -463,6 +463,32 @@ export async function subscribeToCallReports(channelId: string): Promise<void> {
   });
 }
 
+/**
+ * Subscribe to recording notifications (for when recordings are ready)
+ */
+export async function subscribeToRecordingNotifications(channelId: string): Promise<void> {
+  const accountKey = getAccountKey();
+
+  if (!accountKey) {
+    throw new Error("GoTo account key not configured. Set GOTO_ACCOUNT_KEY.");
+  }
+
+  try {
+    await gotoApiRequest("/recording/v1/subscriptions", {
+      method: "POST",
+      body: JSON.stringify({
+        channelId,
+        accountKey,
+        events: ["RECORDING_READY", "TRANSCRIPTION_READY"],
+      }),
+    });
+    console.log("[GoTo] Subscribed to recording notifications");
+  } catch (error) {
+    // Recording subscription may not be available for all accounts
+    console.warn("[GoTo] Could not subscribe to recording notifications:", error);
+  }
+}
+
 // =============================================================================
 // CALL REPORTS API
 // =============================================================================
@@ -565,6 +591,9 @@ export async function setupGoToIntegration(webhookUrl: string): Promise<SetupRes
   console.log("[GoTo Setup] Subscribing to call reports...");
   await subscribeToCallReports(channel.channelId);
 
+  console.log("[GoTo Setup] Subscribing to recording notifications...");
+  await subscribeToRecordingNotifications(channel.channelId);
+
   // Update database with channel info
   if (tokenCache) {
     await saveTokensToDatabase(tokenCache, channel.channelId, webhookUrl);
@@ -575,7 +604,7 @@ export async function setupGoToIntegration(webhookUrl: string): Promise<SetupRes
   return {
     channelId: channel.channelId,
     webhookUrl,
-    subscriptions: ["call-events", "call-reports"],
+    subscriptions: ["call-events", "call-reports", "recording-notifications"],
   };
 }
 
