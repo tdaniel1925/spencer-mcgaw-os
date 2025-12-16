@@ -103,6 +103,7 @@ import {
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow } from "date-fns";
 import { useCalls } from "@/lib/calls";
+import { WaveformPlayer } from "@/components/ui/waveform-player";
 import {
   CallRecord,
   CallCategory,
@@ -465,28 +466,18 @@ function CallDetailModal({
 
         <div className="flex-1 min-h-0 overflow-y-auto -mx-6 px-6">
           <div className="space-y-4 pb-4">
-            {/* Recording Player */}
-            {call.recordingUrl && (
-              <Card>
+            {/* Recording Player with Waveform */}
+            {call.recordingUrl ? (
+              <WaveformPlayer
+                src={call.recordingUrl}
+                onPlayStateChange={setIsPlaying}
+              />
+            ) : (
+              <Card className="bg-muted/30">
                 <CardContent className="p-4">
-                  <div className="flex items-center gap-4">
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => setIsPlaying(!isPlaying)}
-                    >
-                      {isPlaying ? (
-                        <Pause className="h-4 w-4" />
-                      ) : (
-                        <Play className="h-4 w-4" />
-                      )}
-                    </Button>
-                    <div className="flex-1 h-2 bg-muted rounded-full">
-                      <div className="w-1/3 h-full bg-primary rounded-full" />
-                    </div>
-                    <span className="text-sm text-muted-foreground">
-                      {formatDuration(call.durationSeconds)}
-                    </span>
+                  <div className="flex items-center gap-3 text-muted-foreground">
+                    <Phone className="h-5 w-5" />
+                    <span className="text-sm">No recording available for this call</span>
                   </div>
                 </CardContent>
               </Card>
@@ -660,34 +651,45 @@ function CallDetailModal({
               )}
 
             {/* Transcript */}
-            {call.transcript && (
-              <Collapsible open={showTranscript} onOpenChange={setShowTranscript}>
-                <Card>
-                  <CollapsibleTrigger asChild>
-                    <CardHeader className="pb-2 cursor-pointer hover:bg-muted/50">
-                      <CardTitle className="text-sm flex items-center justify-between">
-                        <span className="flex items-center gap-2">
-                          <FileText className="h-4 w-4" />
-                          Transcript
-                        </span>
-                        {showTranscript ? (
-                          <ChevronUp className="h-4 w-4" />
-                        ) : (
-                          <ChevronDown className="h-4 w-4" />
+            <Collapsible open={showTranscript} onOpenChange={setShowTranscript}>
+              <Card>
+                <CollapsibleTrigger asChild>
+                  <CardHeader className="pb-2 cursor-pointer hover:bg-muted/50 rounded-t-lg">
+                    <CardTitle className="text-sm flex items-center justify-between">
+                      <span className="flex items-center gap-2">
+                        <FileText className="h-4 w-4" />
+                        Call Transcript
+                        {call.transcript && (
+                          <Badge variant="secondary" className="text-[10px] px-1.5">
+                            Available
+                          </Badge>
                         )}
-                      </CardTitle>
-                    </CardHeader>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <CardContent>
-                      <pre className="text-sm whitespace-pre-wrap font-sans bg-muted/50 p-3 rounded-lg">
+                      </span>
+                      {showTranscript ? (
+                        <ChevronUp className="h-4 w-4" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4" />
+                      )}
+                    </CardTitle>
+                  </CardHeader>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <CardContent>
+                    {call.transcript ? (
+                      <pre className="text-sm whitespace-pre-wrap font-sans bg-muted/50 p-3 rounded-lg max-h-[300px] overflow-y-auto">
                         {call.transcript}
                       </pre>
-                    </CardContent>
-                  </CollapsibleContent>
-                </Card>
-              </Collapsible>
-            )}
+                    ) : (
+                      <div className="text-sm text-muted-foreground bg-muted/30 p-4 rounded-lg text-center">
+                        <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                        <p>No transcript available for this call</p>
+                        <p className="text-xs mt-1">Transcripts are generated automatically when recordings are processed</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </CollapsibleContent>
+              </Card>
+            </Collapsible>
 
             {/* Notes */}
             <Card>
