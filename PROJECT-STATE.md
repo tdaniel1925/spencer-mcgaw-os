@@ -4,7 +4,7 @@ type: business
 created: 2024-12-16
 updated: 2024-12-16
 phase: 4-BUILD
-progress: 45%
+progress: 65%
 mode: standard
 ---
 
@@ -26,30 +26,33 @@ mode: standard
 - [x] Recording notification subscriptions added
 - [x] Chat/messaging system
 - [x] SMS integration tables
+- [x] CRM tables created (client_contacts, client_services, tax_filings, etc.)
+- [x] Project tables created (projects, project_tasks, project_templates)
+- [x] Default project templates seeded (1040, 1120, 1065, Bookkeeping)
+- [x] CRM Client detail page (contacts, services, tax history, deadlines, activity, SMS tabs)
+- [x] Projects page with kanban + list views
+- [x] Projects API routes (CRUD, tasks, templates)
+- [x] GoTo disconnect functionality added
 
 ## In Progress
-- [ ] CRM tables (client_contacts, client_services, etc.) - Migration scripts exist
-- [ ] Projects system for tracking engagements
-- [ ] GoTo recordings/transcripts troubleshooting
+- [ ] GoTo recordings/transcripts - User re-authorizing with new scopes
+- [ ] Wire email/phone to CRM entities
 
 ## Remaining
-- [ ] Build CRM Clients page UI
-- [ ] Build Projects page (kanban + list views)
-- [ ] Build Project detail page with tasks/timeline
-- [ ] Wire email/phone to CRM entities
+- [ ] Project detail page with tasks/timeline
 - [ ] Analytics dashboard
 - [ ] Document intake system
+- [ ] Reports/export functionality
 
 ## Blockers
-- GoTo recordings/transcripts: User needs to re-authorize after scope changes
-- Database pooler connection issues from local scripts
+- GoTo recordings: User was sent reconnect link with new recording scopes
 
 ## Integrations
 - [x] Configured: Supabase (auth, database, storage)
-- [x] Configured: GoTo Connect (OAuth, webhooks)
+- [x] Configured: GoTo Connect (OAuth, webhooks, disconnect/reconnect)
 - [x] Configured: Microsoft Graph (email)
 - [x] Configured: OpenAI (AI parsing)
-- [ ] Pending: Full recording/transcription from GoTo
+- [ ] Pending: Full recording/transcription from GoTo (awaiting re-auth)
 
 ## User Preferences
 detail: concise
@@ -61,3 +64,22 @@ autonomy: high
 - Database: Supabase PostgreSQL
 - Auth: Supabase Auth
 - Deployment: Vercel
+
+## Database Tables (CRM)
+- clients (enhanced with entity_type, EIN, etc.)
+- client_contacts
+- client_notes
+- client_services
+- client_tax_filings
+- client_document_requests
+- client_deadlines
+- client_communications
+- client_relationships
+- client_financial_summary
+- contacts
+- projects
+- project_tasks
+- project_templates
+- project_template_tasks
+- project_notes
+- project_documents
