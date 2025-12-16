@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 import WaveSurfer from "wavesurfer.js";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { Play, Pause, Volume2, VolumeX, SkipBack, SkipForward, Loader2 } from "lucide-react";
+import { Play, Pause, Volume2, VolumeX, SkipBack, SkipForward, Loader2, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface WaveformPlayerProps {
@@ -31,70 +31,98 @@ export function WaveformPlayer({ src, onPlayStateChange, className }: WaveformPl
   const [isMuted, setIsMuted] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Initialize WaveSurfer
+  // Initialize WaveSurfer with pre-check for audio availability
   useEffect(() => {
     if (!containerRef.current || !src) return;
 
     setIsLoading(true);
     setError(null);
 
-    const wavesurfer = WaveSurfer.create({
-      container: containerRef.current,
-      waveColor: "rgb(var(--primary) / 0.3)",
-      progressColor: "rgb(var(--primary))",
-      cursorColor: "rgb(var(--primary))",
-      cursorWidth: 2,
-      barWidth: 2,
-      barGap: 1,
-      barRadius: 2,
-      height: 60,
-      normalize: true,
-      backend: "WebAudio",
-    });
+    // Pre-check if audio is available via HEAD request
+    const checkAndLoadAudio = async () => {
+      try {
+        const checkResponse = await fetch(src, { method: "HEAD" });
 
-    wavesurferRef.current = wavesurfer;
+        if (!checkResponse.ok) {
+          if (checkResponse.status === 404) {
+            setError("Recording no longer available");
+          } else if (checkResponse.status === 202) {
+            setError("Recording is still processing...");
+          } else {
+            setError("Recording unavailable");
+          }
+          setIsLoading(false);
+          return;
+        }
 
-    wavesurfer.on("ready", () => {
-      setIsLoading(false);
-      setDuration(wavesurfer.getDuration());
-      wavesurfer.setVolume(volume);
-    });
+        // Audio is available, proceed with WaveSurfer
+        const wavesurfer = WaveSurfer.create({
+          container: containerRef.current!,
+          waveColor: "rgb(var(--primary) / 0.3)",
+          progressColor: "rgb(var(--primary))",
+          cursorColor: "rgb(var(--primary))",
+          cursorWidth: 2,
+          barWidth: 2,
+          barGap: 1,
+          barRadius: 2,
+          height: 60,
+          normalize: true,
+          backend: "WebAudio",
+        });
 
-    wavesurfer.on("audioprocess", () => {
-      setCurrentTime(wavesurfer.getCurrentTime());
-    });
+        wavesurferRef.current = wavesurfer;
 
-    wavesurfer.on("seeking", () => {
-      setCurrentTime(wavesurfer.getCurrentTime());
-    });
+        wavesurfer.on("ready", () => {
+          setIsLoading(false);
+          setDuration(wavesurfer.getDuration());
+          wavesurfer.setVolume(volume);
+        });
 
-    wavesurfer.on("play", () => {
-      setIsPlaying(true);
-      onPlayStateChange?.(true);
-    });
+        wavesurfer.on("audioprocess", () => {
+          setCurrentTime(wavesurfer.getCurrentTime());
+        });
 
-    wavesurfer.on("pause", () => {
-      setIsPlaying(false);
-      onPlayStateChange?.(false);
-    });
+        wavesurfer.on("seeking", () => {
+          setCurrentTime(wavesurfer.getCurrentTime());
+        });
 
-    wavesurfer.on("finish", () => {
-      setIsPlaying(false);
-      onPlayStateChange?.(false);
-    });
+        wavesurfer.on("play", () => {
+          setIsPlaying(true);
+          onPlayStateChange?.(true);
+        });
 
-    wavesurfer.on("error", (err) => {
-      console.error("[WaveformPlayer] Error:", err);
-      setError("Failed to load audio");
-      setIsLoading(false);
-    });
+        wavesurfer.on("pause", () => {
+          setIsPlaying(false);
+          onPlayStateChange?.(false);
+        });
 
-    // Load the audio
-    wavesurfer.load(src);
+        wavesurfer.on("finish", () => {
+          setIsPlaying(false);
+          onPlayStateChange?.(false);
+        });
+
+        wavesurfer.on("error", (err) => {
+          console.error("[WaveformPlayer] Error:", err);
+          setError("Failed to load audio");
+          setIsLoading(false);
+        });
+
+        // Load the audio
+        wavesurfer.load(src);
+      } catch (err) {
+        console.error("[WaveformPlayer] Pre-check error:", err);
+        setError("Recording unavailable");
+        setIsLoading(false);
+      }
+    };
+
+    checkAndLoadAudio();
 
     return () => {
-      wavesurfer.destroy();
-      wavesurferRef.current = null;
+      if (wavesurferRef.current) {
+        wavesurferRef.current.destroy();
+        wavesurferRef.current = null;
+      }
     };
   }, [src]);
 
