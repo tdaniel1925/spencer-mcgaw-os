@@ -10,6 +10,7 @@ import {
   Phone,
   FileText,
   FolderOpen,
+  FolderKanban,
   BarChart3,
   Calendar,
   Activity,
@@ -140,6 +141,12 @@ const navSections: NavSection[] = [
         title: "Clients",
         href: "/clients",
         icon: Users,
+        permission: "clients:view",
+      },
+      {
+        title: "Projects",
+        href: "/projects",
+        icon: FolderKanban,
         permission: "clients:view",
       },
       {
