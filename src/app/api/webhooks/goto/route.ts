@@ -316,23 +316,40 @@ async function processCallReport(
   const callerPhone = (caller?.number as string) || null;
 
   // Extract recording IDs from caller and participants
+  // GoTo API has multiple formats for recording IDs
   const recordingIds: string[] = [];
+
+  // Format 1: caller.recordingId (summary webhook format)
   if (caller?.recordingId) {
     recordingIds.push(caller.recordingId as string);
   }
+
   for (const participant of participants) {
+    // Format 2: participant.recordingId (older format)
     if (participant.recordingId) {
       recordingIds.push(participant.recordingId as string);
     }
+
+    // Format 3: participant.recordings[].id (detailed report format)
+    const recordings = participant.recordings as Array<{ id?: string }> | undefined;
+    if (recordings && Array.isArray(recordings)) {
+      for (const rec of recordings) {
+        if (rec.id) {
+          recordingIds.push(rec.id);
+        }
+      }
+    }
   }
 
-  console.log("[GoTo Webhook] Found recording IDs:", recordingIds);
+  // Remove duplicates
+  const uniqueRecordingIds = [...new Set(recordingIds)];
+  console.log("[GoTo Webhook] Found recording IDs:", uniqueRecordingIds);
 
   // Try to get recording URLs
   let recordingUrl: string | null = null;
   let transcript: string | null = null;
 
-  for (const recordingId of recordingIds) {
+  for (const recordingId of uniqueRecordingIds) {
     if (recordingUrl) break; // Only need one recording URL
     try {
       console.log("[GoTo Webhook] Fetching recording URL for:", recordingId);
@@ -404,7 +421,7 @@ async function processCallReport(
         gotoAccountKey: accountKey,
         caller,
         participants,
-        recordingIds,
+        recordingIds: uniqueRecordingIds,
         gotoAiAnalysis,
         analysis: parsedData?.analysis || null,
         parsedAt: new Date().toISOString(),

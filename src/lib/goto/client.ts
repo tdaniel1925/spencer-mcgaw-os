@@ -550,12 +550,26 @@ export interface Recording {
 
 /**
  * Get recording content URL
+ * GoTo API returns a token that must be used to construct the download URL
  */
 export async function getRecordingUrl(recordingId: string): Promise<string> {
-  const response = await gotoApiRequest<{ url: string }>(
-    `/recording/v1/recordings/${recordingId}/content`
-  );
-  return response.url;
+  const response = await gotoApiRequest<{
+    url?: string;
+    token?: { token: string; expires: string };
+    status?: string;
+  }>(`/recording/v1/recordings/${recordingId}/content`);
+
+  // If we get a direct URL, use it
+  if (response.url) {
+    return response.url;
+  }
+
+  // If we get a token, construct the download URL
+  if (response.token?.token) {
+    return `https://api.goto.com/recording/v1/recordings/${recordingId}/download?token=${encodeURIComponent(response.token.token)}`;
+  }
+
+  throw new Error("No recording URL or token returned from API");
 }
 
 /**

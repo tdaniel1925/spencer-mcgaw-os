@@ -270,28 +270,43 @@ async function fetchCallDetails(accessToken, conversationSpaceId) {
     throw new Error(`Call details API error (${response.status}): ${text}`);
   }
 
-  return response.json();
+  const data = await response.json();
+  console.log("\n   Full call details response:");
+  console.log(JSON.stringify(data, null, 2));
+  return data;
 }
 
 function extractRecordingIds(callDetails) {
   const ids = [];
 
+  // Check caller.recordingId (summary format)
   if (callDetails.caller?.recordingId) {
     ids.push(callDetails.caller.recordingId);
   }
 
+  // Check participants[].recordings[].id (detailed format)
   if (callDetails.participants) {
     for (const p of callDetails.participants) {
+      // Old format: recordingId directly on participant
       if (p.recordingId) {
         ids.push(p.recordingId);
+      }
+      // New format: recordings array with id field
+      if (p.recordings && Array.isArray(p.recordings)) {
+        for (const rec of p.recordings) {
+          if (rec.id) {
+            ids.push(rec.id);
+          }
+        }
       }
     }
   }
 
-  return ids;
+  return [...new Set(ids)]; // Remove duplicates
 }
 
 async function fetchRecordingUrl(accessToken, recordingId) {
+  // First get the content token
   const response = await fetch(`${GOTO_API_BASE}/recording/v1/recordings/${recordingId}/content`, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -304,7 +319,16 @@ async function fetchRecordingUrl(accessToken, recordingId) {
   }
 
   const data = await response.json();
-  return data.url;
+  console.log("   Recording API response:", JSON.stringify(data, null, 2).substring(0, 300));
+
+  // If we get a token, construct the download URL
+  if (data.token?.token) {
+    const downloadUrl = `https://api.goto.com/recording/v1/recordings/${recordingId}/download?token=${encodeURIComponent(data.token.token)}`;
+    console.log("   Constructed download URL");
+    return downloadUrl;
+  }
+
+  return data.url || data.contentUrl || data.downloadUrl || null;
 }
 
 async function fetchTranscription(accessToken, transcriptId) {
@@ -319,7 +343,9 @@ async function fetchTranscription(accessToken, transcriptId) {
     throw new Error(`Transcription API error (${response.status}): ${text}`);
   }
 
-  return response.json();
+  const data = await response.json();
+  console.log("   Transcription API response:", JSON.stringify(data, null, 2).substring(0, 500));
+  return data;
 }
 
 testGoToRecordings().catch(console.error);
