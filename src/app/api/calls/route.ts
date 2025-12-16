@@ -39,6 +39,19 @@ export async function GET() {
         }
       }
 
+      // Extract actual call timestamps from metadata (GoTo provides these)
+      // Fall back to createdAt if not available
+      const callCreated = metadata?.callCreated as string | undefined;
+      const callEnded = metadata?.callEnded as string | undefined;
+      const callAnswered = metadata?.callAnswered as string | undefined;
+
+      // Use the actual call start time from GoTo, or fall back to DB created_at
+      const callStartedAt = callAnswered || callCreated
+        ? new Date(callAnswered || callCreated as string)
+        : call.createdAt;
+
+      const callEndedAt = callEnded ? new Date(callEnded) : undefined;
+
       return {
         id: call.id,
         source: "phone_call" as const,
@@ -47,8 +60,8 @@ export async function GET() {
         callerName: call.callerName || undefined,
         callerEmail: undefined,
         lineUser,
-        callStartedAt: call.createdAt,
-        callEndedAt: undefined,
+        callStartedAt,
+        callEndedAt,
         durationSeconds: call.duration || 0,
         direction: call.direction as "inbound" | "outbound",
         recordingUrl: call.recordingUrl || undefined,

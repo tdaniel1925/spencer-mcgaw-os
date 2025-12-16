@@ -39,9 +39,13 @@ mode: standard
   - Client communications API (/api/clients/[id]/communications)
   - Calls/Emails tab on client detail page with full history
   - Unified communications view (calls + emails sorted by date)
+- [x] GoTo recordings/transcripts fully working
+  - Fixed recording ID extraction (participants[].recordings[].id format)
+  - Created /api/recordings/[id] proxy endpoint (OAuth required for download)
+  - Fixed transcription extraction (results[].transcript array)
+  - Fixed call time display (use actual callCreated/callAnswered from GoTo, not DB createdAt)
 
 ## In Progress
-- [ ] GoTo recordings/transcripts - User re-authorizing with new scopes
 
 ## Remaining
 - [ ] Project detail page with tasks/timeline
@@ -50,14 +54,13 @@ mode: standard
 - [ ] Reports/export functionality
 
 ## Blockers
-- GoTo recordings: User was sent reconnect link with new recording scopes
+None
 
 ## Integrations
 - [x] Configured: Supabase (auth, database, storage)
-- [x] Configured: GoTo Connect (OAuth, webhooks, disconnect/reconnect)
+- [x] Configured: GoTo Connect (OAuth, webhooks, disconnect/reconnect, recordings, transcriptions)
 - [x] Configured: Microsoft Graph (email)
 - [x] Configured: OpenAI (AI parsing)
-- [ ] Pending: Full recording/transcription from GoTo (awaiting re-auth)
 
 ## User Preferences
 detail: concise

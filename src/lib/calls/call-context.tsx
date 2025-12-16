@@ -285,6 +285,18 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     const metadata = dbCall.metadata as Record<string, unknown> | null;
     const analysis = metadata?.analysis as Record<string, unknown> | null;
 
+    // Extract actual call timestamps from metadata (GoTo provides these)
+    const callCreated = metadata?.callCreated as string | undefined;
+    const callEnded = metadata?.callEnded as string | undefined;
+    const callAnswered = metadata?.callAnswered as string | undefined;
+
+    // Use the actual call start time from GoTo, or fall back to DB created_at
+    const callStartedAt = callAnswered || callCreated
+      ? new Date(callAnswered || callCreated as string)
+      : new Date(dbCall.created_at as string);
+
+    const callEndedAt = callEnded ? new Date(callEnded) : undefined;
+
     return {
       id: dbCall.id as string,
       source: "phone_call" as const,
@@ -292,8 +304,8 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       callerPhone: (dbCall.caller_phone as string) || "Unknown",
       callerName: (dbCall.caller_name as string) || undefined,
       callerEmail: undefined,
-      callStartedAt: new Date(dbCall.created_at as string),
-      callEndedAt: undefined,
+      callStartedAt,
+      callEndedAt,
       durationSeconds: (dbCall.duration as number) || 0,
       direction: (dbCall.direction as "inbound" | "outbound") || "inbound",
       recordingUrl: (dbCall.recording_url as string) || undefined,
