@@ -52,6 +52,16 @@ export async function GET() {
 
       const callEndedAt = callEnded ? new Date(callEnded) : undefined;
 
+      // Get recording URL - first try the stored URL, then construct from recording IDs
+      let recordingUrl = call.recordingUrl;
+      if (!recordingUrl && metadata?.recordingIds) {
+        const recordingIds = metadata.recordingIds as string[];
+        if (recordingIds.length > 0) {
+          // Construct proxy URL from the first recording ID
+          recordingUrl = `/api/recordings/${recordingIds[0]}`;
+        }
+      }
+
       return {
         id: call.id,
         source: "phone_call" as const,
@@ -64,7 +74,7 @@ export async function GET() {
         callEndedAt,
         durationSeconds: call.duration || 0,
         direction: call.direction as "inbound" | "outbound",
-        recordingUrl: call.recordingUrl || undefined,
+        recordingUrl: recordingUrl || undefined,
         transcript: call.transcription || undefined,
         matchedClientId: call.clientId || undefined,
         status: call.status === "completed" ? "reviewed" : "new",

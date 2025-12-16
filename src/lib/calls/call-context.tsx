@@ -297,6 +297,16 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
 
     const callEndedAt = callEnded ? new Date(callEnded) : undefined;
 
+    // Get recording URL - first try the stored URL, then construct from recording IDs
+    let recordingUrl = dbCall.recording_url as string | null;
+    if (!recordingUrl && metadata?.recordingIds) {
+      const recordingIds = metadata.recordingIds as string[];
+      if (recordingIds.length > 0) {
+        // Construct proxy URL from the first recording ID
+        recordingUrl = `/api/recordings/${recordingIds[0]}`;
+      }
+    }
+
     return {
       id: dbCall.id as string,
       source: "phone_call" as const,
@@ -308,7 +318,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       callEndedAt,
       durationSeconds: (dbCall.duration as number) || 0,
       direction: (dbCall.direction as "inbound" | "outbound") || "inbound",
-      recordingUrl: (dbCall.recording_url as string) || undefined,
+      recordingUrl: recordingUrl || undefined,
       transcript: (dbCall.transcription as string) || undefined,
       matchedClientId: (dbCall.client_id as string) || undefined,
       addedToClientRecord: !!(dbCall.client_id),
