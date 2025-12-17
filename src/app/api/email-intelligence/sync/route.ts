@@ -249,49 +249,50 @@ export async function POST(request: NextRequest) {
               status: "pending",
             });
 
-            // Create TaskPool task
+            // Create task in main tasks table
+            // action_type_id is optional - tasks work without it
             const taskPoolActionCode = ACTION_TYPE_MAP[actionItem.type] || "PROCESS";
-            const taskPoolActionTypeId = actionTypeByCode[taskPoolActionCode];
+            const taskPoolActionTypeId = actionTypeByCode[taskPoolActionCode] || null;
 
-            console.log(`[Email Sync] Creating task for action item: ${actionItem.title}, type: ${actionItem.type} -> ${taskPoolActionCode}, typeId: ${taskPoolActionTypeId}`);
+            console.log(`[Email Sync] Creating task for action item: ${actionItem.title}, type: ${actionItem.type}`);
 
-            if (taskPoolActionTypeId) {
-              const { data: newTask, error: taskError } = await supabase
-                .from("tasks")
-                .insert({
-                  title: actionItem.title,
-                  description: `${actionItem.description || ""}\n\nFrom email: ${email.subject}\nSender: ${email.from?.emailAddress?.name} <${email.from?.emailAddress?.address}>`,
-                  action_type_id: taskPoolActionTypeId,
-                  client_id: matchedClientId,
-                  priority: actionItem.priority,
-                  due_date: actionItem.dueDate ? new Date(actionItem.dueDate).toISOString().split("T")[0] : null,
-                  source_type: "email",
-                  source_email_id: email.id,
-                  source_metadata: {
-                    email_subject: email.subject,
-                    sender_name: email.from?.emailAddress?.name,
-                    sender_email: email.from?.emailAddress?.address,
-                    received_at: email.receivedDateTime,
-                    classification_summary: classification.summary,
-                  },
-                  ai_confidence: actionItem.confidence,
-                  ai_extracted_data: {
-                    action_item: actionItem,
-                    classification_category: classification.category,
-                    extracted_entities: classification.extractedEntities,
-                  },
-                  status: "open",
-                  organization_id: DEFAULT_ORGANIZATION_ID,
-                  created_by: user.id,
-                })
-                .select("id")
-                .single();
+            const { data: newTask, error: taskError } = await supabase
+              .from("tasks")
+              .insert({
+                title: actionItem.title,
+                description: `${actionItem.description || ""}\n\nFrom email: ${email.subject}\nSender: ${email.from?.emailAddress?.name} <${email.from?.emailAddress?.address}>`,
+                action_type_id: taskPoolActionTypeId, // Optional - may be null
+                client_id: matchedClientId,
+                priority: actionItem.priority,
+                due_date: actionItem.dueDate ? new Date(actionItem.dueDate).toISOString().split("T")[0] : null,
+                source_type: "email",
+                source_email_id: email.id,
+                source_metadata: {
+                  email_subject: email.subject,
+                  sender_name: email.from?.emailAddress?.name,
+                  sender_email: email.from?.emailAddress?.address,
+                  received_at: email.receivedDateTime,
+                  classification_summary: classification.summary,
+                },
+                ai_confidence: actionItem.confidence,
+                ai_extracted_data: {
+                  action_item: actionItem,
+                  classification_category: classification.category,
+                  extracted_entities: classification.extractedEntities,
+                },
+                status: "pending", // Standard status, not "open"
+                organization_id: DEFAULT_ORGANIZATION_ID,
+                created_by: user.id,
+              })
+              .select("id")
+              .single();
 
-              if (taskError) {
-                console.error("[Email Sync] Failed to create task:", taskError);
-              } else if (newTask) {
-                console.log(`[Email Sync] Created task ${newTask.id}`);
-                // Log activity for the new task
+            if (taskError) {
+              console.error("[Email Sync] Failed to create task:", taskError);
+            } else if (newTask) {
+              console.log(`[Email Sync] Created task ${newTask.id}`);
+              // Log activity for the new task
+              try {
                 await supabase.from("task_activity_log").insert({
                   task_id: newTask.id,
                   action: "created",
@@ -303,10 +304,11 @@ export async function POST(request: NextRequest) {
                   },
                   performed_by: user.id,
                 });
-                totalTasksCreated++;
+              } catch (logError) {
+                // Activity log is optional, don't fail the task creation
+                console.warn("[Email Sync] Failed to log activity:", logError);
               }
-            } else {
-              console.warn(`[Email Sync] No action type found for code: ${taskPoolActionCode}`);
+              totalTasksCreated++;
             }
           }
 
