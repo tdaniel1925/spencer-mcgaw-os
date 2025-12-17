@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { calls, activityLogs, webhookLogs, clients, tasks } from "@/db/schema";
+import { calls, activityLogs, webhookLogs, clients } from "@/db/schema";
+import { createClient } from "@/lib/supabase/server";
 import { parseWebhookWithAI, isAIParsingAvailable } from "@/lib/ai";
 import type { ParsedWebhookData } from "@/lib/ai";
 import { getCallReport, getRecordingUrl, getTranscription } from "@/lib/goto";
 import { eq, or, sql } from "drizzle-orm";
 import crypto from "crypto";
+import { DEFAULT_ORGANIZATION_ID } from "@/lib/constants";
 
 /**
  * Try to match a phone number to an existing client
@@ -470,37 +472,56 @@ async function processCallReport(
     },
   });
 
-  // Auto-create tasks from AI suggested actions
+  // Auto-create tasks from AI suggested actions using Supabase
+  // (Drizzle schema doesn't match actual database columns)
   const suggestedActions = parsedData?.analysis?.suggestedActions || [];
   if (suggestedActions.length > 0 && recordId) {
     console.log("[GoTo Webhook] Creating tasks from suggested actions:", suggestedActions.length);
 
+    const supabase = await createClient();
+
     for (const action of suggestedActions) {
       try {
-        await db.insert(tasks).values({
-          title: action,
-          description: `AI-suggested task from call with ${callerName || callerPhone || "unknown caller"}`,
-          status: "pending",
-          priority: parsedData?.analysis?.urgency === "urgent" ? "urgent" :
-                   parsedData?.analysis?.urgency === "high" ? "high" : "medium",
-          source: "phone_call",
-          sourceReferenceId: recordId,
-          clientId: matchedClientId,
-          metadata: {
-            aiSuggested: true,
-            aiConfidence: parsedData?.confidence || 0.8,
-            aiSourceType: "call_analysis",
-            callSummary: summary,
-            callerPhone: finalCallerPhone,
-            callerName,
-          },
-        });
+        const { data: newTask, error: taskError } = await supabase
+          .from("tasks")
+          .insert({
+            title: action,
+            description: `AI-suggested task from call with ${callerName || callerPhone || "unknown caller"}`,
+            status: "pending",
+            priority: parsedData?.analysis?.urgency === "urgent" ? "urgent" :
+                     parsedData?.analysis?.urgency === "high" ? "high" : "medium",
+            source_type: "phone_call",
+            client_id: matchedClientId,
+            source_metadata: {
+              call_id: recordId,
+              conversation_space_id: conversationSpaceId,
+              caller_phone: finalCallerPhone,
+              caller_name: callerName,
+              call_summary: summary,
+            },
+            ai_confidence: parsedData?.confidence || 0.8,
+            ai_extracted_data: {
+              ai_suggested: true,
+              source_type: "call_analysis",
+              urgency: parsedData?.analysis?.urgency,
+              category: parsedData?.analysis?.category,
+            },
+            organization_id: DEFAULT_ORGANIZATION_ID,
+          })
+          .select("id")
+          .single();
+
+        if (taskError) {
+          console.error("[GoTo Webhook] Failed to create task:", action, taskError);
+        } else {
+          console.log("[GoTo Webhook] Created task:", newTask?.id);
+        }
       } catch (taskError) {
-        console.error("[GoTo Webhook] Failed to create task:", action, taskError);
+        console.error("[GoTo Webhook] Exception creating task:", action, taskError);
       }
     }
 
-    console.log("[GoTo Webhook] Created", suggestedActions.length, "tasks from call");
+    console.log("[GoTo Webhook] Finished creating tasks from call");
   }
 
   return {
