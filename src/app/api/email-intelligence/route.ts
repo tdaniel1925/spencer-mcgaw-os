@@ -17,12 +17,18 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Build query
+    // Build query - include email metadata columns
     let query = supabase
       .from("email_classifications")
       .select(`
         id,
         email_message_id,
+        account_id,
+        sender_name,
+        sender_email,
+        subject,
+        has_attachments,
+        received_at,
         category,
         subcategory,
         is_business_relevant,
@@ -47,7 +53,7 @@ export async function GET(request: NextRequest) {
         created_at,
         updated_at
       `)
-      .order("created_at", { ascending: false })
+      .order("received_at", { ascending: false, nullsFirst: false })
       .range(offset, offset + limit - 1);
 
     // Apply filters
@@ -62,10 +68,47 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Failed to fetch data" }, { status: 500 });
     }
 
-    // Transform to intelligence format
+    // Get all email message IDs to fetch action items
+    const emailIds = (classifications || []).map((c: any) => c.email_message_id);
+
+    // Fetch action items for all emails in one query
+    const { data: actionItems } = await supabase
+      .from("email_action_items")
+      .select("*")
+      .in("email_message_id", emailIds);
+
+    // Group action items by email_message_id
+    const actionItemsByEmail: Record<string, any[]> = {};
+    (actionItems || []).forEach((item: any) => {
+      if (!actionItemsByEmail[item.email_message_id]) {
+        actionItemsByEmail[item.email_message_id] = [];
+      }
+      actionItemsByEmail[item.email_message_id].push({
+        id: item.id,
+        title: item.title,
+        description: item.description,
+        type: item.action_type,
+        dueDate: item.mentioned_date,
+        priority: item.priority,
+        confidence: item.confidence,
+        status: item.status,
+      });
+    });
+
+    // Transform to intelligence format with email metadata
     const intelligences = (classifications || []).map((c: any) => ({
       id: c.id,
       emailId: c.email_message_id,
+      accountId: c.account_id,
+      // Email metadata
+      from: {
+        name: c.sender_name || "Unknown",
+        email: c.sender_email || "",
+      },
+      subject: c.subject || "(No Subject)",
+      hasAttachments: c.has_attachments || false,
+      receivedAt: c.received_at,
+      // Classification data
       category: c.category,
       subcategory: c.subcategory,
       isBusinessRelevant: c.is_business_relevant,
@@ -95,7 +138,7 @@ export async function GET(request: NextRequest) {
           ? "medium"
           : "low",
       status: "pending", // Default status - would come from separate status tracking
-      actionItems: [], // Would be populated from email_action_items table
+      actionItems: actionItemsByEmail[c.email_message_id] || [],
     }));
 
     return NextResponse.json({

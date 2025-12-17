@@ -155,9 +155,17 @@ export async function POST(request: NextRequest) {
           });
 
           // Store classification with account_id for proper cleanup on disconnect
+          // Also store email metadata (sender, subject, etc.) for display
           await supabase.from("email_classifications").insert({
             email_message_id: email.id,
             account_id: connection.id,
+            // Email metadata
+            sender_name: email.from?.emailAddress?.name || "Unknown",
+            sender_email: email.from?.emailAddress?.address || "",
+            subject: email.subject || "(No Subject)",
+            has_attachments: email.hasAttachments || false,
+            received_at: new Date(email.receivedDateTime).toISOString(),
+            // Classification data
             category: classification.category,
             subcategory: classification.subcategory,
             is_business_relevant: classification.isBusinessRelevant,
