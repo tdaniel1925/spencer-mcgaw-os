@@ -6,6 +6,7 @@ import {
   getRecentCallReports,
   getIntegrationStatus,
   disconnectGoTo,
+  runDiagnostics,
 } from "@/lib/goto";
 
 /**
@@ -131,8 +132,29 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Action: diagnose - Run comprehensive diagnostics
+    if (action === "diagnose") {
+      const diagnostics = await runDiagnostics();
+
+      // Determine overall health
+      const allOk =
+        diagnostics.oauth.status === "ok" &&
+        diagnostics.apiAccess.status === "ok" &&
+        diagnostics.webhookChannel.status === "ok" &&
+        diagnostics.subscriptions.status === "ok";
+
+      return NextResponse.json({
+        success: true,
+        healthy: allOk,
+        diagnostics,
+        summary: allOk
+          ? "GoTo Connect is fully configured and ready to receive calls"
+          : `Issues found: ${diagnostics.recommendations.join("; ")}`,
+      });
+    }
+
     return NextResponse.json(
-      { error: "Invalid action. Use 'setup', 'reconnect', 'test', 'disconnect', or 'get_auth_url'" },
+      { error: "Invalid action. Use 'setup', 'reconnect', 'test', 'disconnect', 'diagnose', or 'get_auth_url'" },
       { status: 400 }
     );
   } catch (error) {

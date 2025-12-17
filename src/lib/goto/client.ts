@@ -783,3 +783,137 @@ export async function disconnectGoTo(): Promise<void> {
 
   console.log("[GoTo Client] Integration disconnected");
 }
+
+/**
+ * Full diagnostic check for GoTo Connect integration
+ * Tests OAuth, API access, and webhook subscriptions
+ */
+export async function runDiagnostics(): Promise<{
+  oauth: { status: "ok" | "error"; message: string };
+  apiAccess: { status: "ok" | "error"; message: string };
+  webhookChannel: { status: "ok" | "error" | "not_configured"; message: string; channelId?: string };
+  subscriptions: { status: "ok" | "error" | "unknown"; message: string };
+  recentCalls: { status: "ok" | "error"; count: number; message: string };
+  webhookUrl: string;
+  recommendations: string[];
+}> {
+  const recommendations: string[] = [];
+  const status = await getIntegrationStatus();
+  const webhookUrl = status.webhookUrl || `${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/goto`;
+
+  // 1. Check OAuth
+  let oauthStatus: { status: "ok" | "error"; message: string };
+  try {
+    const authenticated = await isAuthenticatedAsync();
+    if (authenticated) {
+      oauthStatus = { status: "ok", message: "OAuth tokens are valid" };
+    } else {
+      oauthStatus = { status: "error", message: "Not authenticated - OAuth required" };
+      recommendations.push("Click 'Connect GoTo' to authenticate with OAuth");
+    }
+  } catch (error) {
+    oauthStatus = { status: "error", message: error instanceof Error ? error.message : "OAuth check failed" };
+    recommendations.push("Re-authenticate with GoTo Connect");
+  }
+
+  // 2. Check API Access
+  let apiAccessStatus: { status: "ok" | "error"; message: string };
+  if (oauthStatus.status === "ok") {
+    try {
+      const accountKey = await getAccountKeyAsync();
+      if (accountKey) {
+        // Try to make a simple API call
+        const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        await getRecentCallReports(oneDayAgo);
+        apiAccessStatus = { status: "ok", message: `API access working (Account: ${accountKey})` };
+      } else {
+        apiAccessStatus = { status: "error", message: "No account key configured" };
+        recommendations.push("Set GOTO_ACCOUNT_KEY in environment variables");
+      }
+    } catch (error) {
+      apiAccessStatus = { status: "error", message: error instanceof Error ? error.message : "API access failed" };
+      recommendations.push("Check GoTo API permissions and account key");
+    }
+  } else {
+    apiAccessStatus = { status: "error", message: "Skipped - OAuth not valid" };
+  }
+
+  // 3. Check Webhook Channel
+  let webhookChannelStatus: { status: "ok" | "error" | "not_configured"; message: string; channelId?: string };
+  if (status.channelId) {
+    webhookChannelStatus = {
+      status: "ok",
+      message: `Webhook channel configured`,
+      channelId: status.channelId
+    };
+  } else {
+    webhookChannelStatus = {
+      status: "not_configured",
+      message: "No webhook channel configured - calls won't be received"
+    };
+    recommendations.push("Click 'Setup Webhooks' to configure call notifications");
+  }
+
+  // 4. Check Subscriptions (we can't directly query this, so estimate based on channel)
+  let subscriptionsStatus: { status: "ok" | "error" | "unknown"; message: string };
+  if (status.channelId) {
+    subscriptionsStatus = {
+      status: "unknown",
+      message: "Channel exists - subscriptions should be active. If no calls coming in, try re-running setup."
+    };
+  } else {
+    subscriptionsStatus = {
+      status: "error",
+      message: "No channel configured - no subscriptions active"
+    };
+  }
+
+  // 5. Check Recent Calls from GoTo API
+  let recentCallsStatus: { status: "ok" | "error"; count: number; message: string };
+  if (apiAccessStatus.status === "ok") {
+    try {
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const reports = await getRecentCallReports(oneDayAgo);
+      const count = reports.length;
+      if (count > 0) {
+        recentCallsStatus = {
+          status: "ok",
+          count,
+          message: `${count} calls in last 24 hours from GoTo API`
+        };
+      } else {
+        recentCallsStatus = {
+          status: "ok",
+          count: 0,
+          message: "No calls in last 24 hours (this is normal if no one called)"
+        };
+      }
+    } catch (error) {
+      recentCallsStatus = {
+        status: "error",
+        count: 0,
+        message: error instanceof Error ? error.message : "Failed to fetch recent calls"
+      };
+    }
+  } else {
+    recentCallsStatus = { status: "error", count: 0, message: "Skipped - API access not working" };
+  }
+
+  // Final recommendations
+  if (webhookChannelStatus.status === "ok" && recentCallsStatus.count === 0) {
+    recommendations.push("No calls in last 24 hours - this is normal if no one has called");
+  }
+  if (webhookChannelStatus.status === "ok" && recentCallsStatus.count > 0) {
+    recommendations.push(`GoTo shows ${recentCallsStatus.count} calls but none in app? Check webhook URL is accessible: ${webhookUrl}`);
+  }
+
+  return {
+    oauth: oauthStatus,
+    apiAccess: apiAccessStatus,
+    webhookChannel: webhookChannelStatus,
+    subscriptions: subscriptionsStatus,
+    recentCalls: recentCallsStatus,
+    webhookUrl,
+    recommendations,
+  };
+}
