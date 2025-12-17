@@ -171,64 +171,92 @@ export default function ChatPage() {
   return (
     <>
       <Header title="Chat" />
-      <main className="flex h-[calc(100vh-65px)]">
-        {/* Sidebar - Room List */}
-        <div className="w-72 border-r flex flex-col bg-muted/30">
-          {/* Sidebar Header */}
-          <div className="p-4 border-b">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="font-semibold">Messages</h2>
-              <Dialog open={showNewDM} onOpenChange={setShowNewDM}>
-                <DialogTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 w-8 p-0"
-                    onClick={() => {
-                      setShowNewDM(true);
-                      loadUsers();
-                    }}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-md">
-                  <DialogHeader>
-                    <DialogTitle>New Message</DialogTitle>
-                  </DialogHeader>
-                  <Command className="rounded-lg border">
-                    <CommandInput placeholder="Search users..." />
-                    <CommandList className="max-h-64">
-                      <CommandEmpty>
-                        {loadingUsers ? "Loading..." : "No users found"}
-                      </CommandEmpty>
-                      <CommandGroup>
-                        {users.map((u) => (
-                          <CommandItem
-                            key={u.id}
-                            value={u.id}
-                            onSelect={() => handleStartDM(u.id)}
-                            className="cursor-pointer"
-                          >
-                            <Avatar className="h-8 w-8 mr-2">
-                              <AvatarImage src={u.avatar_url || undefined} />
-                              <AvatarFallback className="text-xs">
-                                {getInitials(u.full_name, u.email)}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div className="flex flex-col">
-                              <span className="text-sm">{u.full_name || "Unnamed"}</span>
-                              <span className="text-xs text-muted-foreground">{u.email}</span>
-                            </div>
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </DialogContent>
-              </Dialog>
+      <main className="flex flex-col h-[calc(100vh-64px)] overflow-hidden">
+        {/* Top Bar */}
+        <div className="h-14 border-b bg-card flex items-center px-4 gap-3 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <MessageSquare className="h-5 w-5 text-primary" />
+            <span className="font-medium">Team Chat</span>
+          </div>
+
+          <div className="flex-1" />
+
+          {/* Stats */}
+          <div className="flex items-center gap-3 text-sm">
+            <div className="flex items-center gap-1.5">
+              <Users className="h-4 w-4 text-muted-foreground" />
+              <span className="text-muted-foreground">{rooms.length} conversations</span>
             </div>
           </div>
+
+          <div className="h-4 border-l mx-2" />
+
+          {/* New DM Button */}
+          <Dialog open={showNewDM} onOpenChange={setShowNewDM}>
+            <DialogTrigger asChild>
+              <Button
+                size="sm"
+                className="h-8"
+                onClick={() => {
+                  setShowNewDM(true);
+                  loadUsers();
+                }}
+              >
+                <Plus className="h-4 w-4 mr-1.5" />
+                New Message
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>New Message</DialogTitle>
+              </DialogHeader>
+              <Command className="rounded-lg border">
+                <CommandInput placeholder="Search users..." />
+                <CommandList className="max-h-64">
+                  <CommandEmpty>
+                    {loadingUsers ? "Loading..." : "No users found"}
+                  </CommandEmpty>
+                  <CommandGroup>
+                    {users.map((u) => (
+                      <CommandItem
+                        key={u.id}
+                        value={u.id}
+                        onSelect={() => handleStartDM(u.id)}
+                        className="cursor-pointer"
+                      >
+                        <Avatar className="h-8 w-8 mr-2">
+                          <AvatarImage src={u.avatar_url || undefined} />
+                          <AvatarFallback className="text-xs">
+                            {getInitials(u.full_name, u.email)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex flex-col">
+                          <span className="text-sm">{u.full_name || "Unnamed"}</span>
+                          <span className="text-xs text-muted-foreground">{u.email}</span>
+                        </div>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </DialogContent>
+          </Dialog>
+        </div>
+
+        {/* Main Content with Sidebar */}
+        <div className="flex flex-1 overflow-hidden">
+          {/* Sidebar - Room List */}
+          <div className="w-72 border-r flex flex-col bg-muted/20">
+            {/* Sidebar Header */}
+            <div className="p-3 border-b">
+              <div className="relative">
+                <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search messages..."
+                  className="h-8 pl-9 text-sm"
+                />
+              </div>
+            </div>
 
           {/* Room List */}
           <ScrollArea className="flex-1">
@@ -299,11 +327,11 @@ export default function ChatPage() {
         </div>
 
         {/* Main Chat Area */}
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col bg-background">
           {currentRoom ? (
             <>
               {/* Chat Header */}
-              <div className="h-14 border-b px-4 flex items-center gap-3">
+              <div className="h-12 border-b px-4 flex items-center gap-3 bg-card/50">
                 {currentRoom.type === "community" ? (
                   <Hash className="h-5 w-5 text-muted-foreground" />
                 ) : currentRoom.type === "private" && currentRoom.other_user ? (
@@ -442,6 +470,7 @@ export default function ChatPage() {
               <p className="text-sm">Select a conversation or start a new one</p>
             </div>
           )}
+          </div>
         </div>
       </main>
     </>

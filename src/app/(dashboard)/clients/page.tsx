@@ -3,12 +3,12 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/layout/header";
-import { ProgressStatCard } from "@/components/dashboard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Table,
   TableBody,
@@ -44,12 +44,14 @@ import {
   Loader2,
   RefreshCw,
   Users,
+  Upload,
+  UserPlus,
+  CheckCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { BulkUploadDialog } from "@/components/bulk-upload-dialog";
-import { Upload } from "lucide-react";
 
 // Client type from database
 interface Client {
@@ -203,271 +205,262 @@ export default function ClientsPage() {
   return (
     <>
       <Header title="Clients" />
-      <main className="p-6 space-y-6">
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <ProgressStatCard
-            title="Total Clients"
-            value={clientCounts.total}
-            change={clientCounts.total > 0 ? { value: 5.2, period: "30 days" } : undefined}
-            progressColor="#143009"
-          />
-          <ProgressStatCard
-            title="Active Clients"
-            value={clientCounts.active}
-            progress={clientCounts.total > 0 ? Math.round((clientCounts.active / clientCounts.total) * 100) : undefined}
-            change={clientCounts.active > 0 ? { value: 3.1, period: "30 days" } : undefined}
-            progressColor="#DBC16F"
-          />
-          <ProgressStatCard
-            title="New This Month"
-            value={clientCounts.new}
-            change={clientCounts.new > 0 ? { value: 12.5, period: "vs last month" } : undefined}
-            progressColor="#4a7c3a"
-          />
+      <main className="flex flex-col h-[calc(100vh-64px)] overflow-hidden">
+        {/* Top Bar */}
+        <div className="h-14 border-b bg-card flex items-center px-4 gap-3 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <Users className="h-5 w-5 text-primary" />
+            <span className="font-medium">Clients</span>
+          </div>
+
+          {/* Search */}
+          <div className="relative ml-4">
+            <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search clients..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-[200px] h-8 pl-9 text-sm"
+            />
+          </div>
+
+          {/* Status Filter */}
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-28 h-8 text-sm">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="inactive">Inactive</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <div className="flex-1" />
+
+          {/* Stats */}
+          <div className="flex items-center gap-4 text-sm">
+            <div className="flex items-center gap-1.5">
+              <Users className="h-4 w-4 text-muted-foreground" />
+              <span className="text-muted-foreground">{clientCounts.total} total</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <CheckCircle className="h-4 w-4 text-green-600" />
+              <span className="text-muted-foreground">{clientCounts.active} active</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <UserPlus className="h-4 w-4 text-primary" />
+              <span className="text-muted-foreground">{clientCounts.new} new</span>
+            </div>
+          </div>
+
+          <div className="h-4 border-l mx-2" />
+
+          {/* Actions */}
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={fetchClients}>
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => window.print()}>
+            <Printer className="h-4 w-4" />
+          </Button>
+          <Button variant="outline" size="sm" className="h-8" onClick={() => setBulkUploadOpen(true)}>
+            <Upload className="h-4 w-4 mr-1.5" />
+            Import
+          </Button>
+          <Button
+            size="sm"
+            className="h-8"
+            onClick={() => {
+              resetForm();
+              setCreateDialogOpen(true);
+            }}
+          >
+            <Plus className="h-4 w-4 mr-1.5" />
+            Add Client
+          </Button>
         </div>
 
-        {/* Clients Table */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-lg font-semibold">Client List</CardTitle>
-            <div className="flex items-center gap-3">
-              {/* Search */}
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search clients..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 w-64"
-                />
-              </div>
+        {/* Main Content */}
+        <div className="flex-1 overflow-hidden">
+          <ScrollArea className="h-full">
+            <div className="p-4">
+              <Card className="border-border/50">
+                <CardContent className="p-0">
+                  {loading ? (
+                    <div className="flex items-center justify-center py-12">
+                      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : clients.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                      <Users className="h-12 w-12 text-muted-foreground mb-4" />
+                      <h3 className="text-lg font-medium">No clients found</h3>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {searchQuery || statusFilter !== "all"
+                          ? "Try adjusting your filters"
+                          : "Add your first client to get started"}
+                      </p>
+                    </div>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-[100px]">Client ID</TableHead>
+                          <TableHead>Join Date</TableHead>
+                          <TableHead>Client Name</TableHead>
+                          <TableHead>Phone</TableHead>
+                          <TableHead>Email</TableHead>
+                          <TableHead>Location</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead className="w-[50px]"></TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {clients.map((client) => (
+                          <TableRow
+                            key={client.id}
+                            className="cursor-pointer hover:bg-muted/50 transition-colors"
+                            onClick={() => router.push(`/clients/${client.id}`)}
+                          >
+                            <TableCell className="font-medium text-primary">
+                              #{client.id.slice(0, 8)}
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {format(new Date(client.created_at), "dd MMM yyyy")}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-3">
+                                <Avatar className="h-9 w-9">
+                                  <AvatarFallback className="bg-primary/10 text-primary">
+                                    {client.name
+                                      .split(" ")
+                                      .map((n) => n[0])
+                                      .join("")
+                                      .slice(0, 2)
+                                      .toUpperCase()}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div>
+                                  <div className="font-medium">{client.name}</div>
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              {client.phone ? (
+                                <div className="flex items-center gap-1.5 text-sm">
+                                  <Phone className="h-3.5 w-3.5 text-muted-foreground" />
+                                  {client.phone}
+                                </div>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {client.email ? (
+                                <div className="flex items-center gap-1.5 text-sm text-primary">
+                                  <Mail className="h-3.5 w-3.5" />
+                                  {client.email}
+                                </div>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {client.city || client.state ? (
+                                <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                                  <MapPin className="h-3.5 w-3.5" />
+                                  {[client.city, client.state].filter(Boolean).join(", ")}
+                                </div>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  "text-[10px] font-normal",
+                                  client.status === "active"
+                                    ? "bg-green-100 text-green-700 border-green-200"
+                                    : "bg-gray-100 text-gray-600 border-gray-200"
+                                )}
+                              >
+                                {client.status === "active" ? "Active" : "Inactive"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
 
-              {/* Status Filter */}
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-32">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                </SelectContent>
-              </Select>
-
-              {/* Refresh */}
-              <Button variant="outline" size="icon" onClick={fetchClients}>
-                <RefreshCw className="h-4 w-4" />
-              </Button>
-
-              {/* Print */}
-              <Button variant="outline" size="icon" onClick={() => window.print()}>
-                <Printer className="h-4 w-4" />
-              </Button>
-
-              {/* Bulk Upload */}
-              <Button variant="outline" onClick={() => setBulkUploadOpen(true)}>
-                <Upload className="h-4 w-4 mr-2" />
-                Bulk Upload
-              </Button>
-
-              {/* Add Client */}
-              <Button
-                className="bg-primary hover:bg-primary/90"
-                onClick={() => {
-                  resetForm();
-                  setCreateDialogOpen(true);
-                }}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Client
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            {loading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              </div>
-            ) : clients.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <Users className="h-12 w-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-medium">No clients found</h3>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {searchQuery || statusFilter !== "all"
-                    ? "Try adjusting your filters"
-                    : "Add your first client to get started"}
-                </p>
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[100px]">Client ID</TableHead>
-                    <TableHead>Join Date</TableHead>
-                    <TableHead>Client Name</TableHead>
-                    <TableHead>Phone</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Location</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="w-[50px]"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {clients.map((client) => (
-                    <TableRow
-                      key={client.id}
-                      className="cursor-pointer hover:bg-muted/50 transition-colors"
-                      onClick={() => router.push(`/clients/${client.id}`)}
-                    >
-                      <TableCell className="font-medium text-primary">
-                        #{client.id.slice(0, 8)}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {format(new Date(client.created_at), "dd MMM yyyy")}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <Avatar className="h-9 w-9">
-                            <AvatarFallback className="bg-accent text-accent-foreground">
-                              {client.name
-                                .split(" ")
-                                .map((n) => n[0])
-                                .join("")
-                                .slice(0, 2)
-                                .toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <div className="font-medium">{client.name}</div>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {client.phone ? (
-                          <div className="flex items-center gap-1.5 text-sm">
-                            <Phone className="h-3.5 w-3.5 text-muted-foreground" />
-                            {client.phone}
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {client.email ? (
-                          <div className="flex items-center gap-1.5 text-sm text-primary">
-                            <Mail className="h-3.5 w-3.5" />
-                            {client.email}
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {client.city || client.state ? (
-                          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                            <MapPin className="h-3.5 w-3.5" />
-                            {[client.city, client.state].filter(Boolean).join(", ")}
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            "font-normal",
-                            client.status === "active"
-                              ? "bg-green-100 text-green-700 border-green-200"
-                              : "bg-gray-100 text-gray-600 border-gray-200"
-                          )}
-                        >
-                          {client.status === "active" ? "Active" : "Inactive"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-
-            {/* Pagination */}
-            {clients.length > 0 && (
-              <div className="flex items-center justify-between px-6 py-4 border-t">
-                <p className="text-sm text-muted-foreground">
-                  Showing {((page - 1) * ITEMS_PER_PAGE) + 1} to {Math.min(page * ITEMS_PER_PAGE, totalCount)} of {totalCount} entries
-                </p>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={page === 1}
-                    onClick={() => setPage(p => p - 1)}
-                  >
-                    Previous
-                  </Button>
-                  {/* Smart pagination: show first, last, and pages around current */}
-                  {(() => {
-                    const pages: (number | "ellipsis")[] = [];
-                    if (totalPages <= 7) {
-                      // Show all pages if 7 or fewer
-                      for (let i = 1; i <= totalPages; i++) pages.push(i);
-                    } else {
-                      // Always show first page
-                      pages.push(1);
-
-                      if (page > 3) {
-                        pages.push("ellipsis");
-                      }
-
-                      // Pages around current
-                      const start = Math.max(2, page - 1);
-                      const end = Math.min(totalPages - 1, page + 1);
-                      for (let i = start; i <= end; i++) {
-                        if (!pages.includes(i)) pages.push(i);
-                      }
-
-                      if (page < totalPages - 2) {
-                        pages.push("ellipsis");
-                      }
-
-                      // Always show last page
-                      if (!pages.includes(totalPages)) pages.push(totalPages);
-                    }
-
-                    return pages.map((p, idx) =>
-                      p === "ellipsis" ? (
-                        <span key={`ellipsis-${idx}`} className="px-2 text-muted-foreground">...</span>
-                      ) : (
+                  {/* Pagination */}
+                  {clients.length > 0 && (
+                    <div className="flex items-center justify-between px-4 py-3 border-t">
+                      <p className="text-xs text-muted-foreground">
+                        Showing {((page - 1) * ITEMS_PER_PAGE) + 1} to {Math.min(page * ITEMS_PER_PAGE, totalCount)} of {totalCount}
+                      </p>
+                      <div className="flex items-center gap-1">
                         <Button
-                          key={p}
                           variant="outline"
                           size="sm"
-                          className={cn(page === p && "bg-primary text-primary-foreground")}
-                          onClick={() => setPage(p)}
+                          className="h-7 text-xs"
+                          disabled={page === 1}
+                          onClick={() => setPage(p => p - 1)}
                         >
-                          {p}
+                          Previous
                         </Button>
-                      )
-                    );
-                  })()}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={page >= totalPages}
-                    onClick={() => setPage(p => p + 1)}
-                  >
-                    Next
-                  </Button>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                        {(() => {
+                          const pages: (number | "ellipsis")[] = [];
+                          if (totalPages <= 7) {
+                            for (let i = 1; i <= totalPages; i++) pages.push(i);
+                          } else {
+                            pages.push(1);
+                            if (page > 3) pages.push("ellipsis");
+                            const start = Math.max(2, page - 1);
+                            const end = Math.min(totalPages - 1, page + 1);
+                            for (let i = start; i <= end; i++) {
+                              if (!pages.includes(i)) pages.push(i);
+                            }
+                            if (page < totalPages - 2) pages.push("ellipsis");
+                            if (!pages.includes(totalPages)) pages.push(totalPages);
+                          }
+
+                          return pages.map((p, idx) =>
+                            p === "ellipsis" ? (
+                              <span key={`ellipsis-${idx}`} className="px-2 text-muted-foreground text-xs">...</span>
+                            ) : (
+                              <Button
+                                key={p}
+                                variant="outline"
+                                size="sm"
+                                className={cn("h-7 w-7 text-xs p-0", page === p && "bg-primary text-primary-foreground")}
+                                onClick={() => setPage(p)}
+                              >
+                                {p}
+                              </Button>
+                            )
+                          );
+                        })()}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs"
+                          disabled={page >= totalPages}
+                          onClick={() => setPage(p => p + 1)}
+                        >
+                          Next
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </ScrollArea>
+        </div>
       </main>
 
       {/* Create Client Dialog */}

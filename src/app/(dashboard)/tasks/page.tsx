@@ -363,119 +363,125 @@ export default function MyTasksPage() {
     }
   };
 
-  // Task card component
+  // Task card component - matching Phone Agent card styling
   const TaskCard = ({ task }: { task: Task }) => {
     const SourceIcon = sourceIcons[task.source_type as keyof typeof sourceIcons] || ClipboardList;
     const isTestTask = task.source_email_id?.startsWith("test_");
 
     return (
-      <div
+      <Card
         draggable
         onDragStart={(e) => handleDragStart(e, task)}
         onDragEnd={handleDragEnd}
         className={cn(
-          "bg-white border rounded-lg p-3 cursor-grab active:cursor-grabbing shadow-sm hover:shadow-md transition-shadow",
-          draggedTask?.id === task.id && "opacity-50",
+          "cursor-grab active:cursor-grabbing transition-all border-border/50 hover:shadow-md",
+          draggedTask?.id === task.id && "opacity-50 ring-2 ring-primary",
           isTestTask && "border-amber-200 bg-amber-50/30"
         )}
       >
-        <div className="flex items-start justify-between gap-2 mb-2">
-          <div className="flex items-center gap-2 min-w-0">
-            <div className={cn("w-2 h-2 rounded-full flex-shrink-0", priorityConfig[task.priority]?.dot)} />
-            <span className="font-medium text-sm truncate">{task.title}</span>
-          </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-6 w-6 flex-shrink-0">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                onClick={() => {
-                  setSelectedTask(task);
-                  setViewDialogOpen(true);
-                }}
-              >
-                <Eye className="h-4 w-4 mr-2" />
-                View Details
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => {
-                  setSelectedTask(task);
-                  setReassignDialogOpen(true);
-                }}
-              >
-                <UserPlus className="h-4 w-4 mr-2" />
-                Pass to Someone
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              {task.status !== "completed" && (
-                <DropdownMenuItem onClick={() => handleQuickStatusChange(task, "completed")}>
-                  <CheckCircle className="h-4 w-4 mr-2" />
-                  Mark Complete
-                </DropdownMenuItem>
-              )}
-              {task.status === "completed" && (
-                <DropdownMenuItem onClick={() => handleQuickStatusChange(task, "in_progress")}>
-                  <ArrowRight className="h-4 w-4 mr-2" />
-                  Reopen
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                className="text-destructive"
-                onClick={() => {
-                  setSelectedTask(task);
-                  setDeleteDialogOpen(true);
-                }}
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-
-        {task.description && (
-          <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
-            {task.description}
-          </p>
-        )}
-
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1">
-              <SourceIcon className="h-3 w-3" />
-              <span className="capitalize">{(task.source_type || "manual").replace(/_/g, " ")}</span>
+        <CardContent className="p-3">
+          <div className="flex items-start justify-between gap-2 mb-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className={cn("w-2 h-2 rounded-full flex-shrink-0", priorityConfig[task.priority]?.dot)} />
+              <span className="font-medium text-sm truncate">{task.title}</span>
             </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-6 w-6 flex-shrink-0">
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onClick={() => {
+                    setSelectedTask(task);
+                    setViewDialogOpen(true);
+                  }}
+                >
+                  <Eye className="h-4 w-4 mr-2" />
+                  View Details
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
+                    setSelectedTask(task);
+                    setReassignDialogOpen(true);
+                  }}
+                >
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  Pass to Someone
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                {task.status !== "completed" && (
+                  <DropdownMenuItem onClick={() => handleQuickStatusChange(task, "completed")}>
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    Mark Complete
+                  </DropdownMenuItem>
+                )}
+                {task.status === "completed" && (
+                  <DropdownMenuItem onClick={() => handleQuickStatusChange(task, "in_progress")}>
+                    <ArrowRight className="h-4 w-4 mr-2" />
+                    Reopen
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-destructive"
+                  onClick={() => {
+                    setSelectedTask(task);
+                    setDeleteDialogOpen(true);
+                  }}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
-          {task.client_id && (
-            <span className="text-xs text-muted-foreground">
-              Client ID: {task.client_id.slice(0, 8)}
-            </span>
+
+          {task.description && (
+            <div className="bg-muted/50 rounded-lg p-2 mb-2">
+              <p className="text-xs text-muted-foreground line-clamp-2">
+                {task.description}
+              </p>
+            </div>
           )}
-        </div>
 
-        {task.due_date && (
-          <div className="mt-2 pt-2 border-t flex items-center gap-1 text-xs">
-            <Clock className="h-3 w-3 text-muted-foreground" />
-            <span className={cn(
-              new Date(task.due_date) < new Date() && task.status !== "completed"
-                ? "text-red-600 font-medium"
-                : "text-muted-foreground"
-            )}>
-              {format(new Date(task.due_date), "MMM d")}
-            </span>
+          <div className="flex items-center flex-wrap gap-1.5 text-xs">
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+              <SourceIcon className="h-3 w-3 mr-1" />
+              {(task.source_type || "manual").replace(/_/g, " ")}
+            </Badge>
+            {task.priority === "urgent" && (
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-red-100 text-red-700 border-red-200">
+                Urgent
+              </Badge>
+            )}
+            {task.priority === "high" && (
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-orange-100 text-orange-700 border-orange-200">
+                High
+              </Badge>
+            )}
+            {isTestTask && (
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-300 text-amber-600">
+                Test
+              </Badge>
+            )}
           </div>
-        )}
 
-        {isTestTask && (
-          <Badge variant="outline" className="text-[10px] mt-2 border-amber-300 text-amber-600">
-            Test
-          </Badge>
-        )}
-      </div>
+          {task.due_date && (
+            <div className="mt-2 pt-2 border-t flex items-center gap-1 text-xs">
+              <Clock className="h-3 w-3 text-muted-foreground" />
+              <span className={cn(
+                new Date(task.due_date) < new Date() && task.status !== "completed"
+                  ? "text-red-600 font-medium"
+                  : "text-muted-foreground"
+              )}>
+                {format(new Date(task.due_date), "MMM d")}
+              </span>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     );
   };
 
@@ -488,121 +494,135 @@ export default function MyTasksPage() {
   return (
     <>
       <Header title="My Tasks" />
-      <main className="p-6 space-y-6">
-        {/* Header with stats and filters */}
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div className="flex items-center gap-6">
-            <div className="text-sm">
-              <span className="text-muted-foreground">Total: </span>
-              <span className="font-semibold">{totalTasks}</span>
+      <main className="flex flex-col h-[calc(100vh-64px)] overflow-hidden">
+        {/* Top Bar */}
+        <div className="h-14 border-b bg-card flex items-center px-4 gap-3 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <ClipboardList className="h-5 w-5 text-primary" />
+            <span className="font-medium">My Tasks</span>
+          </div>
+
+          {/* Search */}
+          <div className="relative ml-4">
+            <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search tasks..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-[200px] h-8 pl-9 text-sm"
+            />
+          </div>
+
+          {/* Priority Filter */}
+          <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+            <SelectTrigger className="w-28 h-8 text-sm">
+              <SelectValue placeholder="Priority" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Priority</SelectItem>
+              <SelectItem value="urgent">Urgent</SelectItem>
+              <SelectItem value="high">High</SelectItem>
+              <SelectItem value="medium">Medium</SelectItem>
+              <SelectItem value="low">Low</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <div className="flex-1" />
+
+          {/* Stats in Top Bar */}
+          <div className="flex items-center gap-3 text-sm">
+            <div className="flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-yellow-400" />
+              <span className="text-muted-foreground">{todoCount} to do</span>
             </div>
-            <div className="flex items-center gap-4 text-sm">
-              <div className="flex items-center gap-1.5">
-                <div className="w-2 h-2 rounded-full bg-yellow-400" />
-                <span>To Do: {todoCount}</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-2 h-2 rounded-full bg-blue-400" />
-                <span>In Progress: {inProgressCount}</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-2 h-2 rounded-full bg-green-400" />
-                <span>Done: {doneCount}</span>
-              </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-blue-400" />
+              <span className="text-muted-foreground">{inProgressCount} in progress</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-green-400" />
+              <span className="text-muted-foreground">{doneCount} done</span>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            {/* Search */}
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search my tasks..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 w-56"
-              />
-            </div>
+          <div className="h-4 border-l mx-2" />
 
-            {/* Priority Filter */}
-            <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-              <SelectTrigger className="w-32">
-                <SelectValue placeholder="Priority" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Priority</SelectItem>
-                <SelectItem value="urgent">Urgent</SelectItem>
-                <SelectItem value="high">High</SelectItem>
-                <SelectItem value="medium">Medium</SelectItem>
-                <SelectItem value="low">Low</SelectItem>
-              </SelectContent>
-            </Select>
+          <span className="text-sm text-muted-foreground">{totalTasks} total</span>
 
-            {/* Refresh */}
-            <Button variant="outline" size="icon" onClick={() => fetchTasks()}>
-              <RefreshCw className="h-4 w-4" />
-            </Button>
-          </div>
+          {/* Refresh */}
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => fetchTasks()}>
+            <RefreshCw className="h-4 w-4" />
+          </Button>
         </div>
 
         {/* Kanban Board */}
-        {loading ? (
-          <div className="flex items-center justify-center py-24">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          </div>
-        ) : tasks.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 text-center">
-            <ClipboardList className="h-16 w-16 text-muted-foreground mb-4" />
-            <h3 className="text-xl font-medium">No tasks assigned to you</h3>
-            <p className="text-sm text-muted-foreground mt-2 max-w-md">
-              When tasks are assigned to you from the Task Table, they will appear here in your personal Kanban board.
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {KANBAN_STATUSES.map((status) => {
-              const statusTasks = getTasksByStatus(status);
-              const config = statusConfig[status];
+        <div className="flex-1 overflow-auto p-4 bg-background">
+          {loading ? (
+            <div className="flex items-center justify-center h-full">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : tasks.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-center">
+              <ClipboardList className="h-12 w-12 text-muted-foreground mb-4" />
+              <h3 className="text-lg font-medium">No tasks assigned to you</h3>
+              <p className="text-sm text-muted-foreground mt-2 max-w-md">
+                When tasks are assigned to you from the Task Table, they will appear here in your personal Kanban board.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-full">
+              {KANBAN_STATUSES.map((status) => {
+                const statusTasks = getTasksByStatus(status);
+                const config = statusConfig[status];
 
-              return (
-                <div
-                  key={status}
-                  className={cn(
-                    "rounded-lg border",
-                    config.headerBg,
-                    dragOverColumn === status && "ring-2 ring-primary ring-offset-2"
-                  )}
-                  onDragOver={(e) => handleDragOver(e, status)}
-                  onDragLeave={handleDragLeave}
-                  onDrop={(e) => handleDrop(e, status)}
-                >
-                  <div className={cn("p-4 border-b", config.headerBg)}>
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-semibold text-sm">{config.label}</h3>
-                      <Badge variant="secondary" className="text-xs">
-                        {statusTasks.length}
-                      </Badge>
+                return (
+                  <div
+                    key={status}
+                    className={cn(
+                      "flex flex-col rounded-lg bg-muted/30 transition-colors",
+                      dragOverColumn === status && "bg-primary/10"
+                    )}
+                    onDragOver={(e) => handleDragOver(e, status)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, status)}
+                  >
+                    <div className="p-3 border-b bg-card rounded-t-lg">
+                      <div className="flex items-center gap-2">
+                        <div className={cn(
+                          "w-2 h-2 rounded-full",
+                          status === "pending" && "bg-yellow-400",
+                          status === "in_progress" && "bg-blue-400",
+                          status === "completed" && "bg-green-400"
+                        )} />
+                        <h3 className="font-medium text-sm">{config.label}</h3>
+                        <Badge variant="secondary" className="ml-auto text-[10px]">
+                          {statusTasks.length}
+                        </Badge>
+                      </div>
                     </div>
+
+                    <ScrollArea className="flex-1">
+                      <div className="p-2 space-y-2 min-h-[200px]">
+                        {statusTasks.length === 0 ? (
+                          <div className={cn(
+                            "flex flex-col items-center justify-center py-8 text-center border-2 border-dashed rounded-lg transition-colors",
+                            dragOverColumn === status && "border-primary bg-primary/5"
+                          )}>
+                            <p className="text-xs text-muted-foreground">Drop tasks here</p>
+                          </div>
+                        ) : (
+                          statusTasks.map((task) => (
+                            <TaskCard key={task.id} task={task} />
+                          ))
+                        )}
+                      </div>
+                    </ScrollArea>
                   </div>
-
-                  <ScrollArea className="h-[calc(100vh-320px)]">
-                    <div className="p-3 space-y-3 min-h-[200px]">
-                      {statusTasks.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-8 text-center">
-                          <p className="text-sm text-muted-foreground">No tasks</p>
-                        </div>
-                      ) : (
-                        statusTasks.map((task) => (
-                          <TaskCard key={task.id} task={task} />
-                        ))
-                      )}
-                    </div>
-                  </ScrollArea>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                );
+              })}
+            </div>
+          )}
+        </div>
       </main>
 
       {/* View Task Dialog */}

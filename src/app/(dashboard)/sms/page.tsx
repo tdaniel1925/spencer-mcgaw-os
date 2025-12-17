@@ -464,44 +464,62 @@ function SMSPageContent() {
     <>
       <Header title="SMS Messages" />
 
-      <main className="flex-1 overflow-hidden flex">
-        {/* Conversations List */}
-        <div className="w-80 border-r flex flex-col bg-background">
-          {/* Header */}
-          <div className="p-4 border-b space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <h2 className="font-semibold">Conversations</h2>
-                {totalUnread > 0 && (
-                  <Badge variant="destructive" className="h-5 px-1.5 text-xs">
-                    {totalUnread}
-                  </Badge>
-                )}
-              </div>
-              <Button size="sm" onClick={() => { loadContacts(); setShowNewConversation(true); }}>
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
-
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search conversations..."
-                className="pl-9"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-
-            <Tabs value={conversationFilter} onValueChange={(v) => setConversationFilter(v as typeof conversationFilter)}>
-              <TabsList className="w-full grid grid-cols-4 h-8">
-                <TabsTrigger value="all" className="text-xs">All</TabsTrigger>
-                <TabsTrigger value="unread" className="text-xs">Unread</TabsTrigger>
-                <TabsTrigger value="priority" className="text-xs">Priority</TabsTrigger>
-                <TabsTrigger value="archived" className="text-xs">Archived</TabsTrigger>
-              </TabsList>
-            </Tabs>
+      <main className="flex flex-col h-[calc(100vh-64px)] overflow-hidden">
+        {/* Top Bar */}
+        <div className="h-14 border-b bg-card flex items-center px-4 gap-3 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <MessageSquare className="h-5 w-5 text-primary" />
+            <span className="font-medium">SMS Messages</span>
           </div>
+
+          <div className="flex-1" />
+
+          {/* Stats */}
+          <div className="flex items-center gap-3 text-sm">
+            {totalUnread > 0 && (
+              <Badge variant="destructive" className="text-[10px]">
+                {totalUnread} unread
+              </Badge>
+            )}
+            <div className="flex items-center gap-1.5">
+              <MessageSquare className="h-4 w-4 text-muted-foreground" />
+              <span className="text-muted-foreground">{filteredConversations.length} conversations</span>
+            </div>
+          </div>
+
+          <div className="h-4 border-l mx-2" />
+
+          <Button size="sm" className="h-8" onClick={() => { loadContacts(); setShowNewConversation(true); }}>
+            <Plus className="h-4 w-4 mr-1.5" />
+            New Message
+          </Button>
+        </div>
+
+        {/* Main Content */}
+        <div className="flex flex-1 overflow-hidden">
+          {/* Conversations List */}
+          <div className="w-80 border-r flex flex-col bg-muted/20">
+            {/* Search Header */}
+            <div className="p-3 border-b space-y-2">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search conversations..."
+                  className="pl-9 h-8 text-sm"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+
+              <Tabs value={conversationFilter} onValueChange={(v) => setConversationFilter(v as typeof conversationFilter)}>
+                <TabsList className="w-full grid grid-cols-4 h-7">
+                  <TabsTrigger value="all" className="text-[10px]">All</TabsTrigger>
+                  <TabsTrigger value="unread" className="text-[10px]">Unread</TabsTrigger>
+                  <TabsTrigger value="priority" className="text-[10px]">Priority</TabsTrigger>
+                  <TabsTrigger value="archived" className="text-[10px]">Archived</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
 
           {/* Conversations */}
           <ScrollArea className="flex-1">
@@ -808,6 +826,7 @@ function SMSPageContent() {
               </div>
             </div>
           )}
+          </div>
         </div>
       </main>
 
