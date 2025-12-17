@@ -145,6 +145,9 @@ Important notes:
 - The "form" object should only be present for web form submissions
 - Be generous with category classification - use context clues
 - For accounting firms, common inquiries are about taxes, documents, deadlines, and appointments
+- IMPORTANT: If a "determined_direction" field is provided in the payload, USE THAT VALUE for the call direction and write the summary accordingly. Do not guess or override it.
+  - For "inbound" calls: write the summary as "[caller name] called..." or "[caller name] reached out..."
+  - For "outbound" calls: write the summary as "[employee name] called [recipient]..." or "[employee name] made an outbound call..."
 
 Return ONLY valid JSON, no explanations or markdown.`;
 

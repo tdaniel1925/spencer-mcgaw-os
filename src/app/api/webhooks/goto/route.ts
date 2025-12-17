@@ -333,14 +333,34 @@ async function processCallReport(
   const endTime = new Date(callEnded);
   const duration = Math.round((endTime.getTime() - startTime.getTime()) / 1000);
 
-  // Determine direction
-  const rawDirection = content.direction as string | undefined;
-  const direction: "inbound" | "outbound" =
-    rawDirection === "OUTBOUND" ? "outbound" : "inbound";
-
   // Extract caller info from the webhook content
   const caller = content.caller as Record<string, unknown> | undefined;
   const participants = content.participants as Array<Record<string, unknown>> || [];
+
+  // Determine direction from GoTo data
+  // Primary: use the direction field from GoTo (case-insensitive)
+  // Fallback 1: check caller.type.value - LINE = outbound (internal), PHONE_NUMBER = inbound (external)
+  // Fallback 2: check if caller has lineId (internal user making outbound call)
+  const rawDirection = content.direction as string | undefined;
+  const callerType = (caller?.type as Record<string, unknown>)?.value as string | undefined;
+  const callerHasLineId = !!(caller?.type as Record<string, unknown>)?.lineId;
+
+  let direction: "inbound" | "outbound";
+
+  if (rawDirection) {
+    direction = rawDirection.toUpperCase() === "OUTBOUND" ? "outbound" : "inbound";
+  } else if (callerType === "LINE" || callerHasLineId) {
+    // Caller is an internal LINE user making an outbound call
+    direction = "outbound";
+  } else if (callerType === "PHONE_NUMBER") {
+    // Caller is an external phone number - inbound call
+    direction = "inbound";
+  } else {
+    // Default to inbound if we can't determine
+    direction = "inbound";
+  }
+
+  console.log(`[GoTo Webhook] Direction detection - rawDirection: ${rawDirection}, callerType: ${callerType}, callerHasLineId: ${callerHasLineId}, final: ${direction}`);
 
   const callerName = (caller?.name as string) || null;
   const callerPhone = (caller?.number as string) || null;
@@ -414,6 +434,8 @@ async function processCallReport(
     parsedData = await parseWebhookWithAI({
       source: "goto_connect",
       type: "call_report",
+      // Pass the determined direction so AI uses correct context for summary
+      determined_direction: direction,
       content,
       transcript,
       caller,
