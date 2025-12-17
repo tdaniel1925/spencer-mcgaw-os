@@ -4,6 +4,11 @@ import { calls, activityLogs, webhookLogs } from "@/db/schema";
 import { parseWebhookWithAI, isAIParsingAvailable } from "@/lib/ai";
 import type { ParsedWebhookData } from "@/lib/ai";
 import { eq } from "drizzle-orm";
+import {
+  generateTaskSuggestionsFromCall,
+  storeTaskSuggestions,
+  type CallContext,
+} from "@/lib/ai/task-suggestion-engine";
 
 // Store processed webhook IDs to prevent replay (in production, use Redis or database)
 const processedWebhooks = new Set<string>();
@@ -340,6 +345,49 @@ export async function POST(request: NextRequest) {
 
     console.log("[VAPI Webhook] Call stored with ID:", recordId);
 
+    // Generate AI task suggestions from the call
+    let suggestionIds: string[] = [];
+    try {
+      const callContext: CallContext = {
+        callId: recordId || callId,
+        callerPhone: callerPhone || undefined,
+        callerName: callerName || undefined,
+        transcript: transcript || undefined,
+        summary: summary || undefined,
+        category: parsedData?.analysis?.category || undefined,
+        sentiment: parsedData?.analysis?.sentiment || undefined,
+        urgency: parsedData?.analysis?.urgency || undefined,
+        suggestedActions: parsedData?.analysis?.suggestedActions || undefined,
+        keyPoints: parsedData?.analysis?.keyPoints || undefined,
+        duration: duration || undefined,
+      };
+
+      console.log("[VAPI Webhook] Generating task suggestions for call:", recordId);
+      const suggestions = await generateTaskSuggestionsFromCall(callContext);
+
+      if (suggestions.length > 0) {
+        console.log(`[VAPI Webhook] Generated ${suggestions.length} task suggestions`);
+        suggestionIds = await storeTaskSuggestions(
+          suggestions,
+          "phone_call",
+          recordId || callId,
+          {
+            vapiCallId: callId,
+            callerPhone,
+            callerName,
+            category: parsedData?.analysis?.category,
+            webhookLogId,
+          }
+        );
+        console.log("[VAPI Webhook] Stored suggestion IDs:", suggestionIds);
+      } else {
+        console.log("[VAPI Webhook] No task suggestions generated for this call");
+      }
+    } catch (suggestionError) {
+      // Don't fail the webhook if suggestion generation fails
+      console.error("[VAPI Webhook] Error generating task suggestions:", suggestionError);
+    }
+
     return NextResponse.json({
       success: true,
       message: "VAPI webhook processed successfully",
@@ -348,6 +396,8 @@ export async function POST(request: NextRequest) {
       webhookLogId,
       aiParsed: !!parsedData,
       summary,
+      taskSuggestions: suggestionIds.length,
+      suggestionIds,
       processingTimeMs: Date.now() - startTime,
     });
   } catch (error) {

@@ -23,6 +23,7 @@ import {
   MoreHorizontal,
   UserPlus,
   Maximize2,
+  Sparkles,
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -48,6 +49,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { TaskDetailModal } from "./task-detail-modal";
 import { CreateTaskDialog } from "./create-task-dialog";
+import { SuggestedTasks } from "./suggested-tasks";
 
 interface ActionType {
   id: string;
@@ -139,6 +141,7 @@ export default function TaskPoolPage() {
   const [currentView, setCurrentView] = useState<string>("pool");
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [suggestionCount, setSuggestionCount] = useState(0);
 
   const loadActionTypes = useCallback(async () => {
     try {
@@ -431,6 +434,18 @@ export default function TaskPoolPage() {
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-8">
         <Tabs value={currentView} onValueChange={setCurrentView}>
           <TabsList className="h-10 p-1">
+            <TabsTrigger value="suggested" className="flex items-center gap-2 px-4 relative">
+              <Sparkles className="h-4 w-4" />
+              Suggested
+              {suggestionCount > 0 && (
+                <Badge
+                  variant="secondary"
+                  className="ml-1 h-5 min-w-5 px-1.5 text-xs bg-purple-100 text-purple-700 font-semibold"
+                >
+                  {suggestionCount}
+                </Badge>
+              )}
+            </TabsTrigger>
             <TabsTrigger value="pool" className="flex items-center gap-2 px-4">
               <Layers className="h-4 w-4" />
               Pool
@@ -477,70 +492,75 @@ export default function TaskPoolPage() {
         </div>
       </div>
 
-      {/* Pool View - Action Type Lanes */}
-      {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="space-y-3">
-              <Skeleton className="h-12 w-full rounded-lg" />
-              <Skeleton className="h-28 w-full rounded-lg" />
-              <Skeleton className="h-28 w-full rounded-lg" />
-            </div>
-          ))}
-        </div>
+      {/* Suggested View */}
+      {currentView === "suggested" ? (
+        <SuggestedTasks onSuggestionCount={setSuggestionCount} />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {actionTypes.map((actionType) => {
-            const Icon = getActionIcon(actionType.icon);
-            const typeTasks = filterTasks(tasksByActionType[actionType.id] || []);
-
-            return (
-              <div key={actionType.id} className="flex flex-col bg-card rounded-xl shadow-sm border overflow-hidden">
-                {/* Lane Header - softer colors with left accent */}
-                <div
-                  className="flex items-center gap-3 px-4 py-3 border-b bg-muted/30"
-                  style={{ borderLeftWidth: '4px', borderLeftColor: actionType.color }}
-                >
-                  <div
-                    className="p-1.5 rounded-md"
-                    style={{ backgroundColor: `${actionType.color}15` }}
-                  >
-                    <Icon className="h-4 w-4" style={{ color: actionType.color }} />
-                  </div>
-                  <span className="font-semibold text-sm text-foreground">{actionType.label}</span>
-                  <Badge
-                    variant="secondary"
-                    className="ml-auto text-xs font-medium"
-                    style={{
-                      backgroundColor: `${actionType.color}15`,
-                      color: actionType.color
-                    }}
-                  >
-                    {typeTasks.length}
-                  </Badge>
-                </div>
-
-                {/* Lane Content - scrollable with max height */}
-                <div className="flex-1 p-3 space-y-3 max-h-[calc(100vh-320px)] overflow-y-auto bg-muted/10">
-                  {typeTasks.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                      <div
-                        className="p-3 rounded-full mb-3"
-                        style={{ backgroundColor: `${actionType.color}10` }}
-                      >
-                        <Icon className="h-6 w-6 opacity-40" style={{ color: actionType.color }} />
-                      </div>
-                      <p className="text-sm font-medium">No tasks</p>
-                      <p className="text-xs text-muted-foreground/60 mt-1">Tasks will appear here</p>
-                    </div>
-                  ) : (
-                    typeTasks.map(renderTaskCard)
-                  )}
-                </div>
+        /* Pool View - Action Type Lanes */
+        loading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="space-y-3">
+                <Skeleton className="h-12 w-full rounded-lg" />
+                <Skeleton className="h-28 w-full rounded-lg" />
+                <Skeleton className="h-28 w-full rounded-lg" />
               </div>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {actionTypes.map((actionType) => {
+              const Icon = getActionIcon(actionType.icon);
+              const typeTasks = filterTasks(tasksByActionType[actionType.id] || []);
+
+              return (
+                <div key={actionType.id} className="flex flex-col bg-card rounded-xl shadow-sm border overflow-hidden">
+                  {/* Lane Header - softer colors with left accent */}
+                  <div
+                    className="flex items-center gap-3 px-4 py-3 border-b bg-muted/30"
+                    style={{ borderLeftWidth: '4px', borderLeftColor: actionType.color }}
+                  >
+                    <div
+                      className="p-1.5 rounded-md"
+                      style={{ backgroundColor: `${actionType.color}15` }}
+                    >
+                      <Icon className="h-4 w-4" style={{ color: actionType.color }} />
+                    </div>
+                    <span className="font-semibold text-sm text-foreground">{actionType.label}</span>
+                    <Badge
+                      variant="secondary"
+                      className="ml-auto text-xs font-medium"
+                      style={{
+                        backgroundColor: `${actionType.color}15`,
+                        color: actionType.color
+                      }}
+                    >
+                      {typeTasks.length}
+                    </Badge>
+                  </div>
+
+                  {/* Lane Content - scrollable with max height */}
+                  <div className="flex-1 p-3 space-y-3 max-h-[calc(100vh-320px)] overflow-y-auto bg-muted/10">
+                    {typeTasks.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                        <div
+                          className="p-3 rounded-full mb-3"
+                          style={{ backgroundColor: `${actionType.color}10` }}
+                        >
+                          <Icon className="h-6 w-6 opacity-40" style={{ color: actionType.color }} />
+                        </div>
+                        <p className="text-sm font-medium">No tasks</p>
+                        <p className="text-xs text-muted-foreground/60 mt-1">Tasks will appear here</p>
+                      </div>
+                    ) : (
+                      typeTasks.map(renderTaskCard)
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )
       )}
 
       {/* Task Detail Modal */}
