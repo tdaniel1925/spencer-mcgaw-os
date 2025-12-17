@@ -87,6 +87,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow } from "date-fns";
+import { createClient } from "@/lib/supabase/client";
 
 // Types
 interface EmailIntelligence {
@@ -979,6 +980,50 @@ function EmailIntelligenceContent() {
     loadIntelligences();
     loadTeamMembers();
   }, [loadIntelligences, loadTeamMembers]);
+
+  // Realtime subscription for new email classifications
+  useEffect(() => {
+    const supabase = createClient();
+
+    const channel = supabase
+      .channel("email-intelligence-realtime")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "email_classifications",
+        },
+        (payload) => {
+          console.log("[Email Intelligence] New email classified:", payload.new);
+          // Refetch to get the full data with action items
+          loadIntelligences();
+          toast.info("New email received and classified", {
+            description: (payload.new as { subject?: string })?.subject || "New email",
+            duration: 4000,
+          });
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "email_classifications",
+        },
+        () => {
+          // Silently refresh on updates
+          loadIntelligences();
+        }
+      )
+      .subscribe((status) => {
+        console.log("[Email Intelligence] Realtime subscription status:", status);
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [loadIntelligences]);
 
   // Reset visible count when search changes
   useEffect(() => {

@@ -103,8 +103,30 @@ async function enableRealtime() {
       console.log("tasks table already in supabase_realtime publication");
     }
 
+    // Enable for email_classifications table
+    await client.query(`
+      ALTER TABLE public.email_classifications REPLICA IDENTITY FULL;
+    `);
+    console.log("Set REPLICA IDENTITY FULL on email_classifications table");
+
+    const emailClassResult = await client.query(`
+      SELECT 1 FROM pg_publication_tables
+      WHERE pubname = 'supabase_realtime'
+      AND schemaname = 'public'
+      AND tablename = 'email_classifications';
+    `);
+
+    if (emailClassResult.rows.length === 0) {
+      await client.query(`
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.email_classifications;
+      `);
+      console.log("Added email_classifications table to supabase_realtime publication");
+    } else {
+      console.log("email_classifications table already in supabase_realtime publication");
+    }
+
     console.log("\nRealtime enabled successfully for all tables!");
-    console.log("Tables with realtime enabled: calls, webhook_logs, activity_log, tasks");
+    console.log("Tables with realtime enabled: calls, webhook_logs, activity_log, tasks, email_classifications");
 
   } catch (error) {
     console.error("Error enabling realtime:", error);
