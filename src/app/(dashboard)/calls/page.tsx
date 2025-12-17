@@ -90,6 +90,10 @@ import {
   ExternalLink,
   Plus,
   GripVertical,
+  Activity,
+  CheckCircle2,
+  XCircle,
+  AlertCircle as AlertCircleIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow } from "date-fns";
@@ -857,6 +861,23 @@ function CallsPageContent() {
   }>({ status: "loading" });
   const [isTestingConnection, setIsTestingConnection] = useState(false);
 
+  // GoTo diagnostics state
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  const [isRunningDiagnostics, setIsRunningDiagnostics] = useState(false);
+  const [diagnosticsData, setDiagnosticsData] = useState<{
+    healthy: boolean;
+    summary: string;
+    diagnostics: {
+      oauth: { status: string; message: string };
+      apiAccess: { status: string; message: string };
+      webhookChannel: { status: string; message: string; channelId?: string };
+      subscriptions: { status: string; message: string };
+      recentCalls: { status: string; count: number; message: string };
+      webhookUrl: string;
+      recommendations: string[];
+    };
+  } | null>(null);
+
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -964,6 +985,38 @@ function CallsPageContent() {
       window.location.href = gotoStatus.authUrl;
     }
   }, [gotoStatus.authUrl]);
+
+  // Run GoTo diagnostics
+  const runGotoDiagnostics = useCallback(async () => {
+    setIsRunningDiagnostics(true);
+    setDiagnosticsOpen(true);
+    setDiagnosticsData(null);
+    try {
+      const res = await fetch("/api/integrations/goto", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "diagnose" }),
+      });
+      const data = await res.json();
+      setDiagnosticsData(data);
+    } catch (error) {
+      setDiagnosticsData({
+        healthy: false,
+        summary: error instanceof Error ? error.message : "Failed to run diagnostics",
+        diagnostics: {
+          oauth: { status: "error", message: "Could not reach API" },
+          apiAccess: { status: "error", message: "Skipped" },
+          webhookChannel: { status: "error", message: "Skipped" },
+          subscriptions: { status: "error", message: "Skipped" },
+          recentCalls: { status: "error", count: 0, message: "Skipped" },
+          webhookUrl: "",
+          recommendations: ["Check your network connection and try again"],
+        },
+      });
+    } finally {
+      setIsRunningDiagnostics(false);
+    }
+  }, []);
 
   // Reset visible count when search changes
   useEffect(() => {
@@ -1276,6 +1329,25 @@ function CallsPageContent() {
               <TooltipContent>Test Connection</TooltipContent>
             </Tooltip>
 
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8"
+                  onClick={runGotoDiagnostics}
+                  disabled={isRunningDiagnostics}
+                >
+                  {isRunningDiagnostics ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Activity className="h-4 w-4" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Run Diagnostics</TooltipContent>
+            </Tooltip>
+
             {gotoStatus.status !== "connected" && gotoStatus.authUrl && (
               <Button
                 variant="outline"
@@ -1495,6 +1567,187 @@ function CallsPageContent() {
                   <>
                     <CheckCircle className="h-4 w-4 mr-2" />
                     Create Task
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* GoTo Diagnostics Dialog */}
+        <Dialog open={diagnosticsOpen} onOpenChange={setDiagnosticsOpen}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Activity className="h-5 w-5" />
+                GoTo Connect Diagnostics
+              </DialogTitle>
+              <DialogDescription>
+                Comprehensive health check of your GoTo Connect integration
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="py-4">
+              {isRunningDiagnostics ? (
+                <div className="flex flex-col items-center justify-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
+                  <p className="text-sm text-muted-foreground">Running diagnostics...</p>
+                </div>
+              ) : diagnosticsData ? (
+                <div className="space-y-4">
+                  {/* Overall Status */}
+                  <div
+                    className={cn(
+                      "p-4 rounded-lg border flex items-center gap-3",
+                      diagnosticsData.healthy
+                        ? "bg-green-50 border-green-200"
+                        : "bg-amber-50 border-amber-200"
+                    )}
+                  >
+                    {diagnosticsData.healthy ? (
+                      <CheckCircle2 className="h-6 w-6 text-green-600 flex-shrink-0" />
+                    ) : (
+                      <AlertCircleIcon className="h-6 w-6 text-amber-600 flex-shrink-0" />
+                    )}
+                    <div>
+                      <p className={cn(
+                        "font-medium",
+                        diagnosticsData.healthy ? "text-green-700" : "text-amber-700"
+                      )}>
+                        {diagnosticsData.healthy ? "All Systems Operational" : "Issues Detected"}
+                      </p>
+                      <p className="text-sm text-muted-foreground">{diagnosticsData.summary}</p>
+                    </div>
+                  </div>
+
+                  {/* Individual Checks */}
+                  <div className="space-y-2">
+                    {/* OAuth */}
+                    <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                      {diagnosticsData.diagnostics.oauth.status === "ok" ? (
+                        <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0" />
+                      ) : (
+                        <XCircle className="h-5 w-5 text-red-600 flex-shrink-0" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm">OAuth Authentication</p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {diagnosticsData.diagnostics.oauth.message}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* API Access */}
+                    <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                      {diagnosticsData.diagnostics.apiAccess.status === "ok" ? (
+                        <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0" />
+                      ) : (
+                        <XCircle className="h-5 w-5 text-red-600 flex-shrink-0" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm">API Access</p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {diagnosticsData.diagnostics.apiAccess.message}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Webhook Channel */}
+                    <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                      {diagnosticsData.diagnostics.webhookChannel.status === "ok" ? (
+                        <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0" />
+                      ) : diagnosticsData.diagnostics.webhookChannel.status === "not_configured" ? (
+                        <AlertCircleIcon className="h-5 w-5 text-amber-600 flex-shrink-0" />
+                      ) : (
+                        <XCircle className="h-5 w-5 text-red-600 flex-shrink-0" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm">Webhook Channel</p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {diagnosticsData.diagnostics.webhookChannel.message}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Subscriptions */}
+                    <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                      {diagnosticsData.diagnostics.subscriptions.status === "ok" ? (
+                        <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0" />
+                      ) : diagnosticsData.diagnostics.subscriptions.status === "unknown" ? (
+                        <AlertCircleIcon className="h-5 w-5 text-amber-600 flex-shrink-0" />
+                      ) : (
+                        <XCircle className="h-5 w-5 text-red-600 flex-shrink-0" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm">Event Subscriptions</p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {diagnosticsData.diagnostics.subscriptions.message}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Recent Calls */}
+                    <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                      {diagnosticsData.diagnostics.recentCalls.status === "ok" ? (
+                        <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0" />
+                      ) : (
+                        <XCircle className="h-5 w-5 text-red-600 flex-shrink-0" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm">Recent Calls (Last 24h)</p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {diagnosticsData.diagnostics.recentCalls.message}
+                        </p>
+                      </div>
+                      {diagnosticsData.diagnostics.recentCalls.count > 0 && (
+                        <Badge variant="secondary" className="flex-shrink-0">
+                          {diagnosticsData.diagnostics.recentCalls.count}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Webhook URL */}
+                  {diagnosticsData.diagnostics.webhookUrl && (
+                    <div className="p-3 rounded-lg bg-muted/30 border">
+                      <p className="text-xs font-medium text-muted-foreground mb-1">Webhook URL</p>
+                      <code className="text-xs break-all">{diagnosticsData.diagnostics.webhookUrl}</code>
+                    </div>
+                  )}
+
+                  {/* Recommendations */}
+                  {diagnosticsData.diagnostics.recommendations.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">Recommendations</p>
+                      {diagnosticsData.diagnostics.recommendations.map((rec, idx) => (
+                        <div
+                          key={idx}
+                          className="flex items-start gap-2 p-2 rounded bg-blue-50 border border-blue-100 text-sm"
+                        >
+                          <ArrowRight className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
+                          <span className="text-blue-800">{rec}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDiagnosticsOpen(false)}>
+                Close
+              </Button>
+              <Button onClick={runGotoDiagnostics} disabled={isRunningDiagnostics}>
+                {isRunningDiagnostics ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Running...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Re-run
                   </>
                 )}
               </Button>
