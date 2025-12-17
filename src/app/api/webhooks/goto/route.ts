@@ -137,8 +137,16 @@ export async function POST(request: NextRequest) {
     // GoTo sends: { data: { source: "...", type: "...", timestamp: "...", content: {...} } }
     const notificationData = (data.data || data) as Record<string, unknown>;
     const source = notificationData.source as string | undefined;
-    const eventType = notificationData.type as string | undefined;
+    const topLevelType = notificationData.type as string | undefined;
     const content = (notificationData.content || {}) as Record<string, unknown>;
+
+    // For call-state events, the actual event type (STARTING, ACTIVE, ENDING) is in content.state.type
+    const stateData = content.state as Record<string, unknown> | undefined;
+    const eventType = (topLevelType === "call-state" && stateData?.type)
+      ? (stateData.type as string)
+      : topLevelType;
+
+    console.log(`[GoTo Webhook] Event type: ${eventType}, Source: ${source}, TopLevelType: ${topLevelType}`);
 
     // Generate unique event ID for idempotency
     const eventId =
@@ -574,17 +582,25 @@ async function processCallEvent(
   }
 
   // For ENDING events, extract call data
-  const conversationSpaceId = content.conversationSpaceId as string;
   const state = (content.state || fullData.state) as Record<string, unknown> | undefined;
   const metadata = (content.metadata || fullData.metadata) as Record<string, unknown> | undefined;
+
+  // conversationSpaceId is in state.id for call-state events
+  const conversationSpaceId = (state?.id as string) || (content.conversationSpaceId as string);
+
+  console.log(`[GoTo Webhook] Processing ENDING event - conversationSpaceId: ${conversationSpaceId}`);
 
   const direction: "inbound" | "outbound" =
     (state?.direction as string)?.toLowerCase() === "outbound" ? "outbound" : "inbound";
 
+  // Extract caller phone from various possible locations
   const callerPhone =
     (state?.originator as string) ||
     (metadata?.callerNumber as string) ||
+    (state?.parties as Array<Record<string, unknown>>)?.find(p => p.isOriginator || p.originator)?.phoneNumber as string ||
     null;
+
+  console.log(`[GoTo Webhook] Extracted - direction: ${direction}, callerPhone: ${callerPhone}`);
 
   // Try AI parsing
   let parsedData: ParsedWebhookData | null = null;
