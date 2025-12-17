@@ -12,6 +12,22 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Tooltip,
   TooltipContent,
@@ -112,6 +128,24 @@ const bucketColors = [
   { name: "purple", class: "bg-purple-500" },
   { name: "pink", class: "bg-pink-500" },
 ];
+
+// Team member type
+interface TeamMember {
+  id: string;
+  name: string;
+  email: string;
+}
+
+// Task creation dialog state
+interface TaskCreationState {
+  open: boolean;
+  callId: string | null;
+  actionType: string;
+  title: string;
+  description: string;
+  priority: "low" | "medium" | "high" | "urgent";
+  assignedTo: string;
+}
 
 // Category icons mapping
 const categoryIcons: Record<CallCategory, React.ReactNode> = {
@@ -799,6 +833,21 @@ function CallsPageContent() {
   const { confirmDelete, state: deleteState, setOpen: setDeleteOpen } = useDeleteConfirmation();
   const { confirmBulkAction, state: bulkState, setOpen: setBulkOpen } = useBulkActionConfirmation();
 
+  // Team members for task assignment
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+
+  // Task creation dialog state
+  const [taskCreation, setTaskCreation] = useState<TaskCreationState>({
+    open: false,
+    callId: null,
+    actionType: "",
+    title: "",
+    description: "",
+    priority: "medium",
+    assignedTo: "",
+  });
+  const [isCreatingTask, setIsCreatingTask] = useState(false);
+
   // GoTo integration state
   const [gotoStatus, setGotoStatus] = useState<{
     status: "connected" | "disconnected" | "loading" | "error";
@@ -860,6 +909,26 @@ function CallsPageContent() {
       }
     }
     fetchGotoStatus();
+  }, []);
+
+  // Load team members for task assignment
+  useEffect(() => {
+    async function loadTeamMembers() {
+      try {
+        const res = await fetch("/api/admin/users");
+        if (res.ok) {
+          const data = await res.json();
+          setTeamMembers((data.users || []).map((u: { id: string; full_name: string; email: string }) => ({
+            id: u.id,
+            name: u.full_name || u.email,
+            email: u.email,
+          })));
+        }
+      } catch (err) {
+        console.error("Failed to load team members:", err);
+      }
+    }
+    loadTeamMembers();
   }, []);
 
   // Test GoTo connection
@@ -1039,12 +1108,87 @@ function CallsPageContent() {
           toast.info("Email feature coming soon");
           break;
         case "create_task":
-          toast.info("Task creation coming soon");
+          // Open task creation dialog
+          setTaskCreation({
+            open: true,
+            callId: callId,
+            actionType: "general",
+            title: call.aiAnalysis?.suggestedActions?.[0]?.label || `Follow up on call from ${call.callerName || call.callerPhone}`,
+            description: call.aiAnalysis?.summary || "",
+            priority: (call.aiAnalysis?.urgency === "high" ? "high" : call.aiAnalysis?.urgency === "medium" ? "medium" : "low") as "low" | "medium" | "high",
+            assignedTo: "",
+          });
+          break;
+        default:
+          // Handle action types from suggested actions (e.g., "call_back", "send_email")
+          if (["call_back", "send_email", "schedule_appointment", "document_request", "follow_up", "review"].includes(action)) {
+            const suggestedAction = call.aiAnalysis?.suggestedActions?.find(a => a.type === action);
+            setTaskCreation({
+              open: true,
+              callId: callId,
+              actionType: action,
+              title: suggestedAction?.label || `${action.replace("_", " ")} - ${call.callerName || call.callerPhone}`,
+              description: suggestedAction?.description || call.aiAnalysis?.summary || "",
+              priority: (suggestedAction?.priority === "high" ? "high" : suggestedAction?.priority === "medium" ? "medium" : "low") as "low" | "medium" | "high",
+              assignedTo: "",
+            });
+          }
           break;
       }
     },
     [calls, updateCallStatus, archiveCall, deleteCall, addCallNote, confirmDelete]
   );
+
+  // Create task from dialog
+  const handleCreateTask = useCallback(async () => {
+    if (!taskCreation.callId || !taskCreation.title.trim()) return;
+
+    const call = calls.find(c => c.id === taskCreation.callId);
+    if (!call) return;
+
+    setIsCreatingTask(true);
+
+    try {
+      const response = await fetch("/api/tasks/from-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: taskCreation.title,
+          description: taskCreation.description,
+          priority: taskCreation.priority,
+          type: taskCreation.actionType,
+          sourceType: "phone_call",
+          sourceId: taskCreation.callId,
+          assignedTo: taskCreation.assignedTo || undefined,
+          clientId: call.matchedClientId || undefined,
+          metadata: {
+            callerPhone: call.callerPhone,
+            callerName: call.callerName,
+            callCategory: call.aiAnalysis?.category,
+          },
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const assigneeName = teamMembers.find(m => m.id === taskCreation.assignedTo)?.name;
+        toast.success(
+          assigneeName
+            ? `Task created and assigned to ${assigneeName}`
+            : "Task created successfully"
+        );
+        setTaskCreation(prev => ({ ...prev, open: false }));
+      } else {
+        const errorData = await response.json();
+        toast.error(errorData.error || "Failed to create task");
+      }
+    } catch (error) {
+      console.error("Error creating task:", error);
+      toast.error("Failed to create task");
+    } finally {
+      setIsCreatingTask(false);
+    }
+  }, [taskCreation, calls, teamMembers]);
 
   return (
     <TooltipProvider delayDuration={0}>
@@ -1237,6 +1381,126 @@ function CallsPageContent() {
           itemCount={bulkState.itemCount}
           itemName={bulkState.itemName}
         />
+
+        {/* Task Creation Dialog */}
+        <Dialog open={taskCreation.open} onOpenChange={(open) => setTaskCreation(prev => ({ ...prev, open }))}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <ListTodo className="h-5 w-5" />
+                Create Task
+              </DialogTitle>
+              <DialogDescription>
+                Create a task from this call&apos;s action item.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-4">
+              {/* Title */}
+              <div className="space-y-2">
+                <Label htmlFor="task-title">Task Title</Label>
+                <Input
+                  id="task-title"
+                  value={taskCreation.title}
+                  onChange={(e) => setTaskCreation(prev => ({ ...prev, title: e.target.value }))}
+                  placeholder="Enter task title..."
+                />
+              </div>
+
+              {/* Description */}
+              <div className="space-y-2">
+                <Label htmlFor="task-description">Description</Label>
+                <Textarea
+                  id="task-description"
+                  value={taskCreation.description}
+                  onChange={(e) => setTaskCreation(prev => ({ ...prev, description: e.target.value }))}
+                  placeholder="Add more details..."
+                  rows={3}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                {/* Priority */}
+                <div className="space-y-2">
+                  <Label>Priority</Label>
+                  <Select
+                    value={taskCreation.priority}
+                    onValueChange={(value) => setTaskCreation(prev => ({
+                      ...prev,
+                      priority: value as "low" | "medium" | "high" | "urgent"
+                    }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="low">Low</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
+                      <SelectItem value="urgent">Urgent</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Assignee */}
+                <div className="space-y-2">
+                  <Label>Assign To</Label>
+                  <Select
+                    value={taskCreation.assignedTo}
+                    onValueChange={(value) => setTaskCreation(prev => ({ ...prev, assignedTo: value }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select assignee..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">
+                        <span className="text-muted-foreground">Unassigned</span>
+                      </SelectItem>
+                      {teamMembers.map((member) => (
+                        <SelectItem key={member.id} value={member.id}>
+                          <div className="flex items-center gap-2">
+                            <Avatar className="h-5 w-5">
+                              <AvatarFallback className="text-[10px] bg-primary/10">
+                                {member.name.split(" ").map(n => n[0]).join("").toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            {member.name}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setTaskCreation(prev => ({ ...prev, open: false }))}
+                disabled={isCreatingTask}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleCreateTask}
+                disabled={!taskCreation.title.trim() || isCreatingTask}
+              >
+                {isCreatingTask ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    Create Task
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </main>
     </TooltipProvider>
   );

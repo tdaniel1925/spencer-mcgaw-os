@@ -1,30 +1,27 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import React, { Suspense, useState, useEffect, useMemo, useCallback, useRef } from "react";
 import Link from "next/link";
+import { toast } from "sonner";
 import { Header } from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Card } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
-  DialogDescription,
 } from "@/components/ui/dialog";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import {
   Select,
   SelectContent,
@@ -33,6 +30,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -40,28 +43,35 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
   ArrowLeft,
+  ArrowRight,
   Bot,
   Calendar,
   Check,
-  CheckCircle2,
+  CheckCircle,
   ChevronDown,
-  ChevronRight,
+  ChevronUp,
   Clock,
-  Columns3,
   DollarSign,
-  Edit3,
-  ExternalLink,
   FileText,
-  Filter,
+  GripVertical,
   HelpCircle,
   Inbox,
   Info,
+  ListTodo,
   Loader2,
   Mail,
-  MoreVertical,
+  MoreHorizontal,
   Paperclip,
+  Phone,
+  Plus,
   RefreshCw,
+  Search,
   Shield,
   Sparkles,
   ThumbsDown,
@@ -70,19 +80,13 @@ import {
   User,
   UserPlus,
   X,
-  Zap,
   AlertTriangle,
-  ListTodo,
-  CheckSquare,
+  FormInput,
+  Globe,
+  Pencil,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow } from "date-fns";
-import { toast } from "sonner";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 
 // Types
 interface EmailIntelligence {
@@ -145,823 +149,785 @@ interface ActionItem {
   priority: "low" | "medium" | "high" | "urgent";
   dueDate?: Date;
   confidence: number;
-  // Assignment fields (can be set per action item)
   assigneeId?: string;
   assigneeName?: string;
-  targetColumn?: string;
-  selected?: boolean;
+  userFeedback?: "approved" | "rejected";
 }
-
-// Kanban columns for routing
-const kanbanColumns = [
-  { id: "inbox", label: "Inbox", color: "bg-slate-100 text-slate-700" },
-  { id: "in_progress", label: "In Progress", color: "bg-blue-100 text-blue-700" },
-  { id: "review", label: "Review", color: "bg-purple-100 text-purple-700" },
-  { id: "waiting", label: "Waiting", color: "bg-amber-100 text-amber-700" },
-  { id: "done", label: "Done", color: "bg-green-100 text-green-700" },
-];
 
 interface TeamMember {
   id: string;
   name: string;
   email: string;
-  avatarUrl?: string;
 }
 
-// Category config
-const categoryConfig: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
-  document_request: { label: "Document Request", icon: <FileText className="h-3.5 w-3.5" />, color: "bg-blue-100 text-blue-700" },
-  question: { label: "Question", icon: <HelpCircle className="h-3.5 w-3.5" />, color: "bg-purple-100 text-purple-700" },
-  payment: { label: "Payment", icon: <DollarSign className="h-3.5 w-3.5" />, color: "bg-green-100 text-green-700" },
-  appointment: { label: "Appointment", icon: <Calendar className="h-3.5 w-3.5" />, color: "bg-amber-100 text-amber-700" },
-  tax_filing: { label: "Tax Filing", icon: <FileText className="h-3.5 w-3.5" />, color: "bg-red-100 text-red-700" },
-  compliance: { label: "Compliance", icon: <Shield className="h-3.5 w-3.5" />, color: "bg-orange-100 text-orange-700" },
-  follow_up: { label: "Follow Up", icon: <Clock className="h-3.5 w-3.5" />, color: "bg-cyan-100 text-cyan-700" },
-  information: { label: "Information", icon: <Info className="h-3.5 w-3.5" />, color: "bg-slate-100 text-slate-700" },
-  urgent: { label: "Urgent", icon: <AlertTriangle className="h-3.5 w-3.5" />, color: "bg-red-100 text-red-700" },
-  internal: { label: "Internal", icon: <User className="h-3.5 w-3.5" />, color: "bg-gray-100 text-gray-700" },
-  other: { label: "Other", icon: <Mail className="h-3.5 w-3.5" />, color: "bg-gray-100 text-gray-700" },
+// Task creation dialog state
+interface TaskCreationState {
+  open: boolean;
+  emailId: string | null;
+  actionType: string;
+  title: string;
+  description: string;
+  priority: "low" | "medium" | "high" | "urgent";
+  assignedTo: string;
+}
+
+// Bucket type for bottom tray
+interface EmailBucket {
+  id: string;
+  name: string;
+  color: string;
+  emailIds: string[];
+  isDefault?: boolean;
+}
+
+// Default buckets
+const defaultBuckets: EmailBucket[] = [
+  { id: "follow-up", name: "Follow Up", color: "bg-amber-500", emailIds: [], isDefault: true },
+  { id: "needs-response", name: "Needs Response", color: "bg-blue-500", emailIds: [], isDefault: true },
+  { id: "archive", name: "Archive", color: "bg-slate-500", emailIds: [], isDefault: true },
+];
+
+// Available bucket colors
+const bucketColors = [
+  { name: "gray", class: "bg-gray-500" },
+  { name: "red", class: "bg-red-500" },
+  { name: "orange", class: "bg-orange-500" },
+  { name: "amber", class: "bg-amber-500" },
+  { name: "green", class: "bg-green-500" },
+  { name: "teal", class: "bg-teal-500" },
+  { name: "blue", class: "bg-blue-500" },
+  { name: "purple", class: "bg-purple-500" },
+  { name: "pink", class: "bg-pink-500" },
+];
+
+// Category icons mapping
+const categoryIcons: Record<string, React.ReactNode> = {
+  document_request: <FileText className="h-4 w-4" />,
+  question: <HelpCircle className="h-4 w-4" />,
+  payment: <DollarSign className="h-4 w-4" />,
+  appointment: <Calendar className="h-4 w-4" />,
+  tax_filing: <FileText className="h-4 w-4" />,
+  compliance: <Shield className="h-4 w-4" />,
+  follow_up: <Clock className="h-4 w-4" />,
+  information: <Info className="h-4 w-4" />,
+  urgent: <AlertTriangle className="h-4 w-4" />,
+  internal: <User className="h-4 w-4" />,
+  web_form: <FormInput className="h-4 w-4" />,
+  contact_request: <Mail className="h-4 w-4" />,
+  general_inquiry: <Globe className="h-4 w-4" />,
+  other: <Mail className="h-4 w-4" />,
 };
 
-const priorityConfig: Record<string, { label: string; color: string; bgColor: string }> = {
-  urgent: { label: "Urgent", color: "text-red-700", bgColor: "bg-red-100 border-red-200" },
-  high: { label: "High", color: "text-orange-700", bgColor: "bg-orange-100 border-orange-200" },
-  medium: { label: "Medium", color: "text-amber-700", bgColor: "bg-amber-100 border-amber-200" },
-  low: { label: "Low", color: "text-slate-600", bgColor: "bg-slate-100 border-slate-200" },
+// Category config for labels
+const categoryConfig: Record<string, { label: string; color: string }> = {
+  document_request: { label: "Document Request", color: "bg-blue-100 text-blue-700" },
+  question: { label: "Question", color: "bg-purple-100 text-purple-700" },
+  payment: { label: "Payment", color: "bg-green-100 text-green-700" },
+  appointment: { label: "Appointment", color: "bg-amber-100 text-amber-700" },
+  tax_filing: { label: "Tax Filing", color: "bg-red-100 text-red-700" },
+  compliance: { label: "Compliance", color: "bg-orange-100 text-orange-700" },
+  follow_up: { label: "Follow Up", color: "bg-cyan-100 text-cyan-700" },
+  information: { label: "Information", color: "bg-slate-100 text-slate-700" },
+  urgent: { label: "Urgent", color: "bg-red-100 text-red-700" },
+  internal: { label: "Internal", color: "bg-gray-100 text-gray-700" },
+  other: { label: "Other", color: "bg-gray-100 text-gray-700" },
 };
 
-// Email Intelligence Card Component
-function EmailIntelligenceCard({
-  intelligence,
-  onApprove,
-  onApproveSelected,
-  onDismiss,
-  onDelegate,
-  onEdit,
-  onView,
-  onUpdateActionItem,
-  teamMembers,
+// Expandable Email Card Component
+function ExpandableEmailCard({
+  email,
+  selected,
+  onSelect,
+  onQuickAction,
+  onActionFeedback,
+  onDragStart,
+  onDragEnd,
+  isDragging,
+  isExpanded,
+  onToggleExpand,
 }: {
-  intelligence: EmailIntelligence;
-  onApprove: () => void;
-  onApproveSelected: (selectedItems: ActionItem[]) => void;
-  onDismiss: () => void;
-  onDelegate: () => void;
-  onEdit: () => void;
-  onView: () => void;
-  onUpdateActionItem: (itemId: string, updates: Partial<ActionItem>) => void;
-  teamMembers: TeamMember[];
+  email: EmailIntelligence;
+  selected: boolean;
+  onSelect: (selected: boolean) => void;
+  onQuickAction: (action: string, actionItem?: ActionItem) => void;
+  onActionFeedback: (actionId: string, feedback: "approved" | "rejected") => void;
+  onDragStart?: () => void;
+  onDragEnd?: () => void;
+  isDragging?: boolean;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
 }) {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [localActionItems, setLocalActionItems] = useState<ActionItem[]>([]);
+  const [showBody, setShowBody] = useState(false);
 
-  // Initialize local action items state
-  useEffect(() => {
-    const items = intelligence.actionItems || [];
-    setLocalActionItems(items.map(item => ({
-      ...item,
-      selected: item.selected ?? true, // Default to selected
-      assigneeId: item.assigneeId || intelligence.suggestedAssigneeId || undefined,
-      assigneeName: item.assigneeName || intelligence.suggestedAssigneeName || undefined,
-      targetColumn: item.targetColumn || "in_progress",
-    })));
-  }, [intelligence.actionItems, intelligence.suggestedAssigneeId, intelligence.suggestedAssigneeName]);
-
-  const category = categoryConfig[intelligence.category] || categoryConfig.other;
-  const priority = priorityConfig[intelligence.priority] || priorityConfig.medium;
+  const category = categoryConfig[email.category] || categoryConfig.other;
 
   // Safe access to from fields
-  const fromName = intelligence.from?.name || "";
-  const fromEmail = intelligence.from?.email || "unknown@email.com";
-  const displayName = intelligence.matchedClientName || fromName || fromEmail;
+  const fromName = email.from?.name || "";
+  const fromEmail = email.from?.email || "unknown@email.com";
+  const displayName = email.matchedClientName || fromName || fromEmail;
 
   // Safe date formatting
-  const receivedDate = intelligence.receivedAt instanceof Date
-    ? intelligence.receivedAt
-    : new Date(intelligence.receivedAt);
-
-  // Safe response deadline
-  const responseDeadline = intelligence.responseDeadline
-    ? (intelligence.responseDeadline instanceof Date
-        ? intelligence.responseDeadline
-        : new Date(intelligence.responseDeadline))
-    : null;
-
-  // Check if date is valid
-  const isValidDate = (date: Date | null | undefined): date is Date => {
-    return date != null && date instanceof Date && !isNaN(date.getTime());
-  };
-
-  // Also check receivedDate validity
+  const receivedDate = email.receivedAt instanceof Date
+    ? email.receivedAt
+    : new Date(email.receivedAt);
   const isReceivedDateValid = receivedDate instanceof Date && !isNaN(receivedDate.getTime());
 
-  // Action item handlers
-  const handleToggleItem = (itemId: string) => {
-    setLocalActionItems(prev => prev.map(item =>
-      item.id === itemId ? { ...item, selected: !item.selected } : item
-    ));
-  };
-
-  const handleToggleAll = () => {
-    const allSelected = localActionItems.every(item => item.selected);
-    setLocalActionItems(prev => prev.map(item => ({ ...item, selected: !allSelected })));
-  };
-
-  const handleAssigneeChange = (itemId: string, assigneeId: string) => {
-    const member = teamMembers.find(m => m.id === assigneeId);
-    setLocalActionItems(prev => prev.map(item =>
-      item.id === itemId ? { ...item, assigneeId, assigneeName: member?.name } : item
-    ));
-    onUpdateActionItem(itemId, { assigneeId, assigneeName: member?.name });
-  };
-
-  const handleColumnChange = (itemId: string, columnId: string) => {
-    setLocalActionItems(prev => prev.map(item =>
-      item.id === itemId ? { ...item, targetColumn: columnId } : item
-    ));
-    onUpdateActionItem(itemId, { targetColumn: columnId });
-  };
-
-  const selectedItems = localActionItems.filter(item => item.selected);
-  const hasActionItems = localActionItems.length > 0;
-
-  // Priority dot colors
-  const priorityDotColors: Record<string, string> = {
-    urgent: "bg-red-500",
-    high: "bg-orange-500",
-    medium: "bg-amber-500",
-    low: "bg-slate-400",
-  };
-
   return (
-    <Card className="p-4 hover:shadow-md transition-shadow">
-      {/* Header: From & Time */}
-      <div className="flex items-start gap-3 mb-3">
-        <Avatar className="h-10 w-10 flex-shrink-0">
-          <AvatarFallback className="bg-primary/10 text-primary text-sm font-medium">
-            {(fromName || fromEmail)
-              .split(" ")
-              .map((n) => n?.[0] || "")
-              .join("")
-              .slice(0, 2)
-              .toUpperCase() || "??"}
-          </AvatarFallback>
-        </Avatar>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-medium text-sm truncate">
-              {displayName}
-            </span>
-            {intelligence.matchedClientId && (
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-primary/5">
-                Client
-              </Badge>
-            )}
-          </div>
-          <p className="text-xs text-muted-foreground truncate">{fromEmail}</p>
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <span className="text-xs text-muted-foreground" suppressHydrationWarning>
-            {isReceivedDateValid ? formatDistanceToNow(receivedDate, { addSuffix: true }) : "Unknown"}
-          </span>
-          {intelligence.hasAttachments && (
-            <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
-          )}
-        </div>
-      </div>
+    <Card
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData("emailId", email.id);
+        e.dataTransfer.effectAllowed = "move";
+        onDragStart?.();
+      }}
+      onDragEnd={() => onDragEnd?.()}
+      className={cn(
+        "transition-all border-border/50",
+        selected && "ring-2 ring-primary bg-primary/5",
+        isDragging && "opacity-50 ring-2 ring-primary",
+        isExpanded && "bg-muted/30"
+      )}
+    >
+      <CardContent className="p-0">
+        {/* Main Card Header - Always Visible */}
+        <div
+          className="p-3 cursor-pointer hover:bg-muted/50 transition-colors"
+          onClick={onToggleExpand}
+        >
+          <div className="flex items-start gap-3">
+            {/* Checkbox */}
+            <div onClick={(e) => e.stopPropagation()} className="pt-1">
+              <Checkbox
+                checked={selected}
+                onCheckedChange={(checked) => onSelect(checked === true)}
+              />
+            </div>
 
-      {/* Subject */}
-      <h3 className="font-medium text-sm mb-2 line-clamp-1">{intelligence.subject}</h3>
+            {/* Drag Handle */}
+            <div className="pt-1 cursor-grab text-muted-foreground/50 hover:text-muted-foreground">
+              <GripVertical className="h-4 w-4" />
+            </div>
 
-      {/* AI Summary */}
-      <div className="bg-muted/40 rounded-lg p-3 mb-3">
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
-          <Bot className="h-3.5 w-3.5" />
-          <span>AI Summary</span>
-        </div>
-        <p className="text-sm text-foreground">{intelligence.summary}</p>
-      </div>
+            {/* Avatar */}
+            <Avatar className="h-10 w-10 flex-shrink-0">
+              <AvatarFallback
+                className={cn(
+                  email.matchedClientId
+                    ? "bg-primary/20 text-primary"
+                    : "bg-muted text-muted-foreground"
+                )}
+              >
+                {(fromName || fromEmail)
+                  .split(" ")
+                  .map((n) => n?.[0] || "")
+                  .join("")
+                  .slice(0, 2)
+                  .toUpperCase() || "??"}
+              </AvatarFallback>
+            </Avatar>
 
-      {/* Expandable Action Items */}
-      {hasActionItems && (
-        <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
-          <div className="bg-primary/5 border border-primary/20 rounded-lg overflow-hidden mb-3">
-            <CollapsibleTrigger className="w-full p-3 flex items-center justify-between hover:bg-primary/10 transition-colors">
-              <div className="flex items-center gap-1.5 text-xs font-medium text-primary">
-                <Zap className="h-3.5 w-3.5" />
-                <span>Extracted Actions ({localActionItems.length})</span>
-                {selectedItems.length > 0 && selectedItems.length < localActionItems.length && (
-                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0 ml-1">
-                    {selectedItems.length} selected
+            {/* Main Content */}
+            <div className="flex-1 min-w-0">
+              {/* Header Row */}
+              <div className="flex items-center gap-2 mb-1">
+                <Mail className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                <span className="font-medium truncate">
+                  {displayName}
+                </span>
+                {email.matchedClientId && (
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-primary/5">
+                    Client
                   </Badge>
                 )}
+                {email.hasAttachments && (
+                  <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
+                )}
+                <span className="text-xs text-muted-foreground ml-auto" suppressHydrationWarning>
+                  {isReceivedDateValid ? formatDistanceToNow(receivedDate, { addSuffix: true }) : "Unknown"}
+                </span>
+                {/* Expand indicator */}
+                {isExpanded ? (
+                  <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                )}
               </div>
-              <ChevronDown className={cn(
-                "h-4 w-4 text-primary transition-transform",
-                isExpanded && "rotate-180"
-              )} />
-            </CollapsibleTrigger>
 
-            <CollapsibleContent>
-              <div className="border-t border-primary/20">
-                {/* Select All Header */}
-                <div className="px-3 py-2 bg-primary/5 border-b border-primary/10 flex items-center justify-between">
-                  <button
-                    onClick={handleToggleAll}
-                    className="flex items-center gap-2 text-xs text-primary hover:text-primary/80 transition-colors"
-                  >
-                    <Checkbox
-                      checked={localActionItems.length > 0 && localActionItems.every(item => item.selected)}
-                      onCheckedChange={handleToggleAll}
-                      className="h-3.5 w-3.5"
-                    />
-                    <span>{localActionItems.every(item => item.selected) ? "Deselect All" : "Select All"}</span>
-                  </button>
-                  <span className="text-[10px] text-muted-foreground">
-                    Assign & route each action
-                  </span>
-                </div>
+              {/* Subject */}
+              <p className="text-sm text-muted-foreground mb-2 truncate">
+                {email.subject}
+              </p>
 
-                {/* Action Items List */}
-                <div className="divide-y divide-primary/10">
-                  {localActionItems.map((item) => (
-                    <div key={item.id} className={cn(
-                      "p-3 transition-colors",
-                      item.selected ? "bg-white" : "bg-muted/30"
-                    )}>
-                      {/* Row 1: Checkbox + Title + Priority */}
-                      <div className="flex items-start gap-2 mb-2">
-                        <Checkbox
-                          checked={item.selected}
-                          onCheckedChange={() => handleToggleItem(item.id)}
-                          className="mt-0.5 h-4 w-4"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className={cn(
-                              "text-sm",
-                              item.selected ? "font-medium" : "text-muted-foreground"
-                            )}>
-                              {item.title}
-                            </span>
-                            <span className={cn(
-                              "h-2 w-2 rounded-full flex-shrink-0",
-                              priorityDotColors[item.priority] || priorityDotColors.medium
-                            )} title={`${item.priority} priority`} />
-                          </div>
-                          {item.description && (
-                            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
-                              {item.description}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Row 2: Assignee + Column Dropdowns */}
-                      {item.selected && (
-                        <div className="flex items-center gap-2 ml-6">
-                          {/* Assignee Dropdown */}
-                          <Select
-                            value={item.assigneeId || "unassigned"}
-                            onValueChange={(value) => handleAssigneeChange(item.id, value)}
-                          >
-                            <SelectTrigger className="h-7 text-xs w-[140px] bg-white">
-                              <div className="flex items-center gap-1.5">
-                                <User className="h-3 w-3 text-muted-foreground" />
-                                <SelectValue placeholder="Assign to..." />
-                              </div>
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="unassigned">
-                                <span className="text-muted-foreground">Unassigned</span>
-                              </SelectItem>
-                              {teamMembers.map((member) => (
-                                <SelectItem key={member.id} value={member.id}>
-                                  <div className="flex items-center gap-2">
-                                    <Avatar className="h-4 w-4">
-                                      <AvatarFallback className="text-[8px] bg-primary/10">
-                                        {member.name.split(" ").map(n => n[0]).join("").toUpperCase()}
-                                      </AvatarFallback>
-                                    </Avatar>
-                                    {member.name}
-                                  </div>
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-
-                          <ChevronRight className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-
-                          {/* Column Dropdown */}
-                          <Select
-                            value={item.targetColumn || "in_progress"}
-                            onValueChange={(value) => handleColumnChange(item.id, value)}
-                          >
-                            <SelectTrigger className="h-7 text-xs w-[130px] bg-white">
-                              <div className="flex items-center gap-1.5">
-                                <Columns3 className="h-3 w-3 text-muted-foreground" />
-                                <SelectValue placeholder="Column..." />
-                              </div>
-                            </SelectTrigger>
-                            <SelectContent>
-                              {kanbanColumns.map((col) => (
-                                <SelectItem key={col.id} value={col.id}>
-                                  <div className="flex items-center gap-2">
-                                    <span className={cn("h-2 w-2 rounded-full", col.color.split(" ")[0])} />
-                                    {col.label}
-                                  </div>
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
+              {/* Full AI Summary - Always Visible */}
+              <div className="bg-primary/5 rounded-lg p-3 border border-primary/10">
+                <div className="flex items-start gap-2">
+                  <Bot className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-foreground">
+                      {email.summary}
+                    </p>
+                    {/* Category and Priority Badges */}
+                    <div className="flex flex-wrap items-center gap-2 mt-2">
+                      <Badge variant="secondary" className="text-[10px]">
+                        {categoryIcons[email.category] || <Mail className="h-4 w-4" />}
+                        <span className="ml-1">{category.label}</span>
+                      </Badge>
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          "text-[10px]",
+                          email.sentiment === "positive" &&
+                            "bg-green-100 text-green-700 border-green-200",
+                          email.sentiment === "negative" &&
+                            "bg-red-100 text-red-700 border-red-200",
+                          email.sentiment === "neutral" &&
+                            "bg-slate-100 text-slate-700 border-slate-200"
+                        )}
+                      >
+                        {email.sentiment}
+                      </Badge>
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          "text-[10px]",
+                          email.priority === "urgent" &&
+                            "bg-red-100 text-red-700 border-red-200",
+                          email.priority === "high" &&
+                            "bg-orange-100 text-orange-700 border-orange-200",
+                          email.priority === "medium" &&
+                            "bg-amber-100 text-amber-700 border-amber-200",
+                          email.priority === "low" &&
+                            "bg-green-100 text-green-700 border-green-200"
+                        )}
+                      >
+                        {email.priority} priority
+                      </Badge>
+                      {email.requiresResponse && (
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] bg-blue-100 text-blue-700 border-blue-200"
+                        >
+                          Response Required
+                        </Badge>
                       )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Suggested Actions Preview */}
+              {email.actionItems && email.actionItems.length > 0 && !isExpanded && (
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="text-xs text-muted-foreground">Actions:</span>
+                  {email.actionItems.slice(0, 2).map((action) => (
+                    <Badge
+                      key={action.id}
+                      variant="outline"
+                      className="text-[10px] bg-background"
+                    >
+                      {action.title}
+                    </Badge>
+                  ))}
+                  {email.actionItems.length > 2 && (
+                    <span className="text-[10px] text-muted-foreground">
+                      +{email.actionItems.length - 2} more
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Quick Actions */}
+            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem onClick={() => onQuickAction("reply")}>
+                    <Mail className="h-4 w-4 mr-2" />
+                    Reply
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onQuickAction("call_back")}>
+                    <Phone className="h-4 w-4 mr-2" />
+                    Call Back
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onQuickAction("create_task")}>
+                    <ListTodo className="h-4 w-4 mr-2" />
+                    Add to Tasks
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => onQuickAction("complete")}>
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    Mark Complete
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => onQuickAction("dismiss")}
+                    className="text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Dismiss
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+        </div>
+
+        {/* Expanded Content */}
+        {isExpanded && (
+          <div className="border-t px-4 py-4 space-y-4">
+            {/* Extracted Entities */}
+            {(email.extractedDates?.length > 0 || email.extractedAmounts?.length > 0 || email.extractedNames?.length > 0) && (
+              <div>
+                <h4 className="text-sm font-medium mb-2">Extracted Information</h4>
+                <div className="flex flex-wrap gap-2">
+                  {email.extractedDates?.map((date, idx) => (
+                    <Badge key={idx} variant="outline" className="text-xs gap-1">
+                      <Calendar className="h-3 w-3" />
+                      {date.value}
+                    </Badge>
+                  ))}
+                  {email.extractedAmounts?.map((amount, idx) => (
+                    <Badge key={idx} variant="outline" className="text-xs gap-1 bg-green-50 text-green-700 border-green-200">
+                      <DollarSign className="h-3 w-3" />
+                      ${Number(amount.value).toLocaleString()}
+                    </Badge>
+                  ))}
+                  {email.extractedNames?.map((person, idx) => (
+                    <Badge key={idx} variant="outline" className="text-xs gap-1">
+                      <User className="h-3 w-3" />
+                      {person.name}
+                      {person.role && <span className="text-muted-foreground ml-1">({person.role})</span>}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Suggested Actions with Feedback */}
+            {email.actionItems && email.actionItems.length > 0 && (
+              <div>
+                <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+                  <Bot className="h-4 w-4 text-primary" />
+                  Suggested Actions
+                  <span className="text-xs font-normal text-muted-foreground">
+                    (Rate to improve AI)
+                  </span>
+                </h4>
+                <div className="space-y-2">
+                  {email.actionItems.map((action) => (
+                    <div
+                      key={action.id}
+                      className={cn(
+                        "flex items-center gap-3 p-3 rounded-lg border transition-colors",
+                        action.userFeedback === "approved" && "bg-green-50 border-green-200",
+                        action.userFeedback === "rejected" && "bg-red-50 border-red-200 opacity-60",
+                        !action.userFeedback && "bg-muted/30"
+                      )}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-sm">{action.title}</span>
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "text-[10px]",
+                              action.priority === "urgent" && "border-red-300 text-red-600",
+                              action.priority === "high" && "border-orange-300 text-orange-600",
+                              action.priority === "medium" && "border-amber-300 text-amber-600",
+                              action.priority === "low" && "border-slate-300 text-slate-500"
+                            )}
+                          >
+                            {action.priority}
+                          </Badge>
+                        </div>
+                        {action.description && (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {action.description}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className={cn(
+                                "h-8 w-8",
+                                action.userFeedback === "approved"
+                                  ? "text-green-600 bg-green-100 hover:bg-green-200"
+                                  : "text-muted-foreground hover:text-green-600 hover:bg-green-50"
+                              )}
+                              onClick={() => onActionFeedback(action.id, "approved")}
+                            >
+                              <ThumbsUp className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Helpful</TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className={cn(
+                                "h-8 w-8",
+                                action.userFeedback === "rejected"
+                                  ? "text-red-600 bg-red-100 hover:bg-red-200"
+                                  : "text-muted-foreground hover:text-red-600 hover:bg-red-50"
+                              )}
+                              onClick={() => onActionFeedback(action.id, "rejected")}
+                            >
+                              <ThumbsDown className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Not helpful</TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onQuickAction("do_action", action)}
+                        disabled={action.userFeedback === "rejected"}
+                      >
+                        <CheckCircle className="h-3.5 w-3.5 mr-1.5" />
+                        Do it
+                      </Button>
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
 
-                {/* Bulk Create Button */}
-                {selectedItems.length > 0 && (
-                  <div className="p-3 bg-primary/5 border-t border-primary/10">
-                    <Button
-                      size="sm"
-                      className="w-full h-8"
-                      onClick={() => onApproveSelected(selectedItems)}
-                    >
-                      <CheckSquare className="h-3.5 w-3.5 mr-1.5" />
-                      Create {selectedItems.length} Task{selectedItems.length > 1 ? "s" : ""}
-                    </Button>
+            {/* Email Body Preview */}
+            <Collapsible open={showBody} onOpenChange={setShowBody}>
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" className="w-full justify-between p-2 h-auto">
+                  <span className="flex items-center gap-2 text-sm font-medium">
+                    <FileText className="h-4 w-4" />
+                    Email Content
+                    {email.body && (
+                      <Badge variant="secondary" className="text-[10px]">Available</Badge>
+                    )}
+                  </span>
+                  {showBody ? (
+                    <ChevronUp className="h-4 w-4" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4" />
+                  )}
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                {email.body ? (
+                  email.bodyType === "html" ? (
+                    <iframe
+                      srcDoc={email.body}
+                      className="w-full min-h-[200px] max-h-[300px] border-0 bg-white rounded-lg mt-2"
+                      sandbox="allow-same-origin"
+                      title="Email content"
+                    />
+                  ) : (
+                    <pre className="text-sm whitespace-pre-wrap font-sans bg-muted/50 p-3 rounded-lg max-h-[300px] overflow-y-auto mt-2">
+                      {email.body}
+                    </pre>
+                  )
+                ) : (
+                  <div className="text-sm text-muted-foreground bg-muted/30 p-4 rounded-lg text-center mt-2">
+                    <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p>No email body available</p>
                   </div>
                 )}
+              </CollapsibleContent>
+            </Collapsible>
+
+            {/* Draft Response */}
+            {email.draftResponse && (
+              <div>
+                <h4 className="text-sm font-medium mb-2">Suggested Response</h4>
+                <pre className="text-sm whitespace-pre-wrap font-sans bg-blue-50/50 p-3 rounded-lg border border-blue-100">
+                  {email.draftResponse}
+                </pre>
               </div>
-            </CollapsibleContent>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex items-center gap-2 pt-2 border-t">
+              <Button variant="outline" size="sm" onClick={() => onQuickAction("reply")}>
+                <Mail className="h-4 w-4 mr-2" />
+                Reply
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => onQuickAction("call_back")}>
+                <Phone className="h-4 w-4 mr-2" />
+                Call
+              </Button>
+              <div className="flex-1" />
+              <Button size="sm" onClick={() => onQuickAction("complete")}>
+                <CheckCircle className="h-4 w-4 mr-2" />
+                Mark Complete
+              </Button>
+            </div>
           </div>
-        </Collapsible>
-      )}
-
-      {/* Show simple message if no action items */}
-      {!hasActionItems && intelligence.primaryAction && (
-        <div className="bg-primary/5 border border-primary/20 rounded-lg p-3 mb-3">
-          <div className="flex items-center gap-1.5 text-xs font-medium text-primary mb-1.5">
-            <Zap className="h-3.5 w-3.5" />
-            <span>Suggested Action</span>
-          </div>
-          <p className="text-sm font-medium">{intelligence.primaryAction}</p>
-        </div>
-      )}
-
-      {/* Badges: Priority, Category, Deadline */}
-      <div className="flex items-center gap-2 flex-wrap mb-3">
-        <Badge variant="outline" className={cn("text-[10px] px-1.5", priority.bgColor)}>
-          {priority.label}
-        </Badge>
-        <Badge variant="outline" className={cn("text-[10px] px-1.5 gap-1", category.color)}>
-          {category.icon}
-          {category.label}
-        </Badge>
-        {isValidDate(responseDeadline) && (
-          <Badge variant="outline" className="text-[10px] px-1.5 gap-1 bg-orange-50 text-orange-700 border-orange-200">
-            <Clock className="h-3 w-3" />
-            Due: {format(responseDeadline, "MMM d")}
-          </Badge>
         )}
-        {intelligence.extractedAmounts?.length > 0 && intelligence.extractedAmounts[0]?.value != null && (
-          <Badge variant="outline" className="text-[10px] px-1.5 gap-1 bg-green-50 text-green-700 border-green-200">
-            <DollarSign className="h-3 w-3" />
-            ${Number(intelligence.extractedAmounts[0].value).toLocaleString()}
-          </Badge>
-        )}
-      </div>
-
-      {/* Suggested Assignee (shown if not expanded) */}
-      {!isExpanded && intelligence.suggestedAssigneeName && (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground mb-3">
-          <UserPlus className="h-3.5 w-3.5" />
-          <span>Suggested: <span className="font-medium text-foreground">{intelligence.suggestedAssigneeName}</span></span>
-          {intelligence.assignmentReason && (
-            <span className="text-muted-foreground/70">({intelligence.assignmentReason})</span>
-          )}
-        </div>
-      )}
-
-      {/* Action Buttons */}
-      <div className="flex items-center gap-2 pt-3 border-t">
-        <Button
-          size="sm"
-          className="flex-1 h-8 bg-primary hover:bg-primary/90"
-          onClick={onApprove}
-        >
-          <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />
-          Create All Tasks
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-8"
-          onClick={onEdit}
-        >
-          <Edit3 className="h-3.5 w-3.5 mr-1.5" />
-          Edit
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-8 text-muted-foreground hover:text-foreground"
-          onClick={onDismiss}
-        >
-          <X className="h-3.5 w-3.5 mr-1.5" />
-          Dismiss
-        </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8">
-              <MoreVertical className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={onView}>
-              <Mail className="h-4 w-4 mr-2" />
-              View Email
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={onDelegate}>
-              <UserPlus className="h-4 w-4 mr-2" />
-              Delegate
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-destructive">
-              <Trash2 className="h-4 w-4 mr-2" />
-              Delete
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+      </CardContent>
     </Card>
   );
 }
 
-// Edit Modal Component
-function EditIntelligenceModal({
-  intelligence,
-  open,
-  onClose,
-  onSave,
+// Bottom Bucket Component
+function BucketTray({
+  buckets,
+  onDrop,
+  onCreateBucket,
+  onDeleteBucket,
+  onRenameBucket,
+  dragOverBucketId,
+  onDragOver,
+  onDragLeave,
 }: {
-  intelligence: EmailIntelligence | null;
-  open: boolean;
-  onClose: () => void;
-  onSave: (updates: Partial<EmailIntelligence>) => void;
+  buckets: EmailBucket[];
+  onDrop: (bucketId: string, emailId: string) => void;
+  onCreateBucket: (name: string, color: string) => void;
+  onDeleteBucket: (bucketId: string) => void;
+  onRenameBucket: (bucketId: string, name: string) => void;
+  dragOverBucketId: string | null;
+  onDragOver: (bucketId: string) => void;
+  onDragLeave: () => void;
 }) {
-  const [editedPrimaryAction, setEditedPrimaryAction] = useState("");
-  const [editedPriority, setEditedPriority] = useState<string>("medium");
-  const [editedCategory, setEditedCategory] = useState<string>("other");
-
-  useEffect(() => {
-    if (intelligence) {
-      setEditedPrimaryAction(intelligence.primaryAction || intelligence.actionItems?.[0]?.title || "");
-      setEditedPriority(intelligence.priority);
-      setEditedCategory(intelligence.category);
-    }
-  }, [intelligence]);
-
-  if (!intelligence) return null;
+  const [isCreating, setIsCreating] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newColor, setNewColor] = useState("bg-blue-500");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState("");
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Edit3 className="h-5 w-5" />
-            Edit Extraction
-          </DialogTitle>
-          <DialogDescription>
-            Modify the AI-extracted information before creating a task.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4">
-          {/* Summary (read-only) */}
-          <div>
-            <label className="text-sm font-medium mb-1.5 block">AI Summary</label>
-            <p className="text-sm text-muted-foreground bg-muted/50 p-3 rounded-lg">
-              {intelligence.summary}
-            </p>
-          </div>
-
-          {/* Primary Action */}
-          <div>
-            <label className="text-sm font-medium mb-1.5 block">Primary Action</label>
-            <Input
-              value={editedPrimaryAction}
-              onChange={(e) => setEditedPrimaryAction(e.target.value)}
-              placeholder="What needs to be done?"
-            />
-          </div>
-
-          {/* Priority */}
-          <div>
-            <label className="text-sm font-medium mb-1.5 block">Priority</label>
-            <Select value={editedPriority} onValueChange={setEditedPriority}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="low">Low</SelectItem>
-                <SelectItem value="medium">Medium</SelectItem>
-                <SelectItem value="high">High</SelectItem>
-                <SelectItem value="urgent">Urgent</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Category */}
-          <div>
-            <label className="text-sm font-medium mb-1.5 block">Category</label>
-            <Select value={editedCategory} onValueChange={setEditedCategory}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(categoryConfig).map(([key, config]) => (
-                  <SelectItem key={key} value={key}>
-                    <span className="flex items-center gap-2">
-                      {config.icon}
-                      {config.label}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            onClick={() => {
-              onSave({
-                primaryAction: editedPrimaryAction,
-                priority: editedPriority as EmailIntelligence["priority"],
-                category: editedCategory,
-              });
-            }}
-          >
-            Save & Create Task
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// Delegate Modal Component
-function DelegateModal({
-  intelligence,
-  open,
-  onClose,
-  onDelegate,
-  teamMembers,
-}: {
-  intelligence: EmailIntelligence | null;
-  open: boolean;
-  onClose: () => void;
-  onDelegate: (memberId: string) => void;
-  teamMembers: TeamMember[];
-}) {
-  const [selectedMember, setSelectedMember] = useState<string>("");
-
-  if (!intelligence) return null;
-
-  return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <UserPlus className="h-5 w-5" />
-            Delegate Task
-          </DialogTitle>
-          <DialogDescription>
-            Assign this task to a team member.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4">
-          <div className="bg-muted/50 p-3 rounded-lg">
-            <p className="text-sm font-medium">{intelligence.primaryAction || intelligence.actionItems?.[0]?.title || "Review email"}</p>
-            <p className="text-xs text-muted-foreground mt-1">From: {intelligence.from?.name || intelligence.from?.email || "Unknown"}</p>
-          </div>
-
-          <div>
-            <label className="text-sm font-medium mb-2 block">Assign to</label>
-            <div className="space-y-2">
-              {teamMembers.map((member) => (
-                <button
-                  key={member.id}
-                  className={cn(
-                    "w-full flex items-center gap-3 p-3 rounded-lg border transition-colors text-left",
-                    selectedMember === member.id
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:bg-muted/50"
-                  )}
-                  onClick={() => setSelectedMember(member.id)}
+    <div className="h-20 border-t bg-muted/20 flex items-center px-6 gap-4 overflow-x-auto">
+      {/* Existing Buckets */}
+      {buckets.map((bucket) => (
+        <div
+          key={bucket.id}
+          className={cn(
+            "group relative flex-shrink-0 min-w-[160px] h-14 rounded-xl border transition-all flex items-center justify-center gap-2 px-4",
+            dragOverBucketId === bucket.id
+              ? "border-primary bg-primary/10 scale-105 shadow-md"
+              : "border-border bg-card hover:bg-accent/50 hover:border-border/80"
+          )}
+          onDragOver={(e) => {
+            e.preventDefault();
+            onDragOver(bucket.id);
+          }}
+          onDragLeave={onDragLeave}
+          onDrop={(e) => {
+            e.preventDefault();
+            const emailId = e.dataTransfer.getData("emailId");
+            if (emailId) {
+              onDrop(bucket.id, emailId);
+            }
+            onDragLeave();
+          }}
+        >
+          {editingId === bucket.id ? (
+            <div className="flex items-center gap-2">
+              <Input
+                value={editingName}
+                onChange={(e) => setEditingName(e.target.value)}
+                className="h-7 text-sm w-24"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    onRenameBucket(bucket.id, editingName);
+                    setEditingId(null);
+                  } else if (e.key === "Escape") {
+                    setEditingId(null);
+                  }
+                }}
+              />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={() => {
+                  onRenameBucket(bucket.id, editingName);
+                  setEditingId(null);
+                }}
+              >
+                <Check className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : (
+            <>
+              <div className={cn("w-3 h-3 rounded-full flex-shrink-0", bucket.color)} />
+              <span className="text-sm font-medium truncate">{bucket.name}</span>
+              <Badge variant="secondary" className="text-xs px-2 h-5 ml-1">
+                {bucket.emailIds.length}
+              </Badge>
+              {/* Edit/Delete buttons - shown on hover */}
+              <div className="absolute -top-2 -right-2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                <Button
+                  variant="secondary"
+                  size="icon"
+                  className="h-6 w-6 rounded-full shadow-sm"
+                  onClick={() => {
+                    setEditingId(bucket.id);
+                    setEditingName(bucket.name);
+                  }}
                 >
-                  <Avatar className="h-8 w-8">
-                    <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                      {(member.name || "?").split(" ").map((n) => n?.[0] || "").join("").toUpperCase() || "?"}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <p className="text-sm font-medium">{member.name}</p>
-                    <p className="text-xs text-muted-foreground">{member.email}</p>
-                  </div>
-                  {selectedMember === member.id && (
-                    <Check className="h-4 w-4 text-primary ml-auto" />
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button onClick={() => onDelegate(selectedMember)} disabled={!selectedMember}>
-            Delegate
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// View Email Modal
-function ViewEmailModal({
-  intelligence,
-  open,
-  onClose,
-}: {
-  intelligence: EmailIntelligence | null;
-  open: boolean;
-  onClose: () => void;
-}) {
-  if (!intelligence) return null;
-
-  // Safe access
-  const fromName = intelligence.from?.name || "";
-  const fromEmail = intelligence.from?.email || "unknown@email.com";
-  const displayName = fromName || fromEmail;
-  const receivedDate = intelligence.receivedAt instanceof Date
-    ? intelligence.receivedAt
-    : new Date(intelligence.receivedAt);
-  const isReceivedDateValid = receivedDate instanceof Date && !isNaN(receivedDate.getTime());
-
-  return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle>{intelligence.subject}</DialogTitle>
-        </DialogHeader>
-
-        <div className="flex-1 overflow-y-auto space-y-4">
-          {/* From/Date */}
-          <div className="flex items-center gap-3">
-            <Avatar className="h-10 w-10">
-              <AvatarFallback className="bg-primary text-primary-foreground">
-                {displayName.slice(0, 2).toUpperCase() || "??"}
-              </AvatarFallback>
-            </Avatar>
-            <div>
-              <p className="font-medium">{displayName}</p>
-              <p className="text-sm text-muted-foreground">{fromEmail}</p>
-            </div>
-            <p className="text-sm text-muted-foreground ml-auto" suppressHydrationWarning>
-              {isReceivedDateValid ? format(receivedDate, "MMM d, yyyy 'at' h:mm a") : "Unknown date"}
-            </p>
-          </div>
-
-          {/* AI Analysis */}
-          <Collapsible defaultOpen>
-            <CollapsibleTrigger className="flex items-center gap-2 w-full p-3 bg-muted/50 rounded-lg hover:bg-muted transition-colors">
-              <Bot className="h-4 w-4 text-primary" />
-              <span className="text-sm font-medium">AI Analysis</span>
-              <ChevronDown className="h-4 w-4 ml-auto" />
-            </CollapsibleTrigger>
-            <CollapsibleContent className="pt-2">
-              <div className="space-y-3 p-3 border rounded-lg">
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">Summary</p>
-                  <p className="text-sm">{intelligence.summary}</p>
-                </div>
-                {(intelligence.actionItems?.length || 0) > 0 && (
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Action Items</p>
-                    <ul className="space-y-1">
-                      {intelligence.actionItems?.map((item) => (
-                        <li key={item.id} className="text-sm flex items-start gap-2">
-                          <ListTodo className="h-3.5 w-3.5 mt-0.5 text-primary" />
-                          {item.title}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+                  <Pencil className="h-3 w-3" />
+                </Button>
+                {!bucket.isDefault && (
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    className="h-6 w-6 rounded-full shadow-sm text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                    onClick={() => onDeleteBucket(bucket.id)}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
                 )}
               </div>
-            </CollapsibleContent>
-          </Collapsible>
-
-          {/* Email Body */}
-          <div className="border rounded-lg overflow-hidden">
-            {intelligence.bodyType === "html" && intelligence.body ? (
-              <iframe
-                srcDoc={intelligence.body}
-                className="w-full min-h-[300px] border-0 bg-white"
-                sandbox="allow-same-origin"
-                title="Email content"
-              />
-            ) : (
-              <div className="p-4">
-                <pre className="whitespace-pre-wrap font-sans text-sm">
-                  {intelligence.body || "No email body available"}
-                </pre>
-              </div>
-            )}
-          </div>
+            </>
+          )}
         </div>
+      ))}
 
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Close
+      {/* Create New Bucket */}
+      {isCreating ? (
+        <div className="flex-shrink-0 min-w-[200px] h-14 rounded-xl border bg-card p-2 flex items-center gap-2">
+          <Input
+            placeholder="Bucket name..."
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            className="h-8 text-sm flex-1"
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && newName.trim()) {
+                onCreateBucket(newName.trim(), newColor);
+                setNewName("");
+                setIsCreating(false);
+              } else if (e.key === "Escape") {
+                setIsCreating(false);
+                setNewName("");
+              }
+            }}
+          />
+          <div className="flex items-center gap-1">
+            {bucketColors.slice(0, 4).map((color) => (
+              <button
+                key={color.name}
+                onClick={() => setNewColor(color.class)}
+                className={cn(
+                  "w-5 h-5 rounded-full transition-all",
+                  color.class,
+                  newColor === color.class && "ring-2 ring-offset-1 ring-primary"
+                )}
+              />
+            ))}
+          </div>
+          <Button
+            size="sm"
+            className="h-8 px-3"
+            onClick={() => {
+              if (newName.trim()) {
+                onCreateBucket(newName.trim(), newColor);
+                setNewName("");
+                setIsCreating(false);
+              }
+            }}
+            disabled={!newName.trim()}
+          >
+            Add
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => {
+              setIsCreating(false);
+              setNewName("");
+            }}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      ) : (
+        <Button
+          variant="outline"
+          className="flex-shrink-0 h-14 px-5 rounded-xl border-dashed hover:bg-accent/50"
+          onClick={() => setIsCreating(true)}
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          New Bucket
+        </Button>
+      )}
+
+      {/* Drag hint */}
+      <div className="flex-shrink-0 text-xs text-muted-foreground/70 ml-auto italic">
+        Drag emails to organize
+      </div>
+    </div>
   );
 }
 
 // Loading skeleton
-function IntelligenceCardSkeleton() {
+function EmailCardSkeleton() {
   return (
     <Card className="p-4">
       <div className="flex items-start gap-3 mb-3">
+        <Skeleton className="h-5 w-5 rounded" />
+        <Skeleton className="h-4 w-4" />
         <Skeleton className="h-10 w-10 rounded-full" />
         <div className="flex-1">
           <Skeleton className="h-4 w-32 mb-1" />
-          <Skeleton className="h-3 w-48" />
+          <Skeleton className="h-3 w-48 mb-2" />
+          <Skeleton className="h-20 w-full rounded-lg" />
         </div>
-      </div>
-      <Skeleton className="h-4 w-full mb-2" />
-      <Skeleton className="h-20 w-full mb-3 rounded-lg" />
-      <Skeleton className="h-16 w-full mb-3 rounded-lg" />
-      <div className="flex gap-2 mb-3">
-        <Skeleton className="h-5 w-16" />
-        <Skeleton className="h-5 w-24" />
-      </div>
-      <div className="flex gap-2 pt-3 border-t">
-        <Skeleton className="h-8 flex-1" />
-        <Skeleton className="h-8 w-16" />
-        <Skeleton className="h-8 w-20" />
       </div>
     </Card>
   );
 }
 
-// Main Page Component
-export default function EmailIntelligencePage() {
+function EmailIntelligenceContent() {
+  const [mounted, setMounted] = useState(false);
   const [intelligences, setIntelligences] = useState<EmailIntelligence[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [needsConnection, setNeedsConnection] = useState(false);
-  const [filter, setFilter] = useState<"all" | "pending" | "approved" | "dismissed">("pending");
-  const [categoryFilter, setCategoryFilter] = useState<string>("all");
-  const [priorityFilter, setPriorityFilter] = useState<string>("all");
 
-  // Modal states
-  const [editingIntelligence, setEditingIntelligence] = useState<EmailIntelligence | null>(null);
-  const [delegatingIntelligence, setDelegatingIntelligence] = useState<EmailIntelligence | null>(null);
-  const [viewingIntelligence, setViewingIntelligence] = useState<EmailIntelligence | null>(null);
+  const [selectedEmails, setSelectedEmails] = useState<Set<string>>(new Set());
+  const [expandedEmailId, setExpandedEmailId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
-  // Team members state (loaded from API)
+  // Bucket state
+  const [buckets, setBuckets] = useState<EmailBucket[]>(defaultBuckets);
+  const [draggingEmailId, setDraggingEmailId] = useState<string | null>(null);
+  const [dragOverBucketId, setDragOverBucketId] = useState<string | null>(null);
+
+  // Infinite scroll state
+  const ITEMS_PER_PAGE = 20;
+  const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+
+  // Team members for task assignment
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
 
-  // Load team members
-  const loadTeamMembers = useCallback(async () => {
-    try {
-      const res = await fetch("/api/admin/users");
-      if (res.ok) {
-        const data = await res.json();
-        setTeamMembers((data.users || []).map((u: { id: string; full_name: string; email: string }) => ({
-          id: u.id,
-          name: u.full_name || u.email,
-          email: u.email,
-        })));
-      }
-    } catch (err) {
-      console.error("Failed to load team members:", err);
-    }
+  // Task creation dialog state
+  const [taskCreation, setTaskCreation] = useState<TaskCreationState>({
+    open: false,
+    emailId: null,
+    actionType: "",
+    title: "",
+    description: "",
+    priority: "medium",
+    assignedTo: "",
+  });
+  const [isCreatingTask, setIsCreatingTask] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
   }, []);
 
   // Load email intelligences
@@ -969,7 +935,7 @@ export default function EmailIntelligencePage() {
     setError(null);
     setNeedsConnection(false);
     try {
-      const res = await fetch(`/api/email-intelligence?status=${filter}`);
+      const res = await fetch("/api/email-intelligence?status=pending");
       if (res.ok) {
         const data = await res.json();
         setIntelligences(data.intelligences || []);
@@ -990,20 +956,90 @@ export default function EmailIntelligencePage() {
     } finally {
       setLoading(false);
     }
-  }, [filter]);
+  }, []);
+
+  // Load team members
+  const loadTeamMembers = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/users");
+      if (res.ok) {
+        const data = await res.json();
+        setTeamMembers((data.users || []).map((u: { id: string; full_name: string; email: string }) => ({
+          id: u.id,
+          name: u.full_name || u.email,
+          email: u.email,
+        })));
+      }
+    } catch (err) {
+      console.error("Failed to load team members:", err);
+    }
+  }, []);
 
   useEffect(() => {
     loadIntelligences();
     loadTeamMembers();
   }, [loadIntelligences, loadTeamMembers]);
 
-  // Sync emails and process with AI
+  // Reset visible count when search changes
+  useEffect(() => {
+    setVisibleCount(ITEMS_PER_PAGE);
+  }, [searchQuery]);
+
+  // Filter emails
+  const filteredEmails = useMemo(() => {
+    let result = intelligences;
+
+    // Filter out emails in buckets (show only "inbox" emails in main list)
+    const allBucketEmailIds = new Set(buckets.flatMap((b) => b.emailIds));
+    result = result.filter((e) => !allBucketEmailIds.has(e.id));
+
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(
+        (e) =>
+          e.from?.name?.toLowerCase().includes(query) ||
+          e.from?.email?.toLowerCase().includes(query) ||
+          e.subject?.toLowerCase().includes(query) ||
+          e.summary?.toLowerCase().includes(query)
+      );
+    }
+
+    return [...result].sort(
+      (a, b) =>
+        new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime()
+    );
+  }, [intelligences, buckets, searchQuery]);
+
+  const visibleEmails = useMemo(() => {
+    return filteredEmails.slice(0, visibleCount);
+  }, [filteredEmails, visibleCount]);
+
+  const hasMoreEmails = visibleCount < filteredEmails.length;
+
+  // Intersection observer for infinite scroll
+  useEffect(() => {
+    const loadMoreElement = loadMoreRef.current;
+    if (!loadMoreElement) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMoreEmails) {
+          setVisibleCount((prev) => Math.min(prev + ITEMS_PER_PAGE, filteredEmails.length));
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    observer.observe(loadMoreElement);
+    return () => observer.disconnect();
+  }, [hasMoreEmails, filteredEmails.length]);
+
+  // Sync emails
   const handleSync = async () => {
     setSyncing(true);
-    // Show immediate feedback that sync started
     toast.loading("Syncing emails... This may take a minute as AI processes each email.", {
       id: "email-sync",
-      duration: 60000, // Keep visible for up to 60 seconds
+      duration: 60000,
     });
     try {
       const res = await fetch("/api/email-intelligence/sync", { method: "POST" });
@@ -1019,7 +1055,7 @@ export default function EmailIntelligencePage() {
           id: "email-sync",
         });
       }
-    } catch (error) {
+    } catch {
       toast.error("Failed to sync emails. Please try again.", {
         id: "email-sync",
       });
@@ -1028,141 +1064,182 @@ export default function EmailIntelligencePage() {
     }
   };
 
-  // Approve and create task
-  const handleApprove = async (intelligence: EmailIntelligence) => {
-    try {
-      const res = await fetch(`/api/email-intelligence/${intelligence.id}/approve`, {
-        method: "POST",
-      });
-      if (res.ok) {
-        toast.success("Task created successfully");
-        setIntelligences((prev) =>
-          prev.map((i) => (i.id === intelligence.id ? { ...i, status: "approved" } : i))
-        );
-      } else {
-        const errorData = await res.json().catch(() => ({}));
-        toast.error(errorData.error || "Failed to create task");
-      }
-    } catch (err) {
-      console.error("Failed to approve:", err);
-      toast.error("Failed to create task. Please try again.");
-    }
-  };
+  // Bucket handlers
+  const handleCreateBucket = useCallback((name: string, color: string) => {
+    const newBucket: EmailBucket = {
+      id: `bucket-${Date.now()}`,
+      name,
+      color,
+      emailIds: [],
+    };
+    setBuckets((prev) => [...prev, newBucket]);
+  }, []);
 
-  // Dismiss
-  const handleDismiss = async (intelligence: EmailIntelligence) => {
-    try {
-      const res = await fetch(`/api/email-intelligence/${intelligence.id}/dismiss`, {
-        method: "POST",
-      });
-      if (res.ok) {
-        toast.success("Dismissed");
-        setIntelligences((prev) =>
-          prev.map((i) => (i.id === intelligence.id ? { ...i, status: "dismissed" } : i))
-        );
-      } else {
-        toast.error("Failed to dismiss email");
-      }
-    } catch (err) {
-      console.error("Failed to dismiss:", err);
-      toast.error("Failed to dismiss. Please try again.");
-    }
-  };
+  const handleDeleteBucket = useCallback((bucketId: string) => {
+    setBuckets((prev) => prev.filter((b) => b.id !== bucketId));
+  }, []);
 
-  // Delegate
-  const handleDelegate = async (intelligence: EmailIntelligence, memberId: string) => {
-    const member = teamMembers.find((m) => m.id === memberId);
-    toast.success(`Delegated to ${member?.name}`);
-    setIntelligences((prev) =>
-      prev.map((i) =>
-        i.id === intelligence.id
-          ? { ...i, status: "delegated" as const, suggestedAssigneeName: member?.name || null, suggestedAssigneeId: memberId }
-          : i
-      )
+  const handleRenameBucket = useCallback((bucketId: string, name: string) => {
+    setBuckets((prev) =>
+      prev.map((b) => (b.id === bucketId ? { ...b, name } : b))
     );
-    setDelegatingIntelligence(null);
-  };
+  }, []);
 
-  // Edit and save
-  const handleEditSave = async (intelligence: EmailIntelligence, updates: Partial<EmailIntelligence>) => {
-    setIntelligences((prev) =>
-      prev.map((i) => (i.id === intelligence.id ? { ...i, ...updates } : i))
+  const handleDropToBucket = useCallback((bucketId: string, emailId: string) => {
+    setBuckets((prev) =>
+      prev.map((b) => {
+        if (b.id === bucketId) {
+          return { ...b, emailIds: [...new Set([...b.emailIds, emailId])] };
+        }
+        // Remove from other buckets
+        return { ...b, emailIds: b.emailIds.filter((id) => id !== emailId) };
+      })
     );
-    setEditingIntelligence(null);
-    // Then approve
-    handleApprove({ ...intelligence, ...updates });
-  };
+    toast.success("Email moved to bucket");
+  }, []);
 
-  // Approve selected action items only
-  const handleApproveSelected = async (intelligence: EmailIntelligence, selectedItems: ActionItem[]) => {
-    try {
-      const res = await fetch(`/api/email-intelligence/${intelligence.id}/approve`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ actionItems: selectedItems }),
-      });
-      if (res.ok) {
-        toast.success(`Created ${selectedItems.length} task${selectedItems.length > 1 ? "s" : ""}`);
-        setIntelligences((prev) =>
-          prev.map((i) => (i.id === intelligence.id ? { ...i, status: "approved" } : i))
-        );
+  // Selection handlers
+  const handleSelect = useCallback((emailId: string, selected: boolean) => {
+    setSelectedEmails((prev) => {
+      const next = new Set(prev);
+      if (selected) {
+        next.add(emailId);
       } else {
-        const errorData = await res.json().catch(() => ({}));
-        toast.error(errorData.error || "Failed to create tasks");
+        next.delete(emailId);
       }
-    } catch (err) {
-      console.error("Failed to approve selected:", err);
-      toast.error("Failed to create tasks. Please try again.");
-    }
-  };
+      return next;
+    });
+  }, []);
 
-  // Update individual action item (optimistic update + persist to backend)
-  const handleUpdateActionItem = async (intelligenceId: string, itemId: string, updates: Partial<ActionItem>) => {
-    // Optimistic update for immediate UI feedback
+  // Action feedback handler
+  const handleActionFeedback = useCallback((emailId: string, actionId: string, feedback: "approved" | "rejected") => {
     setIntelligences((prev) =>
-      prev.map((intel) => {
-        if (intel.id !== intelligenceId) return intel;
+      prev.map((email) => {
+        if (email.id !== emailId) return email;
         return {
-          ...intel,
-          actionItems: intel.actionItems?.map((item) =>
-            item.id === itemId ? { ...item, ...updates } : item
+          ...email,
+          actionItems: email.actionItems?.map((action) =>
+            action.id === actionId ? { ...action, userFeedback: feedback } : action
           ) || [],
         };
       })
     );
+    toast.success(feedback === "approved" ? "Marked as helpful" : "Marked as not helpful");
+  }, []);
 
-    // Persist to backend (fire and forget for better UX, log errors)
+  // Quick action handler
+  const handleQuickAction = useCallback(
+    (emailId: string, action: string, actionItem?: ActionItem) => {
+      const email = intelligences.find((e) => e.id === emailId);
+      if (!email) return;
+
+      switch (action) {
+        case "complete":
+          setIntelligences((prev) =>
+            prev.map((e) => (e.id === emailId ? { ...e, status: "approved" as const } : e))
+          );
+          toast.success("Email marked as complete");
+          setExpandedEmailId(null);
+          break;
+        case "dismiss":
+          setIntelligences((prev) =>
+            prev.map((e) => (e.id === emailId ? { ...e, status: "dismissed" as const } : e))
+          );
+          toast.success("Email dismissed");
+          setExpandedEmailId(null);
+          break;
+        case "reply":
+          toast.info("Email reply feature coming soon");
+          break;
+        case "call_back":
+          toast.info("Call back feature coming soon");
+          break;
+        case "create_task":
+          // Open task creation dialog with first action item or default
+          const firstAction = email.actionItems?.[0];
+          setTaskCreation({
+            open: true,
+            emailId: emailId,
+            actionType: firstAction?.type || "task",
+            title: firstAction?.title || email.primaryAction || `Follow up on email: ${email.subject}`,
+            description: firstAction?.description || email.summary || "",
+            priority: firstAction?.priority || email.priority || "medium",
+            assignedTo: "",
+          });
+          break;
+        case "do_action":
+          // Open task creation dialog with specific action item
+          if (actionItem) {
+            setTaskCreation({
+              open: true,
+              emailId: emailId,
+              actionType: actionItem.type,
+              title: actionItem.title,
+              description: actionItem.description || email.summary || "",
+              priority: actionItem.priority,
+              assignedTo: "",
+            });
+          }
+          break;
+        default:
+          break;
+      }
+    },
+    [intelligences]
+  );
+
+  // Create task from dialog
+  const handleCreateTask = useCallback(async () => {
+    if (!taskCreation.emailId || !taskCreation.title.trim()) return;
+
+    const email = intelligences.find((e) => e.id === taskCreation.emailId);
+    if (!email) return;
+
+    setIsCreatingTask(true);
+
     try {
-      const response = await fetch("/api/email/action-items", {
-        method: "PUT",
+      const response = await fetch("/api/tasks/from-action", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          id: itemId,
-          assignedToUserId: updates.assigneeId,
-          priority: updates.priority,
-          // Note: targetColumn is a UI-only field for task creation, not persisted on action item
+          title: taskCreation.title,
+          description: taskCreation.description,
+          priority: taskCreation.priority,
+          type: taskCreation.actionType,
+          sourceType: "email",
+          sourceId: taskCreation.emailId,
+          assignedTo: taskCreation.assignedTo || undefined,
+          clientId: email.matchedClientId || undefined,
+          metadata: {
+            emailFrom: email.from?.email,
+            emailSubject: email.subject,
+            emailCategory: email.category,
+          },
         }),
       });
 
-      if (!response.ok) {
-        console.error("Failed to persist action item update");
+      if (response.ok) {
+        const assigneeName = teamMembers.find((m) => m.id === taskCreation.assignedTo)?.name;
+        toast.success(
+          assigneeName
+            ? `Task created and assigned to ${assigneeName}`
+            : "Task created successfully"
+        );
+        setTaskCreation((prev) => ({ ...prev, open: false }));
+      } else {
+        const errorData = await response.json();
+        toast.error(errorData.error || "Failed to create task");
       }
     } catch (error) {
-      console.error("Error persisting action item update:", error);
+      console.error("Error creating task:", error);
+      toast.error("Failed to create task");
+    } finally {
+      setIsCreatingTask(false);
     }
-  };
-
-  // Filter intelligences
-  const filteredIntelligences = intelligences.filter((i) => {
-    if (filter !== "all" && i.status !== filter) return false;
-    if (categoryFilter !== "all" && i.category !== categoryFilter) return false;
-    if (priorityFilter !== "all" && i.priority !== priorityFilter) return false;
-    return true;
-  });
+  }, [taskCreation, intelligences, teamMembers]);
 
   // Stats
   const pendingCount = intelligences.filter((i) => i.status === "pending").length;
-  const approvedCount = intelligences.filter((i) => i.status === "approved").length;
   const totalActionItems = intelligences.reduce((sum, i) => sum + (i.actionItems?.length || 0), 0);
 
   return (
@@ -1171,17 +1248,21 @@ export default function EmailIntelligencePage() {
       <main className="flex flex-col h-[calc(100vh-64px)] overflow-hidden">
         {/* Top Bar */}
         <div className="h-14 border-b bg-card flex items-center px-4 gap-3 flex-shrink-0">
-          <Link href="/dashboard" className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
-            <ArrowLeft className="h-4 w-4" />
-            <span className="text-sm">Back to Dashboard</span>
-          </Link>
-
-          <div className="h-6 w-px bg-border mx-2" />
-
           <div className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-primary" />
             <span className="font-medium">AI Email Intelligence</span>
             <Badge variant="secondary" className="text-xs">Beta</Badge>
+          </div>
+
+          {/* Search */}
+          <div className="relative ml-4">
+            <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search emails..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-[250px] h-8 pl-9 text-sm"
+            />
           </div>
 
           <div className="flex-1" />
@@ -1191,10 +1272,6 @@ export default function EmailIntelligencePage() {
             <div className="flex items-center gap-1.5">
               <Inbox className="h-4 w-4 text-muted-foreground" />
               <span className="text-muted-foreground">{pendingCount} pending</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <CheckCircle2 className="h-4 w-4 text-green-600" />
-              <span className="text-muted-foreground">{approvedCount} approved</span>
             </div>
             <div className="flex items-center gap-1.5">
               <ListTodo className="h-4 w-4 text-primary" />
@@ -1216,165 +1293,251 @@ export default function EmailIntelligencePage() {
             )}
             {syncing ? "Syncing..." : "Sync & Process"}
           </Button>
-        </div>
 
-        {/* Filters */}
-        <div className="h-12 border-b bg-card/50 flex items-center px-4 gap-3 flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">Filters:</span>
-          </div>
+          <div className="h-4 border-l mx-2" />
 
-          <Select value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>
-            <SelectTrigger className="w-[130px] h-8 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="approved">Approved</SelectItem>
-              <SelectItem value="dismissed">Dismissed</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger className="w-[150px] h-8 text-xs">
-              <SelectValue placeholder="All Categories" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Categories</SelectItem>
-              {Object.entries(categoryConfig).map(([key, config]) => (
-                <SelectItem key={key} value={key}>
-                  <span className="flex items-center gap-2">
-                    {config.icon}
-                    {config.label}
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-            <SelectTrigger className="w-[120px] h-8 text-xs">
-              <SelectValue placeholder="All Priority" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Priority</SelectItem>
-              <SelectItem value="urgent">Urgent</SelectItem>
-              <SelectItem value="high">High</SelectItem>
-              <SelectItem value="medium">Medium</SelectItem>
-              <SelectItem value="low">Low</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <div className="flex-1" />
-
-          <span className="text-xs text-muted-foreground">
-            Showing {filteredIntelligences.length} of {intelligences.length} emails
+          <span className="text-sm text-muted-foreground">
+            {filteredEmails.length} emails
           </span>
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-auto p-6 bg-muted/30">
-          {loading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {[1, 2, 3, 4, 5, 6].map((i) => (
-                <IntelligenceCardSkeleton key={i} />
-              ))}
+        {/* Main Email List */}
+        <div className="flex-1 overflow-hidden">
+          <ScrollArea className="h-full">
+            <div className="p-4 space-y-2 max-w-6xl mx-auto">
+              {loading && (
+                <>
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <EmailCardSkeleton key={i} />
+                  ))}
+                </>
+              )}
+              {mounted && !loading && error && (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mb-4">
+                    <AlertTriangle className="h-8 w-8 text-red-600" />
+                  </div>
+                  <h3 className="text-lg font-medium mb-2">Failed to Load Emails</h3>
+                  <p className="text-sm text-muted-foreground mb-4 max-w-md">
+                    {error}
+                  </p>
+                  <Button onClick={loadIntelligences} variant="outline">
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Try Again
+                  </Button>
+                </div>
+              )}
+              {mounted && !loading && needsConnection && (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center mb-4">
+                    <Mail className="h-8 w-8 text-amber-600" />
+                  </div>
+                  <h3 className="text-lg font-medium mb-2">No Email Account Connected</h3>
+                  <p className="text-sm text-muted-foreground mb-4 max-w-md">
+                    Connect your Microsoft 365 email account to start syncing and processing emails with AI.
+                  </p>
+                  <Button asChild>
+                    <Link href="/settings?tab=integrations">
+                      <Mail className="h-4 w-4 mr-2" />
+                      Connect Email Account
+                    </Link>
+                  </Button>
+                </div>
+              )}
+              {mounted && !loading && !error && !needsConnection && filteredEmails.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
+                    <Inbox className="h-8 w-8 text-muted-foreground opacity-50" />
+                  </div>
+                  <h3 className="text-lg font-medium mb-2">No emails to process</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    All caught up! No pending emails need your attention.
+                  </p>
+                  <Button onClick={handleSync} disabled={syncing}>
+                    {syncing ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                    )}
+                    {syncing ? "Syncing emails..." : "Sync New Emails"}
+                  </Button>
+                </div>
+              )}
+              {mounted && !loading && !error && !needsConnection &&
+                visibleEmails.map((email) => (
+                  <ExpandableEmailCard
+                    key={email.id}
+                    email={email}
+                    selected={selectedEmails.has(email.id)}
+                    onSelect={(selected) => handleSelect(email.id, selected)}
+                    onQuickAction={(action, actionItem) => handleQuickAction(email.id, action, actionItem)}
+                    onActionFeedback={(actionId, feedback) => handleActionFeedback(email.id, actionId, feedback)}
+                    onDragStart={() => setDraggingEmailId(email.id)}
+                    onDragEnd={() => setDraggingEmailId(null)}
+                    isDragging={draggingEmailId === email.id}
+                    isExpanded={expandedEmailId === email.id}
+                    onToggleExpand={() =>
+                      setExpandedEmailId(expandedEmailId === email.id ? null : email.id)
+                    }
+                  />
+                ))}
+              {mounted && !loading && hasMoreEmails && (
+                <div
+                  ref={loadMoreRef}
+                  className="py-4 text-center text-sm text-muted-foreground"
+                >
+                  Loading more...
+                </div>
+              )}
+              {mounted && !loading && filteredEmails.length > 0 && !hasMoreEmails && (
+                <div className="py-4 text-center text-xs text-muted-foreground">
+                  Showing all {filteredEmails.length} emails
+                </div>
+              )}
             </div>
-          ) : error ? (
-            <div className="flex flex-col items-center justify-center h-full text-center">
-              <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mb-4">
-                <AlertTriangle className="h-8 w-8 text-red-600" />
-              </div>
-              <h3 className="text-lg font-medium mb-2">Failed to Load Emails</h3>
-              <p className="text-sm text-muted-foreground mb-4 max-w-md">
-                {error}
-              </p>
-              <Button onClick={loadIntelligences} variant="outline">
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Try Again
-              </Button>
-            </div>
-          ) : needsConnection ? (
-            <div className="flex flex-col items-center justify-center h-full text-center">
-              <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center mb-4">
-                <Mail className="h-8 w-8 text-amber-600" />
-              </div>
-              <h3 className="text-lg font-medium mb-2">No Email Account Connected</h3>
-              <p className="text-sm text-muted-foreground mb-4 max-w-md">
-                Connect your Microsoft 365 email account to start syncing and processing emails with AI.
-              </p>
-              <Button asChild>
-                <Link href="/settings?tab=integrations">
-                  <Mail className="h-4 w-4 mr-2" />
-                  Connect Email Account
-                </Link>
-              </Button>
-            </div>
-          ) : filteredIntelligences.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center">
-              <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
-                <Inbox className="h-8 w-8 text-muted-foreground" />
-              </div>
-              <h3 className="text-lg font-medium mb-2">No emails to process</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                {filter === "pending"
-                  ? "All caught up! No pending emails need your attention."
-                  : "No emails match your current filters."}
-              </p>
-              <Button onClick={handleSync} disabled={syncing}>
-                {syncing ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                )}
-                {syncing ? "Syncing emails..." : "Sync New Emails"}
-              </Button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredIntelligences.map((intelligence) => (
-                <EmailIntelligenceCard
-                  key={intelligence.id}
-                  intelligence={intelligence}
-                  onApprove={() => handleApprove(intelligence)}
-                  onApproveSelected={(selectedItems) => handleApproveSelected(intelligence, selectedItems)}
-                  onDismiss={() => handleDismiss(intelligence)}
-                  onDelegate={() => setDelegatingIntelligence(intelligence)}
-                  onEdit={() => setEditingIntelligence(intelligence)}
-                  onView={() => setViewingIntelligence(intelligence)}
-                  onUpdateActionItem={(itemId, updates) => handleUpdateActionItem(intelligence.id, itemId, updates)}
-                  teamMembers={teamMembers}
-                />
-              ))}
-            </div>
-          )}
+          </ScrollArea>
         </div>
+
+        {/* Bottom Bucket Tray */}
+        <BucketTray
+          buckets={buckets}
+          onDrop={handleDropToBucket}
+          onCreateBucket={handleCreateBucket}
+          onDeleteBucket={handleDeleteBucket}
+          onRenameBucket={handleRenameBucket}
+          dragOverBucketId={dragOverBucketId}
+          onDragOver={setDragOverBucketId}
+          onDragLeave={() => setDragOverBucketId(null)}
+        />
+
+        {/* Task Creation Dialog */}
+        <Dialog open={taskCreation.open} onOpenChange={(open) => setTaskCreation((prev) => ({ ...prev, open }))}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <ListTodo className="h-5 w-5" />
+                Create Task
+              </DialogTitle>
+              <DialogDescription>
+                Create a task from this email&apos;s action item.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-4">
+              {/* Title */}
+              <div className="space-y-2">
+                <Label htmlFor="task-title">Task Title</Label>
+                <Input
+                  id="task-title"
+                  value={taskCreation.title}
+                  onChange={(e) => setTaskCreation((prev) => ({ ...prev, title: e.target.value }))}
+                  placeholder="Enter task title..."
+                />
+              </div>
+
+              {/* Description */}
+              <div className="space-y-2">
+                <Label htmlFor="task-description">Description</Label>
+                <Textarea
+                  id="task-description"
+                  value={taskCreation.description}
+                  onChange={(e) => setTaskCreation((prev) => ({ ...prev, description: e.target.value }))}
+                  placeholder="Add more details..."
+                  rows={3}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                {/* Priority */}
+                <div className="space-y-2">
+                  <Label>Priority</Label>
+                  <Select
+                    value={taskCreation.priority}
+                    onValueChange={(value) => setTaskCreation((prev) => ({
+                      ...prev,
+                      priority: value as "low" | "medium" | "high" | "urgent"
+                    }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="low">Low</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
+                      <SelectItem value="urgent">Urgent</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Assignee */}
+                <div className="space-y-2">
+                  <Label>Assign To</Label>
+                  <Select
+                    value={taskCreation.assignedTo}
+                    onValueChange={(value) => setTaskCreation((prev) => ({ ...prev, assignedTo: value }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select assignee..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">
+                        <span className="text-muted-foreground">Unassigned</span>
+                      </SelectItem>
+                      {teamMembers.map((member) => (
+                        <SelectItem key={member.id} value={member.id}>
+                          <div className="flex items-center gap-2">
+                            <Avatar className="h-5 w-5">
+                              <AvatarFallback className="text-[10px] bg-primary/10">
+                                {member.name.split(" ").map((n) => n[0]).join("").toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            {member.name}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setTaskCreation((prev) => ({ ...prev, open: false }))}
+                disabled={isCreatingTask}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleCreateTask}
+                disabled={!taskCreation.title.trim() || isCreatingTask}
+              >
+                {isCreatingTask ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    Create Task
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </main>
-
-      {/* Modals */}
-      <EditIntelligenceModal
-        intelligence={editingIntelligence}
-        open={!!editingIntelligence}
-        onClose={() => setEditingIntelligence(null)}
-        onSave={(updates) => editingIntelligence && handleEditSave(editingIntelligence, updates)}
-      />
-
-      <DelegateModal
-        intelligence={delegatingIntelligence}
-        open={!!delegatingIntelligence}
-        onClose={() => setDelegatingIntelligence(null)}
-        onDelegate={(memberId) => delegatingIntelligence && handleDelegate(delegatingIntelligence, memberId)}
-        teamMembers={teamMembers}
-      />
-
-      <ViewEmailModal
-        intelligence={viewingIntelligence}
-        open={!!viewingIntelligence}
-        onClose={() => setViewingIntelligence(null)}
-      />
     </TooltipProvider>
   );
 }
 
+export default function EmailIntelligencePage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center h-screen">Loading...</div>}>
+      <EmailIntelligenceContent />
+    </Suspense>
+  );
+}
