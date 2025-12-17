@@ -277,7 +277,7 @@ export function Header({ title, breadcrumbItems, currentPageLabel }: HeaderProps
             </div>
             <div className="border-t p-2">
               <Button variant="ghost" size="sm" className="w-full" asChild>
-                <Link href="/email">View all emails</Link>
+                <Link href="/email-intelligence">View all emails</Link>
               </Button>
             </div>
           </PopoverContent>

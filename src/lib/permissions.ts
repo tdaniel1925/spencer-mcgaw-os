@@ -168,6 +168,7 @@ export const navPermissions: NavPermission[] = [
   { href: "/calls", requiredPermissions: ["calls:view"] },
   { href: "/calls/agent", requiredPermissions: ["calls:manage_agent"] },
   { href: "/email", requiredPermissions: ["email:view"] },
+  { href: "/email-intelligence", requiredPermissions: ["email:view"] },
   { href: "/documents", requiredPermissions: ["documents:view"] },
   { href: "/analytics", requiredPermissions: ["analytics:view"] },
   { href: "/calendar", requiredPermissions: ["calendar:view"] },

@@ -1064,6 +1064,36 @@ function EmailIntelligenceContent() {
     }
   };
 
+  // Auto-sync on first load if email account is connected but no emails processed yet
+  const autoSyncAttempted = useRef(false);
+  useEffect(() => {
+    // Only run once when loading completes
+    if (loading || autoSyncAttempted.current || syncing) return;
+
+    // If we have emails or errors, don't auto-sync
+    if (intelligences.length > 0 || error || needsConnection) return;
+
+    // Check if there's a connected email account
+    const checkAndSync = async () => {
+      try {
+        const accountRes = await fetch("/api/email/accounts");
+        if (accountRes.ok) {
+          const accountData = await accountRes.json();
+          if (accountData.accounts && accountData.accounts.length > 0) {
+            autoSyncAttempted.current = true;
+            // Auto-trigger sync
+            toast.info("Auto-syncing emails with AI analysis...", { id: "auto-sync-info", duration: 3000 });
+            handleSync();
+          }
+        }
+      } catch (err) {
+        console.error("Failed to check accounts for auto-sync:", err);
+      }
+    };
+
+    checkAndSync();
+  }, [loading, intelligences.length, error, needsConnection, syncing]);
+
   // Bucket handlers
   const handleCreateBucket = useCallback((name: string, color: string) => {
     const newBucket: EmailBucket = {

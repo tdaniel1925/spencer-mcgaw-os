@@ -25,7 +25,7 @@ interface QuickAction {
 
 const defaultActions: QuickAction[] = [
   { id: "task", label: "New Task", icon: Plus, href: "/taskpool", color: "text-primary" },
-  { id: "email", label: "Email", icon: Mail, href: "/email", color: "text-blue-600" },
+  { id: "email", label: "Email", icon: Mail, href: "/email-intelligence", color: "text-blue-600" },
   { id: "call", label: "Calls", icon: Phone, href: "/calls", color: "text-green-600" },
   { id: "client", label: "Clients", icon: Users, href: "/clients", color: "text-purple-600" },
   { id: "files", label: "Files", icon: FileText, href: "/files", color: "text-amber-600" },
