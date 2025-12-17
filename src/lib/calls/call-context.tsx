@@ -291,9 +291,15 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     const callAnswered = metadata?.callAnswered as string | undefined;
 
     // Use the actual call start time from GoTo, or fall back to DB created_at
-    const callStartedAt = callAnswered || callCreated
-      ? new Date(callAnswered || callCreated as string)
-      : new Date(dbCall.created_at as string);
+    // Validate that the parsed date is not in the future (timezone parsing issue protection)
+    let callStartedAt = new Date(dbCall.created_at as string);
+    if (callAnswered || callCreated) {
+      const parsedDate = new Date(callAnswered || callCreated as string);
+      // Only use parsed date if it's valid and not in the future
+      if (!isNaN(parsedDate.getTime()) && parsedDate <= new Date()) {
+        callStartedAt = parsedDate;
+      }
+    }
 
     const callEndedAt = callEnded ? new Date(callEnded) : undefined;
 
