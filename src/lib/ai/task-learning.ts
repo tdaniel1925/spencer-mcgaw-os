@@ -284,8 +284,18 @@ export async function getAITaskStats(): Promise<{
   totalAITasks: number;
   completedTasks: number;
   dismissedTasks: number;
+  pendingTasks: number;
   avgTimeToActionMinutes: number;
   completionRate: number;
+  tasksBySource: Record<string, number>;
+  tasksByCategory: Record<string, number>;
+  recentFeedback: Array<{
+    id: string;
+    task_id: string;
+    feedback_type: string;
+    was_correct: boolean | null;
+    created_at: string;
+  }>;
 }> {
   const supabase = await createClient();
 
@@ -293,7 +303,7 @@ export async function getAITaskStats(): Promise<{
     // Get all AI-generated tasks (phone_call or email source)
     const { data: aiTasks } = await supabase
       .from("tasks")
-      .select("id, status, created_at, completed_at")
+      .select("id, status, source_type, ai_extracted_data, created_at, completed_at")
       .in("source_type", ["phone_call", "email"]);
 
     if (!aiTasks || aiTasks.length === 0) {
@@ -301,13 +311,18 @@ export async function getAITaskStats(): Promise<{
         totalAITasks: 0,
         completedTasks: 0,
         dismissedTasks: 0,
+        pendingTasks: 0,
         avgTimeToActionMinutes: 0,
         completionRate: 0,
+        tasksBySource: {},
+        tasksByCategory: {},
+        recentFeedback: [],
       };
     }
 
     const completed = aiTasks.filter(t => t.status === "completed");
     const dismissed = aiTasks.filter(t => t.status === "dismissed" || t.status === "cancelled");
+    const pending = aiTasks.filter(t => t.status === "pending" || t.status === "open" || t.status === "in_progress");
 
     // Calculate average time to completion
     let totalTimeMinutes = 0;
@@ -324,12 +339,44 @@ export async function getAITaskStats(): Promise<{
 
     const avgTime = completedWithTime > 0 ? Math.round(totalTimeMinutes / completedWithTime) : 0;
 
+    // Group by source type
+    const tasksBySource: Record<string, number> = {};
+    for (const task of aiTasks) {
+      const source = task.source_type || "unknown";
+      tasksBySource[source] = (tasksBySource[source] || 0) + 1;
+    }
+
+    // Group by category (from ai_extracted_data)
+    const tasksByCategory: Record<string, number> = {};
+    for (const task of aiTasks) {
+      const aiData = (task.ai_extracted_data || {}) as Record<string, unknown>;
+      const category = (aiData.category as string) || "general";
+      tasksByCategory[category] = (tasksByCategory[category] || 0) + 1;
+    }
+
+    // Get recent feedback from ai_training_feedback
+    const { data: feedback } = await supabase
+      .from("ai_training_feedback")
+      .select("id, task_id, feedback_type, was_correct, created_at")
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    // Calculate completion rate as percentage
+    const totalActioned = completed.length + dismissed.length;
+    const completionRate = totalActioned > 0
+      ? Math.round((completed.length / totalActioned) * 100)
+      : 0;
+
     return {
       totalAITasks: aiTasks.length,
       completedTasks: completed.length,
       dismissedTasks: dismissed.length,
+      pendingTasks: pending.length,
       avgTimeToActionMinutes: avgTime,
-      completionRate: aiTasks.length > 0 ? completed.length / aiTasks.length : 0,
+      completionRate,
+      tasksBySource,
+      tasksByCategory,
+      recentFeedback: feedback || [],
     };
   } catch (error) {
     console.error("[AI Learning] Error getting stats:", error);
@@ -337,8 +384,12 @@ export async function getAITaskStats(): Promise<{
       totalAITasks: 0,
       completedTasks: 0,
       dismissedTasks: 0,
+      pendingTasks: 0,
       avgTimeToActionMinutes: 0,
       completionRate: 0,
+      tasksBySource: {},
+      tasksByCategory: {},
+      recentFeedback: [],
     };
   }
 }
