@@ -1,54 +1,60 @@
-import pg from "pg";
+import { config } from 'dotenv';
+import { createClient } from '@supabase/supabase-js';
 
-const { Pool } = pg;
+config({ path: '.env.local' });
 
-const pool = new Pool({
-  host: "db.cyygkhwujcrbhzgjqipj.supabase.co",
-  port: 5432,
-  database: "postgres",
-  user: "postgres",
-  password: "ttandSellaBella1234",
-  ssl: { rejectUnauthorized: false },
-});
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
 async function check() {
-  const client = await pool.connect();
-  try {
-    // Check all tasks with their action types
-    const tasksRes = await client.query(`
-      SELECT
-        t.id,
-        t.title,
-        t.status,
-        t.claimed_by,
-        t.action_type_id,
-        tat.code as action_type_code,
-        tat.label as action_type_label
-      FROM tasks t
-      LEFT JOIN task_action_types tat ON t.action_type_id = tat.id
-      ORDER BY t.created_at DESC
-    `);
-
-    console.log("Tasks in database:");
-    console.log("==================");
-    tasksRes.rows.forEach((r) => {
-      console.log(`- ${r.action_type_label || 'NO TYPE'} | ${r.title?.substring(0, 40)}`);
-      console.log(`  status: ${r.status}, claimed: ${r.claimed_by ? 'yes' : 'no'}`);
-      console.log(`  action_type_id: ${r.action_type_id}`);
-      console.log();
-    });
-
-    console.log(`Total: ${tasksRes.rows.length} tasks`);
-
-    // Check action types
-    console.log("\nAction Types in database:");
-    console.log("=========================");
-    const typesRes = await client.query(`SELECT id, code, label FROM task_action_types ORDER BY sort_order`);
-    typesRes.rows.forEach((r) => console.log(`- ${r.code}: ${r.label} (${r.id})`));
-
-  } finally {
-    client.release();
-    await pool.end();
+  // Check for email-sourced tasks
+  const { data: emailTasks } = await supabase
+    .from('tasks')
+    .select('id, title, source_type, source_email_id, created_at')
+    .eq('source_type', 'email')
+    .order('created_at', { ascending: false })
+    .limit(10);
+  console.log('Email tasks:', emailTasks?.length || 0);
+  if (emailTasks) {
+    emailTasks.forEach(t => console.log(' -', t.title?.substring(0, 50), t.created_at));
   }
+
+  // Check for phone-sourced tasks
+  const { data: phoneTasks } = await supabase
+    .from('tasks')
+    .select('id, title, source_type, source_call_id, created_at')
+    .eq('source_type', 'phone_call')
+    .order('created_at', { ascending: false })
+    .limit(10);
+  console.log('\nPhone call tasks:', phoneTasks?.length || 0);
+  if (phoneTasks) {
+    phoneTasks.forEach(t => console.log(' -', t.title?.substring(0, 50), t.created_at));
+  }
+
+  // Check email_action_items
+  const { data: actionItems } = await supabase
+    .from('email_action_items')
+    .select('id, title, email_message_id, created_task_id, created_at')
+    .order('created_at', { ascending: false })
+    .limit(5);
+  console.log('\nEmail action items:', actionItems?.length || 0);
+  if (actionItems) {
+    actionItems.forEach(a => console.log(' -', a.title?.substring(0, 50), '| task:', a.created_task_id || 'NONE'));
+  }
+
+  // Check all source types in tasks
+  const { data: allTasks } = await supabase.from('tasks').select('source_type, source');
+  const counts = {};
+  (allTasks || []).forEach(t => {
+    const key = t.source_type || t.source || 'null';
+    counts[key] = (counts[key] || 0) + 1;
+  });
+  console.log('\nTask source type counts:', JSON.stringify(counts, null, 2));
+
+  // Total tasks
+  console.log('\nTotal tasks:', allTasks?.length || 0);
 }
-check().catch(console.error);
+
+check();

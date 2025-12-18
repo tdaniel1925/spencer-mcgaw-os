@@ -451,43 +451,87 @@ async function processCallReport(
   const finalCallerPhone = callerPhone || parsedData?.contact?.phone || null;
   const matchedClientId = await matchPhoneToClient(finalCallerPhone);
 
-  // Store call record
-  const [insertedCall] = await db
-    .insert(calls)
-    .values({
-      vapiCallId: `goto-${conversationSpaceId}`,
-      clientId: matchedClientId,
-      callerPhone: finalCallerPhone,
-      callerName: callerName || parsedData?.contact?.name || null,
-      status: "completed",
-      direction,
-      duration,
-      transcription: transcript,
-      summary,
-      intent: parsedData?.analysis?.category || (gotoTopics?.length ? gotoTopics[0] : null),
-      sentiment,
-      recordingUrl,
-      metadata: {
-        sourceProvider: "goto",
-        gotoConversationSpaceId: conversationSpaceId,
-        gotoAccountKey: accountKey,
-        callCreated,
-        callEnded,
-        callAnswered,
-        caller,
-        participants,
-        recordingIds: uniqueRecordingIds,
-        gotoAiAnalysis,
-        analysis: parsedData?.analysis || null,
-        parsedAt: new Date().toISOString(),
-        confidence: parsedData?.confidence || null,
-        aiParsed: !!parsedData,
-        webhookLogId,
-      },
-    })
-    .returning({ id: calls.id });
+  // Check if call already exists (GoTo sends multiple webhooks for same call)
+  const vapiCallIdValue = `goto-${conversationSpaceId}`;
+  const [existingCall] = await db
+    .select({ id: calls.id })
+    .from(calls)
+    .where(eq(calls.vapiCallId, vapiCallIdValue))
+    .limit(1);
 
-  const recordId = insertedCall?.id || null;
+  let recordId: string | null = null;
+
+  if (existingCall) {
+    // Call already exists, update it with latest data
+    console.log("[GoTo Webhook] Call already exists, updating:", existingCall.id);
+    recordId = existingCall.id;
+
+    await db
+      .update(calls)
+      .set({
+        transcription: transcript || undefined,
+        summary: summary || undefined,
+        recordingUrl: recordingUrl || undefined,
+        duration,
+        metadata: {
+          sourceProvider: "goto",
+          gotoConversationSpaceId: conversationSpaceId,
+          gotoAccountKey: accountKey,
+          callCreated,
+          callEnded,
+          callAnswered,
+          caller,
+          participants,
+          recordingIds: uniqueRecordingIds,
+          gotoAiAnalysis,
+          analysis: parsedData?.analysis || null,
+          parsedAt: new Date().toISOString(),
+          confidence: parsedData?.confidence || null,
+          aiParsed: !!parsedData,
+          webhookLogId,
+        },
+      })
+      .where(eq(calls.id, existingCall.id));
+  } else {
+    // Insert new call
+    const [insertedCall] = await db
+      .insert(calls)
+      .values({
+        vapiCallId: vapiCallIdValue,
+        clientId: matchedClientId,
+        callerPhone: finalCallerPhone,
+        callerName: callerName || parsedData?.contact?.name || null,
+        status: "completed",
+        direction,
+        duration,
+        transcription: transcript,
+        summary,
+        intent: parsedData?.analysis?.category || (gotoTopics?.length ? gotoTopics[0] : null),
+        sentiment,
+        recordingUrl,
+        metadata: {
+          sourceProvider: "goto",
+          gotoConversationSpaceId: conversationSpaceId,
+          gotoAccountKey: accountKey,
+          callCreated,
+          callEnded,
+          callAnswered,
+          caller,
+          participants,
+          recordingIds: uniqueRecordingIds,
+          gotoAiAnalysis,
+          analysis: parsedData?.analysis || null,
+          parsedAt: new Date().toISOString(),
+          confidence: parsedData?.confidence || null,
+          aiParsed: !!parsedData,
+          webhookLogId,
+        },
+      })
+      .returning({ id: calls.id });
+
+    recordId = insertedCall?.id || null;
+    console.log("[GoTo Webhook] Created new call:", recordId);
+  }
 
   // Log activity
   await db.insert(activityLogs).values({
@@ -503,31 +547,45 @@ async function processCallReport(
   });
 
   // Auto-create tasks from AI suggested actions using Supabase
-  // (Drizzle schema doesn't match actual database columns)
   const suggestedActions = parsedData?.analysis?.suggestedActions || [];
   if (suggestedActions.length > 0 && recordId) {
     console.log("[GoTo Webhook] Creating tasks from suggested actions:", suggestedActions.length);
 
     const supabase = await createClient();
 
+    // Check if tasks already exist for this call (prevent duplicates on webhook retries)
+    const { data: existingTasks } = await supabase
+      .from("tasks")
+      .select("id, title")
+      .eq("source_call_id", recordId);
+
+    const existingTaskTitles = new Set((existingTasks || []).map(t => t.title));
+    console.log("[GoTo Webhook] Existing tasks for this call:", existingTasks?.length || 0);
+
+    let tasksCreated = 0;
     for (const action of suggestedActions) {
+      // Skip if task with same title already exists for this call
+      if (existingTaskTitles.has(action)) {
+        console.log("[GoTo Webhook] Task already exists, skipping:", action.substring(0, 50));
+        continue;
+      }
+
       try {
         const { data: newTask, error: taskError } = await supabase
           .from("tasks")
           .insert({
             title: action,
-            description: `AI-suggested task from call with ${callerName || callerPhone || "unknown caller"}`,
+            description: `AI-suggested task from call with ${callerName || callerPhone || "unknown caller"}.\n\nCall Summary: ${summary || "Not available"}`,
             status: "pending",
             priority: parsedData?.analysis?.urgency === "urgent" ? "urgent" :
                      parsedData?.analysis?.urgency === "high" ? "high" : "medium",
             source_type: "phone_call",
+            source_call_id: recordId, // Use proper foreign key
             client_id: matchedClientId,
             source_metadata: {
-              call_id: recordId,
               conversation_space_id: conversationSpaceId,
               caller_phone: finalCallerPhone,
               caller_name: callerName,
-              call_summary: summary,
             },
             ai_confidence: parsedData?.confidence || 0.8,
             ai_extracted_data: {
@@ -535,6 +593,7 @@ async function processCallReport(
               source_type: "call_analysis",
               urgency: parsedData?.analysis?.urgency,
               category: parsedData?.analysis?.category,
+              call_summary: summary,
             },
             organization_id: DEFAULT_ORGANIZATION_ID,
           })
@@ -542,16 +601,17 @@ async function processCallReport(
           .single();
 
         if (taskError) {
-          console.error("[GoTo Webhook] Failed to create task:", action, taskError);
+          console.error("[GoTo Webhook] Failed to create task:", action.substring(0, 50), taskError);
         } else {
           console.log("[GoTo Webhook] Created task:", newTask?.id);
+          tasksCreated++;
         }
       } catch (taskError) {
-        console.error("[GoTo Webhook] Exception creating task:", action, taskError);
+        console.error("[GoTo Webhook] Exception creating task:", action.substring(0, 50), taskError);
       }
     }
 
-    console.log("[GoTo Webhook] Finished creating tasks from call");
+    console.log(`[GoTo Webhook] Finished creating ${tasksCreated} tasks from call (${suggestedActions.length - tasksCreated} skipped)`);
   }
 
   return {
