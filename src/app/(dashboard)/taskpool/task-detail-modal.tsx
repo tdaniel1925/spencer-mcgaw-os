@@ -244,6 +244,14 @@ export function TaskDetailModal({
   const [assignPopoverOpen, setAssignPopoverOpen] = useState(false);
   const [assigning, setAssigning] = useState(false);
 
+  // AI suggested assignee state
+  const [suggestedAssignee, setSuggestedAssignee] = useState<{
+    userId: string;
+    confidence: number;
+    user: { id: string; full_name: string; email: string } | null;
+  } | null>(null);
+  const [loadingSuggestion, setLoadingSuggestion] = useState(false);
+
   // Steps state
   const [steps, setSteps] = useState<TaskStep[]>([]);
   const [loadingSteps, setLoadingSteps] = useState(true);
@@ -630,12 +638,41 @@ export function TaskDetailModal({
     }
   }, []);
 
-  // Load users when popover opens
+  // Load AI suggested assignee based on task source type
+  const loadSuggestedAssignee = useCallback(async () => {
+    if (!task.source_type || task.assigned_to) return; // Only suggest for unassigned tasks
+
+    setLoadingSuggestion(true);
+    try {
+      const params = new URLSearchParams({
+        suggest_assignee: "true",
+        source_type: task.source_type,
+      });
+      // Add category if available from AI extracted data
+      const category = task.ai_extracted_data?.category;
+      if (category) params.append("category", category);
+
+      const response = await fetch(`/api/ai-learning?${params}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.hasSuggestion && data.suggestion) {
+          setSuggestedAssignee(data.suggestion);
+        }
+      }
+    } catch (error) {
+      console.error("Error loading suggested assignee:", error);
+    } finally {
+      setLoadingSuggestion(false);
+    }
+  }, [task.source_type, task.ai_extracted_data, task.assigned_to]);
+
+  // Load users and suggestion when popover opens
   useEffect(() => {
     if (assignPopoverOpen) {
       loadUsers(userSearch);
+      loadSuggestedAssignee();
     }
-  }, [assignPopoverOpen, userSearch, loadUsers]);
+  }, [assignPopoverOpen, userSearch, loadUsers, loadSuggestedAssignee]);
 
   // Load users when step assign popover opens
   useEffect(() => {
@@ -757,7 +794,7 @@ export function TaskDetailModal({
                     {task.assigned_to ? "Reassign" : "Assign"}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-56 p-0" align="start">
+                <PopoverContent className="w-64 p-0" align="start">
                   <Command>
                     <CommandInput
                       placeholder="Search users..."
@@ -765,11 +802,37 @@ export function TaskDetailModal({
                       onValueChange={setUserSearch}
                       className="h-8 text-sm"
                     />
-                    <CommandList className="max-h-48">
+                    <CommandList className="max-h-56">
                       <CommandEmpty className="py-2 text-xs text-center">
                         {loadingUsers ? "Loading..." : "No users found"}
                       </CommandEmpty>
-                      <CommandGroup>
+                      {/* AI Suggested Assignee */}
+                      {suggestedAssignee && suggestedAssignee.user && !task.assigned_to && (
+                        <CommandGroup heading="AI Suggested">
+                          <CommandItem
+                            value={`suggested-${suggestedAssignee.userId}`}
+                            onSelect={() => handleAssignTask(suggestedAssignee.userId)}
+                            className="cursor-pointer py-2 bg-purple-50 hover:bg-purple-100 border-l-2 border-purple-500"
+                          >
+                            <Sparkles className="h-3.5 w-3.5 mr-2 text-purple-600" />
+                            <div className="flex-1 min-w-0">
+                              <span className="text-sm font-medium truncate block">
+                                {suggestedAssignee.user.full_name || suggestedAssignee.user.email}
+                              </span>
+                              <span className="text-[10px] text-purple-600">
+                                {Math.round(suggestedAssignee.confidence * 100)}% confidence
+                              </span>
+                            </div>
+                          </CommandItem>
+                        </CommandGroup>
+                      )}
+                      {loadingSuggestion && !suggestedAssignee && (
+                        <div className="px-2 py-1.5 text-xs text-muted-foreground flex items-center gap-1">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          Finding best assignee...
+                        </div>
+                      )}
+                      <CommandGroup heading="All Users">
                         {users.map((user) => (
                           <CommandItem
                             key={user.id}
@@ -779,6 +842,11 @@ export function TaskDetailModal({
                           >
                             <User className="h-3.5 w-3.5 mr-2" />
                             <span className="text-sm truncate">{user.full_name || user.email}</span>
+                            {suggestedAssignee?.userId === user.id && (
+                              <Badge variant="outline" className="ml-auto text-[9px] px-1 py-0 text-purple-600 border-purple-300">
+                                AI Pick
+                              </Badge>
+                            )}
                           </CommandItem>
                         ))}
                       </CommandGroup>
