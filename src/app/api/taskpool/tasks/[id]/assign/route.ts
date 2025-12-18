@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { logAITaskFeedback } from "@/lib/ai/task-learning";
 
 // POST - Assign a task to a user
 export async function POST(
@@ -68,6 +69,16 @@ export async function POST(
       details: { assigned_to, assigned_by: user.id },
       performed_by: user.id,
     });
+
+    // Log AI learning feedback for assignment patterns (runs async)
+    logAITaskFeedback({
+      taskId: id,
+      action: "assigned",
+      userId: user.id,
+      details: {
+        assignedTo: assigned_to,
+      },
+    }).catch(err => console.error("[AI Learning] Error:", err));
 
     return NextResponse.json(task);
   } catch (error) {

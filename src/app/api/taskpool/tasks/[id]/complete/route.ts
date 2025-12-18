@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { logAITaskFeedback } from "@/lib/ai/task-learning";
 
 // POST - Complete a task and optionally route to next action
 export async function POST(
@@ -53,6 +54,16 @@ export async function POST(
       details: { completed_by: user.id },
       performed_by: user.id,
     });
+
+    // Log AI learning feedback (runs async, doesn't block response)
+    logAITaskFeedback({
+      taskId: id,
+      action: "completed",
+      userId: user.id,
+      details: {
+        completionNotes: body.notes,
+      },
+    }).catch(err => console.error("[AI Learning] Error:", err));
 
     // If routing to next action type, create a new task
     let newTask = null;
