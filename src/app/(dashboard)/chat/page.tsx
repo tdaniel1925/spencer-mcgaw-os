@@ -17,14 +17,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -46,7 +38,6 @@ import {
   MessageSquare,
   Send,
   Users,
-  Plus,
   Search,
   Loader2,
   MoreHorizontal,
@@ -57,6 +48,7 @@ import {
   X,
   FileText,
   Image as ImageIcon,
+  Circle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useChat, type PresenceStatus } from "@/lib/chat";
@@ -67,8 +59,12 @@ import { format, isToday, isYesterday } from "date-fns";
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🎉"];
 
 // Presence indicator component
-function PresenceIndicator({ status, size = "sm" }: { status?: PresenceStatus; size?: "sm" | "md" }) {
-  const sizeClass = size === "sm" ? "h-2.5 w-2.5" : "h-3 w-3";
+function PresenceIndicator({ status, size = "sm" }: { status?: PresenceStatus; size?: "sm" | "md" | "lg" }) {
+  const sizeClasses = {
+    sm: "h-2.5 w-2.5",
+    md: "h-3 w-3",
+    lg: "h-3.5 w-3.5"
+  };
   const statusColors: Record<PresenceStatus, string> = {
     online: "bg-green-500",
     away: "bg-yellow-500",
@@ -79,7 +75,24 @@ function PresenceIndicator({ status, size = "sm" }: { status?: PresenceStatus; s
   return (
     <span className={cn(
       "rounded-full border-2 border-background absolute bottom-0 right-0",
-      sizeClass,
+      sizeClasses[size],
+      statusColors[status || "offline"]
+    )} />
+  );
+}
+
+// Inline presence dot (not positioned absolute)
+function PresenceDot({ status }: { status?: PresenceStatus }) {
+  const statusColors: Record<PresenceStatus, string> = {
+    online: "bg-green-500",
+    away: "bg-yellow-500",
+    busy: "bg-red-500",
+    offline: "bg-gray-400"
+  };
+
+  return (
+    <span className={cn(
+      "h-2 w-2 rounded-full inline-block",
       statusColors[status || "offline"]
     )} />
   );
@@ -106,7 +119,6 @@ export default function ChatPage() {
   } = useChat();
 
   const [messageInput, setMessageInput] = useState("");
-  const [showNewDM, setShowNewDM] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -128,12 +140,29 @@ export default function ChatPage() {
   const teamChat = rooms.find(r => r.type === "community");
   const privateChats = rooms.filter(r => r.type === "private");
 
+  // Sort users by online status (online first, then offline)
+  const sortedUsers = [...users].sort((a, b) => {
+    const aStatus = getUserPresence(a.id)?.status || "offline";
+    const bStatus = getUserPresence(b.id)?.status || "offline";
+    if (aStatus === "online" && bStatus !== "online") return -1;
+    if (aStatus !== "online" && bStatus === "online") return 1;
+    return (a.full_name || a.email).localeCompare(b.full_name || b.email);
+  });
+
+  const onlineUsers = sortedUsers.filter(u => getUserPresence(u.id)?.status === "online");
+  const offlineUsers = sortedUsers.filter(u => getUserPresence(u.id)?.status !== "online");
+
   // Auto-select team chat if no room selected
   useEffect(() => {
     if (!currentRoom && teamChat && !loading) {
       setCurrentRoom(teamChat);
     }
   }, [currentRoom, teamChat, loading, setCurrentRoom]);
+
+  // Load users on mount
+  useEffect(() => {
+    loadUsers();
+  }, []);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -147,7 +176,7 @@ export default function ChatPage() {
     }
   }, [currentRoom]);
 
-  // Load users for DM picker
+  // Load users for sidebar
   const loadUsers = async () => {
     setLoadingUsers(true);
     try {
@@ -193,9 +222,6 @@ export default function ChatPage() {
     if (mentionMatch) {
       setMentionFilter(mentionMatch[1]);
       setShowMentions(true);
-      if (users.length === 0) {
-        loadUsers();
-      }
     } else {
       setShowMentions(false);
     }
@@ -311,14 +337,20 @@ export default function ChatPage() {
      u.email.toLowerCase().includes(mentionFilter.toLowerCase()))
   );
 
-  // Handle starting a new DM
-  const handleStartDM = async (userId: string) => {
-    const room = await startDM(userId);
-    if (room) {
-      setShowNewDM(false);
-      const fullRoom = rooms.find(r => r.id === room.id);
-      if (fullRoom) {
-        setCurrentRoom(fullRoom);
+  // Handle starting/opening a DM with a user
+  const handleOpenDM = async (userId: string) => {
+    // Check if we already have a DM with this user
+    const existingDM = privateChats.find(r => r.other_user?.id === userId);
+    if (existingDM) {
+      setCurrentRoom(existingDM);
+    } else {
+      // Start new DM
+      const room = await startDM(userId);
+      if (room) {
+        const fullRoom = rooms.find(r => r.id === room.id);
+        if (fullRoom) {
+          setCurrentRoom(fullRoom);
+        }
       }
     }
   };
@@ -392,6 +424,14 @@ export default function ChatPage() {
 
           <div className="flex-1" />
 
+          {/* Online count */}
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Circle className="h-2 w-2 fill-green-500 text-green-500" />
+            <span>{onlineUsers.length} online</span>
+          </div>
+
+          <div className="h-4 border-l mx-2" />
+
           {/* Search Button */}
           <Dialog open={showSearch} onOpenChange={setShowSearch}>
             <DialogTrigger asChild>
@@ -443,69 +483,15 @@ export default function ChatPage() {
               </ScrollArea>
             </DialogContent>
           </Dialog>
-
-          {/* New DM Button */}
-          <Dialog open={showNewDM} onOpenChange={setShowNewDM}>
-            <DialogTrigger asChild>
-              <Button
-                size="sm"
-                className="h-8"
-                onClick={() => {
-                  setShowNewDM(true);
-                  loadUsers();
-                }}
-              >
-                <Plus className="h-4 w-4 mr-1.5" />
-                New Message
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-md">
-              <DialogHeader>
-                <DialogTitle>Start a conversation</DialogTitle>
-              </DialogHeader>
-              <Command className="rounded-lg border">
-                <CommandInput placeholder="Search team members..." />
-                <CommandList className="max-h-64">
-                  <CommandEmpty>
-                    {loadingUsers ? "Loading..." : "No team members found"}
-                  </CommandEmpty>
-                  <CommandGroup>
-                    {users.map((u) => {
-                      const userPresence = getUserPresence(u.id);
-                      return (
-                        <CommandItem
-                          key={u.id}
-                          value={u.id}
-                          onSelect={() => handleStartDM(u.id)}
-                          className="cursor-pointer"
-                        >
-                          <div className="relative mr-2">
-                            <Avatar className="h-8 w-8">
-                              <AvatarImage src={u.avatar_url || undefined} />
-                              <AvatarFallback className="text-xs">
-                                {getInitials(u.full_name, u.email)}
-                              </AvatarFallback>
-                            </Avatar>
-                            <PresenceIndicator status={userPresence?.status} />
-                          </div>
-                          <div className="flex flex-col">
-                            <span className="text-sm">{u.full_name || "Unnamed"}</span>
-                            <span className="text-xs text-muted-foreground">{u.email}</span>
-                          </div>
-                        </CommandItem>
-                      );
-                    })}
-                  </CommandGroup>
-                </CommandList>
-              </Command>
-            </DialogContent>
-          </Dialog>
         </div>
 
-        {/* Main Content with Sidebar */}
+        {/* Main Content - 3 Column Layout */}
         <div className="flex flex-1 overflow-hidden">
-          {/* Sidebar - Conversation List */}
-          <div className="w-72 border-r flex flex-col bg-muted/20">
+          {/* Left Sidebar - Conversations */}
+          <div className="w-64 border-r flex flex-col bg-muted/20">
+            <div className="p-3 border-b">
+              <h3 className="font-semibold text-sm">Conversations</h3>
+            </div>
             <ScrollArea className="flex-1">
               <div className="p-2 space-y-1">
                 {loading ? (
@@ -514,104 +500,91 @@ export default function ChatPage() {
                   </div>
                 ) : (
                   <>
-                    {/* Team Chat - Always at top */}
+                    {/* Team Chat */}
                     {teamChat && (
-                      <>
-                        <div className="px-2 py-1.5">
-                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                            Team
-                          </span>
+                      <button
+                        onClick={() => setCurrentRoom(teamChat)}
+                        className={cn(
+                          "w-full flex items-center gap-3 p-2 rounded-lg text-left transition-colors",
+                          currentRoom?.id === teamChat.id
+                            ? "bg-primary/10 text-primary"
+                            : "hover:bg-muted"
+                        )}
+                      >
+                        <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                          <Users className="h-4 w-4 text-primary" />
                         </div>
-                        <button
-                          onClick={() => setCurrentRoom(teamChat)}
-                          className={cn(
-                            "w-full flex items-center gap-3 p-2.5 rounded-lg text-left transition-colors",
-                            currentRoom?.id === teamChat.id
-                              ? "bg-primary/10 text-primary"
-                              : "hover:bg-muted"
-                          )}
-                        >
-                          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                            <Users className="h-5 w-5 text-primary" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="font-medium text-sm">Team Chat</span>
-                              {teamChat.unread_count > 0 && (
-                                <Badge variant="default" className="h-5 min-w-5 px-1.5 text-[10px]">
-                                  {teamChat.unread_count}
-                                </Badge>
-                              )}
-                            </div>
-                            {teamChat.last_message && (
-                              <p className="text-xs text-muted-foreground truncate">
-                                {teamChat.last_message.users?.full_name?.split(" ")[0] || "User"}:{" "}
-                                {teamChat.last_message.content}
-                              </p>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-medium text-sm">Team Chat</span>
+                            {teamChat.unread_count > 0 && (
+                              <Badge variant="default" className="h-5 min-w-5 px-1.5 text-[10px]">
+                                {teamChat.unread_count}
+                              </Badge>
                             )}
                           </div>
-                        </button>
-                      </>
+                          {teamChat.last_message && (
+                            <p className="text-xs text-muted-foreground truncate">
+                              {teamChat.last_message.content}
+                            </p>
+                          )}
+                        </div>
+                      </button>
+                    )}
+
+                    {/* Separator */}
+                    {privateChats.length > 0 && teamChat && (
+                      <Separator className="my-2" />
                     )}
 
                     {/* Private Chats */}
-                    {privateChats.length > 0 && (
-                      <>
-                        <div className="px-2 py-1.5 mt-4">
-                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                            Direct Messages
-                          </span>
+                    {privateChats.map((room) => (
+                      <button
+                        key={room.id}
+                        onClick={() => setCurrentRoom(room)}
+                        className={cn(
+                          "w-full flex items-center gap-3 p-2 rounded-lg text-left transition-colors",
+                          currentRoom?.id === room.id
+                            ? "bg-primary/10 text-primary"
+                            : "hover:bg-muted"
+                        )}
+                      >
+                        <div className="relative flex-shrink-0">
+                          <Avatar className="h-9 w-9">
+                            <AvatarImage src={room.other_user?.avatar_url || undefined} />
+                            <AvatarFallback className="text-xs">
+                              {getInitials(room.other_user?.full_name || null, room.other_user?.email || "")}
+                            </AvatarFallback>
+                          </Avatar>
+                          {room.other_user && (
+                            <PresenceIndicator status={getUserPresence(room.other_user.id)?.status} size="sm" />
+                          )}
                         </div>
-                        {privateChats.map((room) => (
-                          <button
-                            key={room.id}
-                            onClick={() => setCurrentRoom(room)}
-                            className={cn(
-                              "w-full flex items-center gap-3 p-2.5 rounded-lg text-left transition-colors",
-                              currentRoom?.id === room.id
-                                ? "bg-primary/10 text-primary"
-                                : "hover:bg-muted"
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-medium text-sm truncate">
+                              {room.other_user?.full_name || room.other_user?.email || "User"}
+                            </span>
+                            {room.unread_count > 0 && (
+                              <Badge variant="default" className="h-5 min-w-5 px-1.5 text-[10px]">
+                                {room.unread_count}
+                              </Badge>
                             )}
-                          >
-                            <div className="relative">
-                              <Avatar className="h-10 w-10">
-                                <AvatarImage src={room.other_user?.avatar_url || undefined} />
-                                <AvatarFallback>
-                                  {getInitials(room.other_user?.full_name || null, room.other_user?.email || "")}
-                                </AvatarFallback>
-                              </Avatar>
-                              {room.other_user && (
-                                <PresenceIndicator status={getUserPresence(room.other_user.id)?.status} size="md" />
-                              )}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="font-medium text-sm truncate">
-                                  {room.other_user?.full_name || room.other_user?.email || "User"}
-                                </span>
-                                {room.unread_count > 0 && (
-                                  <Badge variant="default" className="h-5 min-w-5 px-1.5 text-[10px]">
-                                    {room.unread_count}
-                                  </Badge>
-                                )}
-                              </div>
-                              {room.last_message && (
-                                <p className="text-xs text-muted-foreground truncate">
-                                  {room.last_message.content}
-                                </p>
-                              )}
-                            </div>
-                          </button>
-                        ))}
-                      </>
-                    )}
+                          </div>
+                          {room.last_message && (
+                            <p className="text-xs text-muted-foreground truncate">
+                              {room.last_message.content}
+                            </p>
+                          )}
+                        </div>
+                      </button>
+                    ))}
 
                     {/* Empty state */}
                     {!teamChat && privateChats.length === 0 && (
                       <div className="text-center py-8 text-muted-foreground">
                         <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                        <p className="text-sm">No conversations yet</p>
-                        <p className="text-xs mt-1">Start a new message</p>
+                        <p className="text-sm">No conversations</p>
                       </div>
                     )}
                   </>
@@ -987,6 +960,96 @@ export default function ChatPage() {
                 <p className="text-sm">Select a conversation to start messaging</p>
               </div>
             )}
+          </div>
+
+          {/* Right Sidebar - Users Online (Facebook-style) */}
+          <div className="w-56 border-l flex flex-col bg-muted/10">
+            <div className="p-3 border-b">
+              <h3 className="font-semibold text-sm">Team Members</h3>
+            </div>
+            <ScrollArea className="flex-1">
+              <div className="p-2">
+                {loadingUsers ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                  </div>
+                ) : (
+                  <>
+                    {/* Online Users */}
+                    {onlineUsers.length > 0 && (
+                      <div className="mb-4">
+                        <div className="flex items-center gap-2 px-2 py-1.5 mb-1">
+                          <Circle className="h-2 w-2 fill-green-500 text-green-500" />
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                            Online — {onlineUsers.length}
+                          </span>
+                        </div>
+                        {onlineUsers.map((u) => (
+                          <button
+                            key={u.id}
+                            onClick={() => handleOpenDM(u.id)}
+                            className="w-full flex items-center gap-2.5 p-2 rounded-lg hover:bg-muted transition-colors text-left"
+                          >
+                            <div className="relative flex-shrink-0">
+                              <Avatar className="h-8 w-8">
+                                <AvatarImage src={u.avatar_url || undefined} />
+                                <AvatarFallback className="text-xs">
+                                  {getInitials(u.full_name, u.email)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <PresenceIndicator status="online" size="sm" />
+                            </div>
+                            <span className="text-sm truncate flex-1">
+                              {u.full_name || u.email.split("@")[0]}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Offline Users */}
+                    {offlineUsers.length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-2 px-2 py-1.5 mb-1">
+                          <Circle className="h-2 w-2 fill-gray-400 text-gray-400" />
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                            Offline — {offlineUsers.length}
+                          </span>
+                        </div>
+                        {offlineUsers.map((u) => (
+                          <button
+                            key={u.id}
+                            onClick={() => handleOpenDM(u.id)}
+                            className="w-full flex items-center gap-2.5 p-2 rounded-lg hover:bg-muted transition-colors text-left opacity-60 hover:opacity-100"
+                          >
+                            <div className="relative flex-shrink-0">
+                              <Avatar className="h-8 w-8">
+                                <AvatarImage src={u.avatar_url || undefined} />
+                                <AvatarFallback className="text-xs">
+                                  {getInitials(u.full_name, u.email)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <PresenceIndicator status="offline" size="sm" />
+                            </div>
+                            <span className="text-sm truncate flex-1">
+                              {u.full_name || u.email.split("@")[0]}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Empty state */}
+                    {users.length === 0 && (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <Users className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                        <p className="text-xs">No team members</p>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </ScrollArea>
           </div>
         </div>
       </main>
