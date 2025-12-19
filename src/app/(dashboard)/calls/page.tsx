@@ -453,7 +453,7 @@ function ExpandableCallCard({
 
               {/* Full AI Summary - Always Visible */}
               {call.aiAnalysis && (
-                <div className="bg-primary/5 rounded-lg p-3 border border-primary/10 mr-4">
+                <div className="bg-primary/5 rounded-lg p-3 border border-primary/10">
                   <div className="flex items-start gap-2">
                     <Bot className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
                     <div className="flex-1 min-w-0">
