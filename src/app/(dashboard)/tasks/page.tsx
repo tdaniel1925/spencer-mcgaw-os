@@ -59,7 +59,6 @@ import {
   RefreshCw,
   ArrowRight,
   UserPlus,
-  Inbox,
   LayoutList,
   Hand,
   UserCheck,
@@ -135,7 +134,6 @@ export default function TasksPage() {
     claimTask,
     assignTask,
     myTasks,
-    teamPoolTasks,
     allTasks,
     taskCounts,
   } = useTaskContext();
@@ -173,8 +171,6 @@ export default function TasksPage() {
     switch (currentView) {
       case "my-work":
         return myTasks;
-      case "team-pool":
-        return teamPoolTasks;
       case "all":
         return allTasks;
       default:
@@ -342,13 +338,12 @@ export default function TasksPage() {
     return (
       <div
         data-task-card
-        draggable={currentView !== "team-pool"}
+        draggable
         onDragStart={(e) => handleDragStart(e, task)}
         onDragEnd={handleDragEnd}
         onClick={handleCardClick}
         className={cn(
-          "bg-card rounded-lg border shadow-sm p-3 transition-all hover:shadow-md w-full cursor-pointer",
-          currentView !== "team-pool" && "cursor-grab active:cursor-grabbing",
+          "bg-card rounded-lg border shadow-sm p-3 transition-all hover:shadow-md w-full cursor-grab active:cursor-grabbing",
           draggedTask?.id === task.id && "opacity-50 ring-2 ring-primary",
           isTestTask && "border-amber-200 bg-amber-50/30"
         )}
@@ -509,7 +504,7 @@ export default function TasksPage() {
           )}
         </div>
 
-        {/* Claim button for team pool view */}
+        {/* Claim button for unclaimed tasks in All Tasks view */}
         {showClaimButton && (
           <div className="mt-3 pt-2 border-t">
             <Button
@@ -558,21 +553,14 @@ export default function TasksPage() {
               <TabsList className="h-9">
                 <TabsTrigger value="my-work" className="gap-2 px-3">
                   <UserCheck className="h-4 w-4" />
-                  My Work
+                  My Tasks
                   <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">
                     {taskCounts.myWork}
                   </Badge>
                 </TabsTrigger>
-                <TabsTrigger value="team-pool" className="gap-2 px-3">
-                  <Inbox className="h-4 w-4" />
-                  Team Pool
-                  <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">
-                    {taskCounts.teamPool}
-                  </Badge>
-                </TabsTrigger>
                 <TabsTrigger value="all" className="gap-2 px-3">
                   <LayoutList className="h-4 w-4" />
-                  All Tasks
+                  All Tasks (Org)
                   <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">
                     {taskCounts.all}
                   </Badge>
@@ -647,26 +635,18 @@ export default function TasksPage() {
               {currentView === "my-work" ? (
                 <>
                   <ClipboardList className="h-12 w-12 text-muted-foreground mb-4" />
-                  <h3 className="text-lg font-medium">No tasks in your queue</h3>
+                  <h3 className="text-lg font-medium">No tasks assigned to you</h3>
                   <p className="text-sm text-muted-foreground mt-2 max-w-md">
-                    Check the Team Pool to claim tasks, or tasks will appear here when assigned to you.
+                    Tasks will appear here when assigned to you from calls, emails, or manually.
                   </p>
                   <Button
                     variant="outline"
                     className="mt-4"
-                    onClick={() => setCurrentView("team-pool")}
+                    onClick={() => setCurrentView("all")}
                   >
-                    <Inbox className="h-4 w-4 mr-2" />
-                    View Team Pool
+                    <LayoutList className="h-4 w-4 mr-2" />
+                    View All Tasks
                   </Button>
-                </>
-              ) : currentView === "team-pool" ? (
-                <>
-                  <Inbox className="h-12 w-12 text-muted-foreground mb-4" />
-                  <h3 className="text-lg font-medium">Team pool is empty</h3>
-                  <p className="text-sm text-muted-foreground mt-2 max-w-md">
-                    No unclaimed tasks available. Tasks from phone calls and emails will appear here.
-                  </p>
                 </>
               ) : (
                 <>
@@ -678,147 +658,8 @@ export default function TasksPage() {
                 </>
               )}
             </div>
-          ) : currentView === "team-pool" ? (
-            // Team Pool: List format like email/phone views
-            <div className="space-y-2">
-              {currentTasks.map((task) => {
-                const SourceIcon = sourceIcons[task.source_type as keyof typeof sourceIcons] || ClipboardList;
-                return (
-                  <Card key={task.id} className="hover:shadow-md transition-all overflow-hidden">
-                    <CardContent className="p-0">
-                      <div className="flex items-start gap-3 p-4">
-                        {/* Priority indicator */}
-                        <div className={cn(
-                          "w-1 self-stretch rounded-full flex-shrink-0",
-                          priorityConfig[task.priority]?.dot
-                        )} />
-
-                        {/* Source icon avatar */}
-                        <Avatar className="h-10 w-10 flex-shrink-0">
-                          <AvatarFallback className={cn(
-                            task.source_type === "phone_call" && "bg-green-100 text-green-700",
-                            task.source_type === "email" && "bg-blue-100 text-blue-700",
-                            task.source_type === "document_intake" && "bg-purple-100 text-purple-700",
-                            (!task.source_type || task.source_type === "manual") && "bg-muted text-muted-foreground"
-                          )}>
-                            <SourceIcon className="h-4 w-4" />
-                          </AvatarFallback>
-                        </Avatar>
-
-                        {/* Main content */}
-                        <div className="flex-1 min-w-0">
-                          {/* Title row */}
-                          <div className="flex items-start justify-between gap-2 mb-1">
-                            <h3 className="font-medium text-sm line-clamp-1">{task.title}</h3>
-                            <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0" suppressHydrationWarning>
-                              {formatDistanceToNow(new Date(task.created_at), { addSuffix: true })}
-                            </span>
-                          </div>
-
-                          {/* Description */}
-                          {task.description && (
-                            <p className="text-sm text-muted-foreground line-clamp-2 mb-2">
-                              {task.description}
-                            </p>
-                          )}
-
-                          {/* Metadata row */}
-                          <div className="flex items-center flex-wrap gap-2 text-xs">
-                            {/* Source badge */}
-                            <Badge variant="outline" className="text-[10px] gap-1">
-                              <SourceIcon className="h-3 w-3" />
-                              {(task.source_type || "manual").replace(/_/g, " ")}
-                            </Badge>
-
-                            {/* Priority badge for high/urgent */}
-                            {(task.priority === "urgent" || task.priority === "high") && (
-                              <Badge
-                                variant="outline"
-                                className={cn(
-                                  "text-[10px]",
-                                  task.priority === "urgent" && "bg-red-100 text-red-700 border-red-200",
-                                  task.priority === "high" && "bg-orange-100 text-orange-700 border-orange-200"
-                                )}
-                              >
-                                <AlertCircle className="h-3 w-3 mr-1" />
-                                {task.priority}
-                              </Badge>
-                            )}
-
-                            {/* Client info */}
-                            {task.client && (
-                              <div className="flex items-center gap-1 text-muted-foreground">
-                                <User className="h-3 w-3" />
-                                <span>{task.client.first_name} {task.client.last_name}</span>
-                                {task.client.phone && (
-                                  <>
-                                    <span>•</span>
-                                    <span>{task.client.phone}</span>
-                                  </>
-                                )}
-                              </div>
-                            )}
-
-                            {/* Due date if set */}
-                            {task.due_date && (
-                              <div className={cn(
-                                "flex items-center gap-1",
-                                new Date(task.due_date) < new Date() ? "text-red-600" : "text-muted-foreground"
-                              )}>
-                                <Clock className="h-3 w-3" />
-                                <span>Due {format(new Date(task.due_date), "MMM d")}</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Actions */}
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          <Button
-                            size="sm"
-                            onClick={() => handleClaimTask(task)}
-                            className="h-8"
-                          >
-                            <Hand className="h-4 w-4 mr-1.5" />
-                            Claim
-                          </Button>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                onClick={() => {
-                                  setSelectedTask(task);
-                                  setViewDialogOpen(true);
-                                }}
-                              >
-                                <Eye className="h-4 w-4 mr-2" />
-                                View Details
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => {
-                                  setSelectedTask(task);
-                                  fetchTeamMembers();
-                                  setReassignDialogOpen(true);
-                                }}
-                              >
-                                <UserPlus className="h-4 w-4 mr-2" />
-                                Assign to Someone
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
           ) : (
-            // My Work & All: Kanban board
+            // Kanban board for all views
             <div
               className="grid grid-cols-1 md:grid-cols-3 gap-4 h-full w-full"
               style={{ minWidth: 0, maxWidth: '100%', overflow: 'hidden' }}
@@ -883,7 +724,15 @@ export default function TasksPage() {
                           </div>
                         ) : (
                           statusTasks.map((task) => (
-                            <TaskCard key={task.id} task={task} />
+                            <TaskCard
+                              key={task.id}
+                              task={task}
+                              showClaimButton={
+                                currentView === "all" &&
+                                !task.assigned_to &&
+                                !task.claimed_by
+                              }
+                            />
                           ))
                         )}
                       </div>
