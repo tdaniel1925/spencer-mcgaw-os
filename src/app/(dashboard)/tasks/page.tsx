@@ -156,10 +156,12 @@ export default function TasksPage() {
   // Fetch team members for reassignment
   const fetchTeamMembers = useCallback(async () => {
     try {
-      const response = await fetch("/api/admin/users");
+      const response = await fetch("/api/users/team");
       if (response.ok) {
         const data = await response.json();
         setTeamMembers(data.users || []);
+      } else {
+        console.error("Failed to fetch team members:", response.status);
       }
     } catch (error) {
       console.error("Error fetching team members:", error);
@@ -285,14 +287,28 @@ export default function TasksPage() {
     const SourceIcon = sourceIcons[task.source_type as keyof typeof sourceIcons] || ClipboardList;
     const isTestTask = task.source_email_id?.startsWith("test_");
 
+    // Handle card click to open details (but not when clicking dropdown)
+    const handleCardClick = (e: React.MouseEvent) => {
+      // Don't open modal if clicking on dropdown trigger or its contents
+      const target = e.target as HTMLElement;
+      if (target.closest('[data-radix-collection-item]') ||
+          target.closest('button') ||
+          target.closest('[role="menu"]')) {
+        return;
+      }
+      setSelectedTask(task);
+      setViewDialogOpen(true);
+    };
+
     return (
       <div
         data-task-card
         draggable={currentView !== "team-pool"}
         onDragStart={(e) => handleDragStart(e, task)}
         onDragEnd={handleDragEnd}
+        onClick={handleCardClick}
         className={cn(
-          "bg-card rounded-lg border shadow-sm p-3 transition-all hover:shadow-md w-full",
+          "bg-card rounded-lg border shadow-sm p-3 transition-all hover:shadow-md w-full cursor-pointer",
           currentView !== "team-pool" && "cursor-grab active:cursor-grabbing",
           draggedTask?.id === task.id && "opacity-50 ring-2 ring-primary",
           isTestTask && "border-amber-200 bg-amber-50/30"
