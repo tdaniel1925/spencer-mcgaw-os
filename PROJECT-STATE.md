@@ -128,6 +128,11 @@ mode: standard
   - Database migration for chat enhancements (user_presence, chat_message_reactions, chat_mentions)
   - RLS policies for core chat tables (chat_rooms, chat_messages, chat_room_members)
   - Auto-join trigger: new users automatically added to Team Chat on signup
+  - Facebook-style users sidebar (right panel showing all team members)
+  - Users sorted by online status (online first, then offline)
+  - Click any user to start/open DM
+  - App-wide presence: users show online when logged into any dashboard page
+  - Database trigger to auto-initialize presence for new users
 - [x] Build verification passed (new API routes: presence, search, upload, messages/[id], mentions, reactions)
 
 ## In Progress
