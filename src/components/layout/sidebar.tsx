@@ -161,18 +161,12 @@ const navSections: NavSection[] = [
     label: "Insights",
     items: [
       {
-        title: "Analytics",
-        href: "/analytics",
-        icon: BarChart3,
-        permission: "analytics:view",
-      },
-      {
         title: "Calendar",
         href: "/calendar",
         icon: Calendar,
         permission: "calendar:view",
       },
-            {
+      {
         title: "Reports",
         href: "/reports",
         icon: FileSpreadsheet,
@@ -445,21 +439,6 @@ export function Sidebar() {
             </div>
           ))}
 
-          {/* Admin Section Divider */}
-          {filteredAdminNav.length > 0 && (
-            <>
-              <div className="pt-4 pb-2">
-                <div className="flex items-center gap-2 px-3">
-                  <div className="h-px flex-1 bg-sidebar-border" />
-                  <span className="text-[10px] font-semibold text-sidebar-foreground/40 uppercase tracking-wider">
-                    Admin
-                  </span>
-                  <div className="h-px flex-1 bg-sidebar-border" />
-                </div>
-              </div>
-              {filteredAdminNav.map(renderNavItem)}
-            </>
-          )}
         </nav>
       </ScrollArea>
 
@@ -546,6 +525,29 @@ export function Sidebar() {
                   Help & Support
                 </Link>
               </DropdownMenuItem>
+              {/* Admin Section */}
+              {filteredAdminNav.length > 0 && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">
+                    Admin
+                  </DropdownMenuLabel>
+                  <DropdownMenuItem asChild>
+                    <Link href="/analytics">
+                      <BarChart3 className="mr-2 h-4 w-4" />
+                      Analytics
+                    </Link>
+                  </DropdownMenuItem>
+                  {filteredAdminNav.map((item) => (
+                    <DropdownMenuItem key={item.href} asChild>
+                      <Link href={item.href}>
+                        <item.icon className="mr-2 h-4 w-4" />
+                        {item.title}
+                      </Link>
+                    </DropdownMenuItem>
+                  ))}
+                </>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onSelect={(e) => {
