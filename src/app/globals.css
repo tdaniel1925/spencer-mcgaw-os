@@ -194,3 +194,29 @@
 .animate-pulse-subtle {
   animation: pulse-subtle 3s ease-in-out infinite;
 }
+
+/* Force text containment in kanban task cards */
+.grid-cols-1,
+.md\:grid-cols-3 {
+  overflow: hidden !important;
+}
+
+/* Ensure kanban columns constrain their children */
+.grid > div {
+  min-width: 0 !important;
+}
+
+/* Task card text containment */
+[data-task-card],
+.bg-card.rounded-lg.border {
+  overflow: hidden !important;
+  contain: inline-size !important;
+}
+
+/* Force word wrap in task descriptions */
+.bg-muted\/50 p {
+  word-break: break-all !important;
+  overflow-wrap: anywhere !important;
+  white-space: normal !important;
+  max-width: 100% !important;
+}

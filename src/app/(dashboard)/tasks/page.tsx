@@ -287,16 +287,23 @@ export default function TasksPage() {
 
     return (
       <div
+        data-task-card
         draggable={currentView !== "team-pool"}
         onDragStart={(e) => handleDragStart(e, task)}
         onDragEnd={handleDragEnd}
         className={cn(
-          "bg-card rounded-lg border shadow-sm p-3 transition-all hover:shadow-md",
+          "bg-card rounded-lg border shadow-sm p-3 transition-all hover:shadow-md w-full",
           currentView !== "team-pool" && "cursor-grab active:cursor-grabbing",
           draggedTask?.id === task.id && "opacity-50 ring-2 ring-primary",
           isTestTask && "border-amber-200 bg-amber-50/30"
         )}
-        style={{ overflow: 'hidden', maxWidth: '100%', boxSizing: 'border-box' }}
+        style={{
+          overflow: 'hidden',
+          width: '100%',
+          maxWidth: '100%',
+          boxSizing: 'border-box',
+          contain: 'inline-size'
+        }}
       >
         {/* Source breadcrumb */}
         {task.source_type && task.source_type !== "manual" && (
@@ -375,19 +382,25 @@ export default function TasksPage() {
         {/* Description - with forced text containment */}
         {task.description && (
           <div
-            className="bg-muted/50 rounded-lg p-2 mb-2"
-            style={{ overflow: 'hidden', maxWidth: '100%' }}
+            className="bg-muted/50 rounded-lg p-2 mb-2 w-full"
+            style={{
+              overflow: 'hidden',
+              width: '100%',
+              maxWidth: '100%',
+              boxSizing: 'border-box'
+            }}
           >
             <p
-              className="text-xs text-muted-foreground"
+              className="text-xs text-muted-foreground w-full"
               style={{
                 display: '-webkit-box',
                 WebkitLineClamp: 2,
                 WebkitBoxOrient: 'vertical',
                 overflow: 'hidden',
-                wordBreak: 'break-word',
+                wordBreak: 'break-all',
                 overflowWrap: 'anywhere',
-                hyphens: 'auto'
+                width: '100%',
+                maxWidth: '100%'
               }}
             >
               {task.description}
@@ -729,7 +742,10 @@ export default function TasksPage() {
             </div>
           ) : (
             // My Work & All: Kanban board
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-full" style={{ minWidth: 0 }}>
+            <div
+              className="grid grid-cols-1 md:grid-cols-3 gap-4 h-full w-full"
+              style={{ minWidth: 0, maxWidth: '100%', overflow: 'hidden' }}
+            >
               {KANBAN_STATUSES.map((status) => {
                 const statusTasks = getTasksByStatus(status);
                 const config = statusConfig[status];
@@ -738,10 +754,15 @@ export default function TasksPage() {
                   <div
                     key={status}
                     className={cn(
-                      "flex flex-col rounded-lg bg-muted/30 transition-colors",
+                      "flex flex-col rounded-lg bg-muted/30 transition-colors w-full",
                       dragOverColumn === status && "bg-primary/10"
                     )}
-                    style={{ overflow: 'hidden', minWidth: 0, maxWidth: '100%' }}
+                    style={{
+                      overflow: 'hidden',
+                      minWidth: 0,
+                      maxWidth: '100%',
+                      width: '100%'
+                    }}
                     onDragOver={(e) => handleDragOver(e, status)}
                     onDragLeave={handleDragLeave}
                     onDrop={(e) => handleDrop(e, status)}
@@ -761,8 +782,19 @@ export default function TasksPage() {
                       </div>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto overflow-x-hidden">
-                      <div className="p-2 space-y-2 min-h-[200px]" style={{ maxWidth: '100%' }}>
+                    <div
+                      className="flex-1 w-full"
+                      style={{
+                        overflowY: 'auto',
+                        overflowX: 'hidden',
+                        width: '100%',
+                        maxWidth: '100%'
+                      }}
+                    >
+                      <div
+                        className="p-2 space-y-2 min-h-[200px] w-full"
+                        style={{ maxWidth: '100%', width: '100%' }}
+                      >
                         {statusTasks.length === 0 ? (
                           <div className={cn(
                             "flex flex-col items-center justify-center py-8 text-center border-2 border-dashed rounded-lg transition-colors",
