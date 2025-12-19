@@ -13,6 +13,7 @@ mode: standard
 - Phone Integration: GoTo Connect via OAuth + Webhooks (2024-12)
 - Email Integration: Microsoft Graph API (2024-12)
 - AI Parsing: OpenAI for webhook/email analysis (2024-12)
+- Caller ID Enrichment: Twilio Lookup API v2 (2025-12-18)
 
 ## Completed
 - [x] Core authentication and user management
@@ -44,6 +45,8 @@ mode: standard
   - Created /api/recordings/[id] proxy endpoint (OAuth required for download)
   - Fixed transcription extraction (results[].transcript array)
   - Fixed call time display (use actual callCreated/callAnswered from GoTo, not DB createdAt)
+  - Recording player UI in call cards (play/pause, seek, duration display)
+  - Recording indicator icon on call cards (visible when recording available)
 - [x] AI Learning System (Phases 1-3)
   - Phase 1: Task feedback logging infrastructure (src/lib/ai/task-learning.ts)
   - Phase 2: Feedback tracking on task actions (assigned, completed, dismissed, edited, routed)
@@ -94,6 +97,26 @@ mode: standard
   - Date range, status, and tax year filters
   - Reports API (/api/reports) with role-based access (manager+)
 - [x] Build verification passed (159 routes)
+- [x] Twilio Caller ID Enrichment (2025-12-18)
+  - Twilio Lookup API v2 integration (src/lib/twilio/lookup.ts)
+  - Auto-enriches caller name when GoTo webhook doesn't provide it
+  - Uses CNAM database for US phone numbers (~$0.01/lookup)
+  - 24-hour in-memory cache to reduce costs
+  - Identifies caller type (BUSINESS vs CONSUMER)
+  - Falls back to formatted phone number if no name found
+  - Integrated into all GoTo webhook handlers (report, event, unknown)
+  - Metadata tracks: twilioEnriched, twilioCallerType, rawCallerName
+- [x] Task Context Provider (src/lib/tasks/task-context.tsx)
+  - Centralized task state management with React Context
+  - Real-time Supabase subscriptions for live updates
+  - Task filtering (my-work, team-pool, all views)
+  - Actions: claim, release, assign, updateStatus
+- [x] Team Members API (/api/users/team)
+  - Lists active users with show_in_taskpool flag
+  - Used for task assignment dropdowns
+- [x] Rate Limiting (src/lib/rate-limit.ts)
+  - API protection utilities
+- [x] Build verification passed (116 route files, 231 unit tests)
 
 ## In Progress
 
@@ -108,6 +131,11 @@ None
 - [x] Configured: GoTo Connect (OAuth, webhooks, disconnect/reconnect, recordings, transcriptions)
 - [x] Configured: Microsoft Graph (email)
 - [x] Configured: OpenAI (AI parsing)
+- [x] Configured: Twilio (caller ID enrichment + SMS - requires TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER)
+  - Caller ID lookup via Lookup API v2
+  - SMS send/receive via Messages API
+  - Inbound webhook at /api/sms/webhook
+  - Status callbacks for delivery receipts
 - [ ] Pending: Resend (email notifications - npm install resend required)
 
 ## User Preferences
@@ -148,3 +176,13 @@ autonomy: high
 - user_permission_overrides
 - user_privacy_settings
 - notifications
+
+## Database Tables (SMS)
+- sms_conversations (contact conversations with opt-in status)
+- sms_messages (sent/received messages with Twilio SID)
+- sms_templates (reusable message templates)
+- sms_canned_responses (quick reply snippets)
+- sms_auto_responders (keyword/after-hours auto-replies)
+- sms_campaigns (bulk SMS campaigns)
+- sms_opt_out_log (compliance audit trail)
+- sms_settings (Twilio config, business hours)

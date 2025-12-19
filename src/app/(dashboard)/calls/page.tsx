@@ -94,6 +94,9 @@ import {
   CheckCircle2,
   XCircle,
   AlertCircle as AlertCircleIcon,
+  Play,
+  Pause,
+  Volume2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow } from "date-fns";
@@ -177,6 +180,125 @@ function formatDuration(seconds: number): string {
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
   return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
+
+// Recording Player Component
+function RecordingPlayer({ recordingUrl }: { recordingUrl: string }) {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const audioRef = useRef<HTMLAudioElement>(null);
+
+  const togglePlay = () => {
+    if (!audioRef.current) return;
+
+    if (isPlaying) {
+      audioRef.current.pause();
+    } else {
+      setIsLoading(true);
+      setError(null);
+      audioRef.current.play().catch((err) => {
+        console.error("Error playing recording:", err);
+        setError("Unable to play recording");
+        setIsLoading(false);
+      });
+    }
+  };
+
+  const handleTimeUpdate = () => {
+    if (audioRef.current) {
+      setCurrentTime(audioRef.current.currentTime);
+    }
+  };
+
+  const handleLoadedMetadata = () => {
+    if (audioRef.current) {
+      setDuration(audioRef.current.duration);
+    }
+    setIsLoading(false);
+  };
+
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newTime = parseFloat(e.target.value);
+    if (audioRef.current) {
+      audioRef.current.currentTime = newTime;
+      setCurrentTime(newTime);
+    }
+  };
+
+  const formatTime = (seconds: number) => {
+    if (!isFinite(seconds) || isNaN(seconds)) return "0:00";
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  };
+
+  return (
+    <div className="bg-muted/50 rounded-lg p-3 space-y-2">
+      <div className="flex items-center gap-2">
+        <Volume2 className="h-4 w-4 text-primary flex-shrink-0" />
+        <span className="text-sm font-medium">Call Recording</span>
+        {error && (
+          <Badge variant="destructive" className="text-[10px]">
+            {error}
+          </Badge>
+        )}
+      </div>
+
+      <div className="flex items-center gap-3">
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-9 w-9 rounded-full flex-shrink-0"
+          onClick={togglePlay}
+          disabled={isLoading}
+        >
+          {isLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : isPlaying ? (
+            <Pause className="h-4 w-4" />
+          ) : (
+            <Play className="h-4 w-4 ml-0.5" />
+          )}
+        </Button>
+
+        <div className="flex-1 flex items-center gap-2">
+          <span className="text-xs text-muted-foreground w-10 text-right">
+            {formatTime(currentTime)}
+          </span>
+          <input
+            type="range"
+            min={0}
+            max={duration || 100}
+            value={currentTime}
+            onChange={handleSeek}
+            className="flex-1 h-1.5 bg-muted rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:hover:bg-primary/80"
+          />
+          <span className="text-xs text-muted-foreground w-10">
+            {formatTime(duration)}
+          </span>
+        </div>
+      </div>
+
+      <audio
+        ref={audioRef}
+        src={recordingUrl}
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
+        onEnded={() => setIsPlaying(false)}
+        onTimeUpdate={handleTimeUpdate}
+        onLoadedMetadata={handleLoadedMetadata}
+        onError={() => {
+          setError("Recording unavailable");
+          setIsLoading(false);
+        }}
+        onCanPlay={() => setIsLoading(false)}
+        preload="metadata"
+      />
+    </div>
+  );
 }
 
 // Expandable Call Card Component
@@ -302,10 +424,18 @@ function ExpandableCallCard({
               </div>
 
               {/* Phone and Duration */}
-              <div className="text-xs text-muted-foreground mb-2">
-                {call.callerPhone} • {formatDuration(call.durationSeconds)}
+              <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
+                <span>{call.callerPhone} • {formatDuration(call.durationSeconds)}</span>
                 {call.lineUser?.extension && (
                   <span> • Ext. {call.lineUser.extension}</span>
+                )}
+                {call.recordingUrl && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Volume2 className="h-3.5 w-3.5 text-primary ml-1 flex-shrink-0" />
+                    </TooltipTrigger>
+                    <TooltipContent>Recording available</TooltipContent>
+                  </Tooltip>
                 )}
               </div>
 
@@ -533,6 +663,11 @@ function ExpandableCallCard({
                   ))}
                 </div>
               </div>
+            )}
+
+            {/* Recording Player */}
+            {call.recordingUrl && (
+              <RecordingPlayer recordingUrl={call.recordingUrl} />
             )}
 
             {/* Transcript */}

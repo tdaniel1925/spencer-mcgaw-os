@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { parseWebhookWithAI, isAIParsingAvailable } from "@/lib/ai";
 import type { ParsedWebhookData } from "@/lib/ai";
 import { getCallReport, getRecordingUrl, getTranscription } from "@/lib/goto";
+import { enrichCallerName, isTwilioLookupAvailable } from "@/lib/twilio";
 import { eq, or, sql } from "drizzle-orm";
 import crypto from "crypto";
 import { DEFAULT_ORGANIZATION_ID } from "@/lib/constants";
@@ -362,8 +363,24 @@ async function processCallReport(
 
   console.log(`[GoTo Webhook] Direction detection - rawDirection: ${rawDirection}, callerType: ${callerType}, callerHasLineId: ${callerHasLineId}, final: ${direction}`);
 
-  const callerName = (caller?.name as string) || null;
+  const rawCallerName = (caller?.name as string) || null;
   const callerPhone = (caller?.number as string) || null;
+
+  // Enrich caller name using Twilio Lookup if name is missing or just a phone number
+  let callerName = rawCallerName;
+  let twilioCallerType: "BUSINESS" | "CONSUMER" | null = null;
+  let callerEnriched = false;
+
+  if (callerPhone && isTwilioLookupAvailable()) {
+    const enriched = await enrichCallerName(callerPhone, rawCallerName);
+    callerName = enriched.name;
+    twilioCallerType = enriched.type;
+    callerEnriched = enriched.enriched;
+
+    if (callerEnriched) {
+      console.log(`[GoTo Webhook] Enriched caller name via Twilio: ${rawCallerName} -> ${callerName} (${twilioCallerType})`);
+    }
+  }
 
   // Extract recording IDs from caller and participants
   // GoTo API has multiple formats for recording IDs
@@ -488,6 +505,9 @@ async function processCallReport(
           parsedAt: new Date().toISOString(),
           confidence: parsedData?.confidence || null,
           aiParsed: !!parsedData,
+          twilioEnriched: callerEnriched,
+          twilioCallerType,
+          rawCallerName,
           webhookLogId,
         },
       })
@@ -524,6 +544,9 @@ async function processCallReport(
           parsedAt: new Date().toISOString(),
           confidence: parsedData?.confidence || null,
           aiParsed: !!parsedData,
+          twilioEnriched: callerEnriched,
+          twilioCallerType,
+          rawCallerName,
           webhookLogId,
         },
       })
@@ -700,6 +723,23 @@ async function processCallEvent(
   const finalCallerPhone = parsedData?.contact?.phone || callerPhone;
   const matchedClientId = await matchPhoneToClient(finalCallerPhone);
 
+  // Enrich caller name using Twilio Lookup if name is missing
+  const rawName = parsedData?.contact?.name || null;
+  let enrichedCallerName = rawName;
+  let eventTwilioCallerType: "BUSINESS" | "CONSUMER" | null = null;
+  let eventCallerEnriched = false;
+
+  if (finalCallerPhone && isTwilioLookupAvailable()) {
+    const enriched = await enrichCallerName(finalCallerPhone, rawName);
+    enrichedCallerName = enriched.name;
+    eventTwilioCallerType = enriched.type;
+    eventCallerEnriched = enriched.enriched;
+
+    if (eventCallerEnriched) {
+      console.log(`[GoTo Webhook] Enriched caller name via Twilio: ${rawName} -> ${enrichedCallerName} (${eventTwilioCallerType})`);
+    }
+  }
+
   // Store call record
   const [insertedCall] = await db
     .insert(calls)
@@ -707,7 +747,7 @@ async function processCallEvent(
       vapiCallId: conversationSpaceId ? `goto-${conversationSpaceId}` : `goto-${Date.now()}`,
       clientId: matchedClientId,
       callerPhone: finalCallerPhone,
-      callerName: parsedData?.contact?.name || null,
+      callerName: enrichedCallerName,
       status: "completed",
       direction,
       duration: parsedData?.call?.duration || null,
@@ -724,6 +764,9 @@ async function processCallEvent(
         parsedAt: new Date().toISOString(),
         confidence: parsedData?.confidence || null,
         aiParsed: !!parsedData,
+        twilioEnriched: eventCallerEnriched,
+        twilioCallerType: eventTwilioCallerType,
+        rawCallerName: rawName,
         webhookLogId,
       },
     })
@@ -734,7 +777,7 @@ async function processCallEvent(
   // Log activity
   await db.insert(activityLogs).values({
     type: direction === "inbound" ? "call_received" : "call_made",
-    description: `${direction === "inbound" ? "Inbound" : "Outbound"} GoTo Connect call ended${callerPhone ? ` from ${callerPhone}` : ""}`,
+    description: `${direction === "inbound" ? "Inbound" : "Outbound"} GoTo Connect call ended${enrichedCallerName ? ` with ${enrichedCallerName}` : ""}${callerPhone ? ` (${callerPhone})` : ""}`,
     metadata: {
       callId: recordId,
       gotoConversationSpaceId: conversationSpaceId,
@@ -746,7 +789,7 @@ async function processCallEvent(
   return {
     id: recordId || "",
     callerPhone: finalCallerPhone,
-    callerName: parsedData?.contact?.name || null,
+    callerName: enrichedCallerName,
     direction,
     duration: parsedData?.call?.duration || null,
     transcript: null,
@@ -795,13 +838,30 @@ async function processUnknownEvent(
   const finalCallerPhone = parsedData.contact?.phone || null;
   const matchedClientId = await matchPhoneToClient(finalCallerPhone);
 
+  // Enrich caller name using Twilio Lookup if name is missing
+  const unknownRawName = parsedData.contact?.name || null;
+  let unknownEnrichedName = unknownRawName;
+  let unknownTwilioCallerType: "BUSINESS" | "CONSUMER" | null = null;
+  let unknownCallerEnriched = false;
+
+  if (finalCallerPhone && isTwilioLookupAvailable()) {
+    const enriched = await enrichCallerName(finalCallerPhone, unknownRawName);
+    unknownEnrichedName = enriched.name;
+    unknownTwilioCallerType = enriched.type;
+    unknownCallerEnriched = enriched.enriched;
+
+    if (unknownCallerEnriched) {
+      console.log(`[GoTo Webhook] Enriched caller name via Twilio: ${unknownRawName} -> ${unknownEnrichedName} (${unknownTwilioCallerType})`);
+    }
+  }
+
   const [insertedCall] = await db
     .insert(calls)
     .values({
       vapiCallId: `goto-unknown-${Date.now()}`,
       clientId: matchedClientId,
       callerPhone: finalCallerPhone,
-      callerName: parsedData.contact?.name || null,
+      callerName: unknownEnrichedName,
       status: "completed",
       direction,
       duration: parsedData.call?.duration || null,
@@ -817,6 +877,9 @@ async function processUnknownEvent(
         parsedAt: new Date().toISOString(),
         confidence: parsedData.confidence || null,
         aiParsed: true,
+        twilioEnriched: unknownCallerEnriched,
+        twilioCallerType: unknownTwilioCallerType,
+        rawCallerName: unknownRawName,
         webhookLogId,
       },
     })
@@ -825,7 +888,7 @@ async function processUnknownEvent(
   return {
     id: insertedCall?.id || "",
     callerPhone: finalCallerPhone,
-    callerName: parsedData.contact?.name || null,
+    callerName: unknownEnrichedName,
     direction,
     duration: parsedData.call?.duration || null,
     transcript: parsedData.call?.transcript || null,
