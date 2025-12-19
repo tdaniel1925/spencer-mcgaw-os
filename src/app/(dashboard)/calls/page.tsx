@@ -35,12 +35,18 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import {
   Collapsible,
   CollapsibleContent,
@@ -313,6 +319,8 @@ function ExpandableCallCard({
   isDragging,
   isExpanded,
   onToggleExpand,
+  teamMembers,
+  onAssign,
 }: {
   call: CallRecord;
   selected: boolean;
@@ -324,7 +332,11 @@ function ExpandableCallCard({
   isDragging?: boolean;
   isExpanded: boolean;
   onToggleExpand: () => void;
+  teamMembers: TeamMember[];
+  onAssign: (userId: string | null) => void;
 }) {
+  const [assigneeSearch, setAssigneeSearch] = useState("");
+  const [assigneeOpen, setAssigneeOpen] = useState(false);
   const [note, setNote] = useState("");
   const [showTranscript, setShowTranscript] = useState(true);
 
@@ -512,41 +524,109 @@ function ExpandableCallCard({
               )}
             </div>
 
-            {/* Quick Actions */}
+            {/* Quick Actions - Direct Buttons */}
             <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-8 w-8">
-                    <MoreHorizontal className="h-4 w-4" />
+              {/* Assign to User Dropdown */}
+              <Popover open={assigneeOpen} onOpenChange={setAssigneeOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-8 px-2 gap-1.5">
+                    <User className="h-4 w-4" />
+                    <span className="text-xs max-w-[80px] truncate">
+                      {call.assignedTo
+                        ? teamMembers.find((m) => m.id === call.assignedTo)?.name || "Assigned"
+                        : "Assign"}
+                    </span>
+                    <ChevronDown className="h-3 w-3 opacity-50" />
                   </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem onClick={() => onQuickAction("call_back")}>
-                    <PhoneCall className="h-4 w-4 mr-2" />
-                    Call Back
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => onQuickAction("send_email")}>
-                    <Mail className="h-4 w-4 mr-2" />
-                    Send Email
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => onQuickAction("create_task")}>
-                    <ListTodo className="h-4 w-4 mr-2" />
-                    Add to Tasks
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => onQuickAction("complete")}>
-                    <CheckCircle className="h-4 w-4 mr-2" />
-                    Mark Complete
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => onQuickAction("delete")}
-                    className="text-destructive"
+                </PopoverTrigger>
+                <PopoverContent className="w-[220px] p-0" align="end">
+                  <Command>
+                    <CommandInput
+                      placeholder="Search team members..."
+                      value={assigneeSearch}
+                      onValueChange={setAssigneeSearch}
+                    />
+                    <CommandList>
+                      <CommandEmpty>No team member found.</CommandEmpty>
+                      <CommandGroup>
+                        <CommandItem
+                          value="unassigned"
+                          onSelect={() => {
+                            onAssign(null);
+                            setAssigneeOpen(false);
+                            setAssigneeSearch("");
+                          }}
+                        >
+                          <span className="text-muted-foreground">Unassigned</span>
+                        </CommandItem>
+                        {teamMembers
+                          .filter(
+                            (m) =>
+                              m.name.toLowerCase().includes(assigneeSearch.toLowerCase()) ||
+                              m.email.toLowerCase().includes(assigneeSearch.toLowerCase())
+                          )
+                          .map((member) => (
+                            <CommandItem
+                              key={member.id}
+                              value={member.name}
+                              onSelect={() => {
+                                onAssign(member.id);
+                                setAssigneeOpen(false);
+                                setAssigneeSearch("");
+                              }}
+                            >
+                              <div className="flex items-center gap-2">
+                                <Avatar className="h-5 w-5">
+                                  <AvatarFallback className="text-[10px] bg-primary/10">
+                                    {member.name
+                                      .split(" ")
+                                      .map((n) => n[0])
+                                      .join("")
+                                      .toUpperCase()}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <span>{member.name}</span>
+                                {call.assignedTo === member.id && (
+                                  <CheckCircle className="h-3.5 w-3.5 ml-auto text-primary" />
+                                )}
+                              </div>
+                            </CommandItem>
+                          ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+
+              {/* Add to Tasks Button */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => onQuickAction("create_task")}
                   >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Delete
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                    <ListTodo className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Add to Tasks</TooltipContent>
+              </Tooltip>
+
+              {/* Delete Button */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                    onClick={() => onQuickAction("delete")}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Delete</TooltipContent>
+              </Tooltip>
             </div>
           </div>
         </div>
@@ -733,13 +813,9 @@ function ExpandableCallCard({
 
             {/* Action Buttons */}
             <div className="flex items-center gap-2 pt-2 border-t">
-              <Button variant="outline" size="sm" onClick={() => onQuickAction("call_back")}>
-                <PhoneCall className="h-4 w-4 mr-2" />
-                Call Back
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => onQuickAction("send_email")}>
-                <Mail className="h-4 w-4 mr-2" />
-                Email
+              <Button variant="outline" size="sm" onClick={() => onQuickAction("create_task")}>
+                <ListTodo className="h-4 w-4 mr-2" />
+                Add to Tasks
               </Button>
               <div className="flex-1" />
               <Button size="sm" onClick={() => onQuickAction("complete")}>
@@ -959,6 +1035,7 @@ function CallsPageContent() {
     archiveCall,
     deleteCall,
     updateActionFeedback,
+    assignCall,
   } = useCalls();
 
   const [selectedCalls, setSelectedCalls] = useState<Set<string>>(new Set());
@@ -1246,6 +1323,21 @@ function CallsPageContent() {
     );
     toast.success("Call moved to bucket");
   }, []);
+
+  // Assign call to user handler
+  const handleAssignCall = useCallback(
+    (callId: string, userId: string | null) => {
+      if (userId) {
+        const member = teamMembers.find((m) => m.id === userId);
+        assignCall(callId, userId, member?.name || "Unknown");
+        toast.success(`Call assigned to ${member?.name || "team member"}`);
+      } else {
+        assignCall(callId, "", "");
+        toast.success("Call unassigned");
+      }
+    },
+    [teamMembers, assignCall]
+  );
 
   // Selection handlers
   const handleSelect = useCallback((callId: string, selected: boolean) => {
@@ -1539,6 +1631,8 @@ function CallsPageContent() {
                     onToggleExpand={() =>
                       setExpandedCallId(expandedCallId === call.id ? null : call.id)
                     }
+                    teamMembers={teamMembers}
+                    onAssign={(userId) => handleAssignCall(call.id, userId)}
                   />
                 ))}
               {mounted && hasMoreCalls && (
