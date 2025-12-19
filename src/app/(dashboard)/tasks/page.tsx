@@ -297,26 +297,27 @@ export default function TasksPage() {
           isTestTask && "border-amber-200 bg-amber-50/30"
         )}
       >
-        <CardContent className="p-3 overflow-hidden max-w-full">
-          {/* Source breadcrumb */}
-          {task.source_type && task.source_type !== "manual" && (
-            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mb-2 pb-2 border-b border-dashed">
-              <SourceIcon className="h-3 w-3" />
-              <span>Created from {task.source_type.replace(/_/g, " ")}</span>
-              {task.created_at && (
-                <>
-                  <span>•</span>
-                  <span>{format(new Date(task.created_at), "MMM d, h:mm a")}</span>
-                </>
-              )}
-            </div>
-          )}
+        <CardContent className="p-3 overflow-hidden" style={{ maxWidth: '100%' }}>
+          <div className="w-full overflow-hidden">
+            {/* Source breadcrumb */}
+            {task.source_type && task.source_type !== "manual" && (
+              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mb-2 pb-2 border-b border-dashed overflow-hidden">
+                <SourceIcon className="h-3 w-3 flex-shrink-0" />
+                <span className="truncate">Created from {task.source_type.replace(/_/g, " ")}</span>
+                {task.created_at && (
+                  <>
+                    <span className="flex-shrink-0">•</span>
+                    <span className="flex-shrink-0">{format(new Date(task.created_at), "MMM d, h:mm a")}</span>
+                  </>
+                )}
+              </div>
+            )}
 
-          <div className="flex items-start justify-between gap-2 mb-2 min-w-0">
-            <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
-              <div className={cn("w-2 h-2 rounded-full flex-shrink-0", priorityConfig[task.priority]?.dot)} />
-              <span className="font-medium text-sm truncate block max-w-full">{task.title}</span>
-            </div>
+            <div className="flex items-start justify-between gap-2 mb-2 min-w-0">
+              <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
+                <div className={cn("w-2 h-2 rounded-full flex-shrink-0", priorityConfig[task.priority]?.dot)} />
+                <span className="font-medium text-sm truncate">{task.title}</span>
+              </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="h-6 w-6 flex-shrink-0">
@@ -372,8 +373,8 @@ export default function TasksPage() {
           </div>
 
           {task.description && (
-            <div className="bg-muted/50 rounded-lg p-2 mb-2 overflow-hidden">
-              <p className="text-xs text-muted-foreground line-clamp-2 break-words overflow-hidden">
+            <div className="bg-muted/50 rounded-lg p-2 mb-2 overflow-hidden w-full">
+              <p className="text-xs text-muted-foreground line-clamp-2 break-all overflow-hidden whitespace-normal" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
                 {task.description}
               </p>
             </div>
@@ -428,6 +429,7 @@ export default function TasksPage() {
               </span>
             </div>
           )}
+          </div>
         </CardContent>
       </Card>
     );
