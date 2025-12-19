@@ -280,158 +280,173 @@ export default function TasksPage() {
     }
   };
 
-  // Task card component
+  // Task card component - using div-based structure for reliable text containment
   const TaskCard = ({ task, showClaimButton = false }: { task: Task; showClaimButton?: boolean }) => {
     const SourceIcon = sourceIcons[task.source_type as keyof typeof sourceIcons] || ClipboardList;
     const isTestTask = task.source_email_id?.startsWith("test_");
 
     return (
-      <Card
+      <div
         draggable={currentView !== "team-pool"}
         onDragStart={(e) => handleDragStart(e, task)}
         onDragEnd={handleDragEnd}
         className={cn(
-          "transition-all border-border/50 hover:shadow-md overflow-hidden w-full max-w-full",
+          "bg-card rounded-lg border shadow-sm p-3 transition-all hover:shadow-md",
           currentView !== "team-pool" && "cursor-grab active:cursor-grabbing",
           draggedTask?.id === task.id && "opacity-50 ring-2 ring-primary",
           isTestTask && "border-amber-200 bg-amber-50/30"
         )}
+        style={{ overflow: 'hidden', maxWidth: '100%', boxSizing: 'border-box' }}
       >
-        <CardContent className="p-3 overflow-hidden" style={{ maxWidth: '100%' }}>
-          <div className="w-full overflow-hidden">
-            {/* Source breadcrumb */}
-            {task.source_type && task.source_type !== "manual" && (
-              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mb-2 pb-2 border-b border-dashed overflow-hidden">
-                <SourceIcon className="h-3 w-3 flex-shrink-0" />
-                <span className="truncate">Created from {task.source_type.replace(/_/g, " ")}</span>
-                {task.created_at && (
-                  <>
-                    <span className="flex-shrink-0">•</span>
-                    <span className="flex-shrink-0">{format(new Date(task.created_at), "MMM d, h:mm a")}</span>
-                  </>
-                )}
-              </div>
-            )}
-
-            <div className="flex items-start justify-between gap-2 mb-2 min-w-0">
-              <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
-                <div className={cn("w-2 h-2 rounded-full flex-shrink-0", priorityConfig[task.priority]?.dot)} />
-                <span className="font-medium text-sm truncate">{task.title}</span>
-              </div>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-6 w-6 flex-shrink-0">
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem
-                  onClick={() => {
-                    setSelectedTask(task);
-                    setViewDialogOpen(true);
-                  }}
-                >
-                  <Eye className="h-4 w-4 mr-2" />
-                  View Details
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => {
-                    setSelectedTask(task);
-                    fetchTeamMembers();
-                    setReassignDialogOpen(true);
-                  }}
-                >
-                  <UserPlus className="h-4 w-4 mr-2" />
-                  Assign to Someone
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                {task.status !== "completed" && (
-                  <DropdownMenuItem onClick={() => handleQuickStatusChange(task, "completed")}>
-                    <CheckCircle className="h-4 w-4 mr-2" />
-                    Mark Complete
-                  </DropdownMenuItem>
-                )}
-                {task.status === "completed" && (
-                  <DropdownMenuItem onClick={() => handleQuickStatusChange(task, "in_progress")}>
-                    <ArrowRight className="h-4 w-4 mr-2" />
-                    Reopen
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  className="text-destructive"
-                  onClick={() => {
-                    setSelectedTask(task);
-                    setDeleteDialogOpen(true);
-                  }}
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-
-          {task.description && (
-            <div className="bg-muted/50 rounded-lg p-2 mb-2 overflow-hidden w-full">
-              <p className="text-xs text-muted-foreground line-clamp-2 break-all overflow-hidden whitespace-normal" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
-                {task.description}
-              </p>
-            </div>
-          )}
-
-          <div className="flex items-center flex-wrap gap-1.5 text-xs">
-            {task.priority === "urgent" && (
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-red-100 text-red-700 border-red-200">
-                Urgent
-              </Badge>
-            )}
-            {task.priority === "high" && (
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-orange-100 text-orange-700 border-orange-200">
-                High
-              </Badge>
-            )}
-            {task.client && (
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                {task.client.first_name} {task.client.last_name}
-              </Badge>
-            )}
-            {isTestTask && (
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-300 text-amber-600">
-                Test
-              </Badge>
+        {/* Source breadcrumb */}
+        {task.source_type && task.source_type !== "manual" && (
+          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mb-2 pb-2 border-b border-dashed">
+            <SourceIcon className="h-3 w-3 flex-shrink-0" />
+            <span className="truncate">Created from {task.source_type.replace(/_/g, " ")}</span>
+            {task.created_at && (
+              <>
+                <span className="flex-shrink-0">•</span>
+                <span className="flex-shrink-0">{format(new Date(task.created_at), "MMM d, h:mm a")}</span>
+              </>
             )}
           </div>
+        )}
 
-          {/* Claim button for team pool view */}
-          {showClaimButton && (
-            <div className="mt-3 pt-2 border-t">
-              <Button
-                size="sm"
-                className="w-full h-7 text-xs"
-                onClick={() => handleClaimTask(task)}
-              >
-                <Hand className="h-3 w-3 mr-1.5" />
-                Claim This Task
+        {/* Title row */}
+        <div className="flex items-start justify-between gap-2 mb-2">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <div className={cn("w-2 h-2 rounded-full flex-shrink-0", priorityConfig[task.priority]?.dot)} />
+            <span className="font-medium text-sm truncate block" style={{ maxWidth: 'calc(100% - 16px)' }}>{task.title}</span>
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-6 w-6 flex-shrink-0">
+                <MoreHorizontal className="h-4 w-4" />
               </Button>
-            </div>
-          )}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onClick={() => {
+                  setSelectedTask(task);
+                  setViewDialogOpen(true);
+                }}
+              >
+                <Eye className="h-4 w-4 mr-2" />
+                View Details
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => {
+                  setSelectedTask(task);
+                  fetchTeamMembers();
+                  setReassignDialogOpen(true);
+                }}
+              >
+                <UserPlus className="h-4 w-4 mr-2" />
+                Assign to Someone
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              {task.status !== "completed" && (
+                <DropdownMenuItem onClick={() => handleQuickStatusChange(task, "completed")}>
+                  <CheckCircle className="h-4 w-4 mr-2" />
+                  Mark Complete
+                </DropdownMenuItem>
+              )}
+              {task.status === "completed" && (
+                <DropdownMenuItem onClick={() => handleQuickStatusChange(task, "in_progress")}>
+                  <ArrowRight className="h-4 w-4 mr-2" />
+                  Reopen
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-destructive"
+                onClick={() => {
+                  setSelectedTask(task);
+                  setDeleteDialogOpen(true);
+                }}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
 
-          {task.due_date && !showClaimButton && (
-            <div className="mt-2 pt-2 border-t flex items-center gap-1 text-xs">
-              <Clock className="h-3 w-3 text-muted-foreground" />
-              <span className={cn(
-                new Date(task.due_date) < new Date() && task.status !== "completed"
-                  ? "text-red-600 font-medium"
-                  : "text-muted-foreground"
-              )}>
-                {format(new Date(task.due_date), "MMM d")}
-              </span>
-            </div>
-          )}
+        {/* Description - with forced text containment */}
+        {task.description && (
+          <div
+            className="bg-muted/50 rounded-lg p-2 mb-2"
+            style={{ overflow: 'hidden', maxWidth: '100%' }}
+          >
+            <p
+              className="text-xs text-muted-foreground"
+              style={{
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+                wordBreak: 'break-word',
+                overflowWrap: 'anywhere',
+                hyphens: 'auto'
+              }}
+            >
+              {task.description}
+            </p>
           </div>
-        </CardContent>
-      </Card>
+        )}
+
+        {/* Tags */}
+        <div className="flex items-center flex-wrap gap-1.5 text-xs">
+          {task.priority === "urgent" && (
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-red-100 text-red-700 border-red-200">
+              Urgent
+            </Badge>
+          )}
+          {task.priority === "high" && (
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-orange-100 text-orange-700 border-orange-200">
+              High
+            </Badge>
+          )}
+          {task.client && (
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+              {task.client.first_name} {task.client.last_name}
+            </Badge>
+          )}
+          {isTestTask && (
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-300 text-amber-600">
+              Test
+            </Badge>
+          )}
+        </div>
+
+        {/* Claim button for team pool view */}
+        {showClaimButton && (
+          <div className="mt-3 pt-2 border-t">
+            <Button
+              size="sm"
+              className="w-full h-7 text-xs"
+              onClick={() => handleClaimTask(task)}
+            >
+              <Hand className="h-3 w-3 mr-1.5" />
+              Claim This Task
+            </Button>
+          </div>
+        )}
+
+        {/* Due date */}
+        {task.due_date && !showClaimButton && (
+          <div className="mt-2 pt-2 border-t flex items-center gap-1 text-xs">
+            <Clock className="h-3 w-3 text-muted-foreground" />
+            <span className={cn(
+              new Date(task.due_date) < new Date() && task.status !== "completed"
+                ? "text-red-600 font-medium"
+                : "text-muted-foreground"
+            )}>
+              {format(new Date(task.due_date), "MMM d")}
+            </span>
+          </div>
+        )}
+      </div>
     );
   };
 
@@ -714,7 +729,7 @@ export default function TasksPage() {
             </div>
           ) : (
             // My Work & All: Kanban board
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-full">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-full" style={{ minWidth: 0 }}>
               {KANBAN_STATUSES.map((status) => {
                 const statusTasks = getTasksByStatus(status);
                 const config = statusConfig[status];
@@ -723,14 +738,15 @@ export default function TasksPage() {
                   <div
                     key={status}
                     className={cn(
-                      "flex flex-col rounded-lg bg-muted/30 transition-colors overflow-hidden min-w-0",
+                      "flex flex-col rounded-lg bg-muted/30 transition-colors",
                       dragOverColumn === status && "bg-primary/10"
                     )}
+                    style={{ overflow: 'hidden', minWidth: 0, maxWidth: '100%' }}
                     onDragOver={(e) => handleDragOver(e, status)}
                     onDragLeave={handleDragLeave}
                     onDrop={(e) => handleDrop(e, status)}
                   >
-                    <div className="p-3 border-b bg-card rounded-t-lg">
+                    <div className="p-3 border-b bg-card rounded-t-lg flex-shrink-0">
                       <div className="flex items-center gap-2">
                         <div className={cn(
                           "w-2 h-2 rounded-full",
@@ -745,8 +761,8 @@ export default function TasksPage() {
                       </div>
                     </div>
 
-                    <ScrollArea className="flex-1 w-full">
-                      <div className="p-2 space-y-2 min-h-[200px] overflow-hidden">
+                    <div className="flex-1 overflow-y-auto overflow-x-hidden">
+                      <div className="p-2 space-y-2 min-h-[200px]" style={{ maxWidth: '100%' }}>
                         {statusTasks.length === 0 ? (
                           <div className={cn(
                             "flex flex-col items-center justify-center py-8 text-center border-2 border-dashed rounded-lg transition-colors",
@@ -762,7 +778,7 @@ export default function TasksPage() {
                           ))
                         )}
                       </div>
-                    </ScrollArea>
+                    </div>
                   </div>
                 );
               })}
