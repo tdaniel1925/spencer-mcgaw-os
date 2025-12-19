@@ -379,31 +379,19 @@ export default function TasksPage() {
           </DropdownMenu>
         </div>
 
-        {/* Description - with forced text containment */}
+        {/* Description - truncated in JS for guaranteed containment */}
         {task.description && (
           <div
-            className="bg-muted/50 rounded-lg p-2 mb-2 w-full"
+            className="bg-muted/50 rounded-lg p-2 mb-2"
             style={{
               overflow: 'hidden',
-              width: '100%',
-              maxWidth: '100%',
-              boxSizing: 'border-box'
+              maxHeight: '52px'
             }}
           >
-            <p
-              className="text-xs text-muted-foreground w-full"
-              style={{
-                display: '-webkit-box',
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: 'vertical',
-                overflow: 'hidden',
-                wordBreak: 'break-all',
-                overflowWrap: 'anywhere',
-                width: '100%',
-                maxWidth: '100%'
-              }}
-            >
-              {task.description}
+            <p className="text-xs text-muted-foreground">
+              {task.description.length > 120
+                ? task.description.substring(0, 120) + '...'
+                : task.description}
             </p>
           </div>
         )}
