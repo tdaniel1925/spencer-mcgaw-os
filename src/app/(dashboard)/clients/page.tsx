@@ -331,7 +331,7 @@ export default function ClientsPage() {
                               <div className="flex items-center gap-3">
                                 <Avatar className="h-9 w-9">
                                   <AvatarFallback className="bg-primary/10 text-primary">
-                                    {client.name
+                                    {(client.name || "??")
                                       .split(" ")
                                       .map((n) => n[0])
                                       .join("")
@@ -340,7 +340,7 @@ export default function ClientsPage() {
                                   </AvatarFallback>
                                 </Avatar>
                                 <div>
-                                  <div className="font-medium">{client.name}</div>
+                                  <div className="font-medium">{client.name || "Unknown"}</div>
                                 </div>
                               </div>
                             </TableCell>

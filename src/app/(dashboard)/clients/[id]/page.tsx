@@ -431,7 +431,7 @@ export default function ClientDetailPage() {
       const res = await fetch(`/api/clients/${clientId}`);
       if (res.ok) {
         const data = await res.json();
-        setClient(data);
+        setClient(data.client);
       }
     } catch (error) {
       console.error("Error loading client:", error);
@@ -1109,7 +1109,7 @@ export default function ClientDetailPage() {
 
   return (
     <>
-      <Header title={client.name} />
+      <Header title={client.name || "Client Detail"} />
       <main className="flex flex-col h-[calc(100vh-64px)] overflow-hidden">
         {/* Top Bar */}
         <div className="h-14 border-b bg-card flex items-center px-4 gap-3 flex-shrink-0">
@@ -1123,11 +1123,11 @@ export default function ClientDetailPage() {
           <div className="flex items-center gap-3 flex-1">
             <Avatar className="h-10 w-10 border-2 border-primary/20">
               <AvatarFallback className="bg-primary text-primary-foreground">
-                {client.name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase()}
+                {(client.name || "??").split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase()}
               </AvatarFallback>
             </Avatar>
             <div>
-              <h1 className="font-semibold">{client.name}</h1>
+              <h1 className="font-semibold">{client.name || "Unknown Client"}</h1>
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Badge variant="outline" className={cn(
                   "text-[10px] px-1.5 py-0",
