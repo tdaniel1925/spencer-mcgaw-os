@@ -109,11 +109,14 @@ import { categoryInfo } from "@/lib/calendar/types";
 // View types
 type ViewType = "month" | "week" | "day" | "schedule";
 
-// Empty connections array - real data comes from calendar integrations
-const calendarConnections: { id: string; provider: "microsoft" | "google"; email: string; syncEnabled: boolean }[] = [];
-
-// Empty events array - real data comes from calendar integrations
-const initialEvents: CalendarEvent[] = [];
+// Calendar connection type
+interface CalendarConnection {
+  id: string;
+  provider: CalendarProvider;
+  email: string;
+  sync_enabled: boolean;
+  last_sync_at: string | null;
+}
 
 // Category options for the form
 const categoryOptions: { value: EventCategory; label: string; color: string }[] = [
@@ -749,7 +752,7 @@ export default function CalendarPage() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
   const [view, setView] = useState<ViewType>("week");
-  const [events, setEvents] = useState<CalendarEvent[]>(initialEvents);
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [showEventDetail, setShowEventDetail] = useState(false);
   const [showCreateEvent, setShowCreateEvent] = useState(false);
@@ -761,9 +764,86 @@ export default function CalendarPage() {
   const [filterProviders, setFilterProviders] = useState<CalendarProvider[]>([]);
   const [showFilters, setShowFilters] = useState(false);
 
+  // Calendar connections state
+  const [calendarConnections, setCalendarConnections] = useState<CalendarConnection[]>([]);
+  const [showConnectCalendar, setShowConnectCalendar] = useState(false);
+  const [connectingProvider, setConnectingProvider] = useState<string | null>(null);
+
+  // Fetch calendar connections and events on mount
   useEffect(() => {
     setMounted(true);
+    fetchCalendarConnections();
+    fetchCalendarEvents();
   }, []);
+
+  // Fetch calendar connections
+  const fetchCalendarConnections = async () => {
+    try {
+      const response = await fetch("/api/calendar/connections");
+      if (response.ok) {
+        const data = await response.json();
+        setCalendarConnections(data.connections || []);
+      }
+    } catch (error) {
+      console.error("Error fetching calendar connections:", error);
+    }
+  };
+
+  // Fetch calendar events from local database
+  const fetchCalendarEvents = async () => {
+    try {
+      const response = await fetch("/api/calendar/local-events");
+      if (response.ok) {
+        const data = await response.json();
+        const transformedEvents = (data.events || []).map((e: Record<string, unknown>) => ({
+          ...e,
+          startTime: new Date(e.startTime as string),
+          endTime: new Date(e.endTime as string),
+          createdAt: e.createdAt ? new Date(e.createdAt as string) : undefined,
+          updatedAt: e.updatedAt ? new Date(e.updatedAt as string) : undefined,
+        }));
+        setEvents(transformedEvents);
+      }
+    } catch (error) {
+      console.error("Error fetching calendar events:", error);
+    }
+  };
+
+  // Connect to a calendar provider
+  const connectCalendar = async (provider: "google" | "microsoft") => {
+    setConnectingProvider(provider);
+    try {
+      if (provider === "google") {
+        const response = await fetch("/api/calendar/google/connect");
+        if (response.ok) {
+          const data = await response.json();
+          if (data.url) {
+            window.location.href = data.url;
+          }
+        } else {
+          const error = await response.json();
+          alert(error.error || "Failed to connect to Google Calendar. Please check your environment configuration.");
+        }
+      } else if (provider === "microsoft") {
+        // Microsoft uses the existing email OAuth flow
+        const response = await fetch("/api/email/auth/microsoft");
+        if (response.ok) {
+          const data = await response.json();
+          if (data.url) {
+            window.location.href = data.url;
+          }
+        } else {
+          alert("Failed to connect to Microsoft Calendar. Please check your environment configuration.");
+        }
+      }
+    } catch (error) {
+      console.error("Error connecting calendar:", error);
+      alert("Failed to connect calendar. Please try again.");
+    } finally {
+      setConnectingProvider(null);
+      setShowConnectCalendar(false);
+    }
+  };
 
   // Navigation handlers
   const navigatePrev = () => {
@@ -828,19 +908,54 @@ export default function CalendarPage() {
     return result;
   }, [events, searchQuery, filterCategories, filterProviders]);
 
-  // Sync calendars
+  // Sync calendars - fetches events from all connected providers
   const syncCalendars = async () => {
     setSyncing(true);
     try {
-      // Fetch from Microsoft
-      const msResponse = await fetch("/api/calendar/events");
-      if (msResponse.ok) {
-        const msData = await msResponse.json();
-        // Merge with existing events
-        console.log("Synced Microsoft events:", msData.events?.length || 0);
+      // Fetch local events
+      await fetchCalendarEvents();
+
+      // Fetch from Microsoft if connected
+      const hasMicrosoft = calendarConnections.some(c => c.provider === "microsoft");
+      if (hasMicrosoft) {
+        const msResponse = await fetch("/api/calendar/events");
+        if (msResponse.ok) {
+          const msData = await msResponse.json();
+          if (msData.events && msData.events.length > 0) {
+            // Transform and merge Microsoft events
+            const msEvents: CalendarEvent[] = msData.events.map((e: Record<string, unknown>) => ({
+              id: e.id as string,
+              provider: "microsoft" as CalendarProvider,
+              externalId: e.id as string,
+              title: e.subject as string || "Untitled",
+              description: (e.bodyPreview as string) || "",
+              location: (e.location as { displayName?: string })?.displayName || "",
+              startTime: new Date((e.start as { dateTime: string })?.dateTime || Date.now()),
+              endTime: new Date((e.end as { dateTime: string })?.dateTime || Date.now()),
+              allDay: e.isAllDay as boolean || false,
+              isRecurring: false,
+              status: "confirmed" as const,
+              visibility: "default" as const,
+              attendees: [],
+              reminders: [],
+              category: "other" as EventCategory,
+              color: "bg-blue-500",
+              webLink: e.webLink as string,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            }));
+
+            // Merge with local events (avoiding duplicates by ID)
+            setEvents(prev => {
+              const localEvents = prev.filter(e => e.provider === "local");
+              return [...localEvents, ...msEvents];
+            });
+          }
+        }
       }
 
-      // Could also sync Google here
+      // Refresh connections in case sync status changed
+      await fetchCalendarConnections();
     } catch (error) {
       console.error("Sync error:", error);
     } finally {
@@ -848,30 +963,35 @@ export default function CalendarPage() {
     }
   };
 
-  // Create event handler
-  const handleCreateEvent = (eventData: Partial<CalendarEvent>) => {
-    const newEvent: CalendarEvent = {
-      id: `local-${Date.now()}`,
-      provider: "local",
-      title: eventData.title || "Untitled",
-      description: eventData.description,
-      location: eventData.location,
-      startTime: eventData.startTime || new Date(),
-      endTime: eventData.endTime || new Date(),
-      allDay: eventData.allDay || false,
-      isRecurring: false,
-      status: "confirmed",
-      visibility: "default",
-      attendees: eventData.attendees || [],
-      reminders: [{ method: "popup", minutes: 15 }],
-      category: eventData.category,
-      color: categoryOptions.find((c) => c.value === eventData.category)?.color,
-      meetingLink: eventData.meetingLink,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
+  // Create event handler - saves to database
+  const handleCreateEvent = async (eventData: Partial<CalendarEvent>) => {
+    try {
+      const response = await fetch("/api/calendar/local-events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: eventData.title || "Untitled",
+          description: eventData.description,
+          location: eventData.location,
+          meetingLink: eventData.meetingLink,
+          startTime: eventData.startTime?.toISOString(),
+          endTime: eventData.endTime?.toISOString(),
+          allDay: eventData.allDay || false,
+          category: eventData.category || "other",
+          color: categoryOptions.find((c) => c.value === eventData.category)?.color,
+          attendees: eventData.attendees || [],
+        }),
+      });
 
-    setEvents([...events, newEvent]);
+      if (response.ok) {
+        // Refresh events from server
+        await fetchCalendarEvents();
+      } else {
+        console.error("Failed to create event");
+      }
+    } catch (error) {
+      console.error("Error creating event:", error);
+    }
   };
 
   // AI Schedule handler
@@ -1087,7 +1207,12 @@ export default function CalendarPage() {
               <CardHeader className="p-4 pb-2">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-sm font-medium">Connected Calendars</CardTitle>
-                  <Button variant="ghost" size="icon" className="h-6 w-6">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() => setShowConnectCalendar(true)}
+                  >
                     <Plus className="h-4 w-4" />
                   </Button>
                 </div>
@@ -1104,13 +1229,18 @@ export default function CalendarPage() {
                     <span className="truncate flex-1">{conn.email}</span>
                     <Badge
                       variant="outline"
-                      className={cn("text-xs", conn.syncEnabled && "bg-green-100")}
+                      className={cn("text-xs", conn.sync_enabled && "bg-green-100")}
                     >
-                      {conn.syncEnabled ? "Synced" : "Off"}
+                      {conn.sync_enabled ? "Synced" : "Off"}
                     </Badge>
                   </div>
                 ))}
-                <Button variant="outline" size="sm" className="w-full mt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full mt-2"
+                  onClick={() => setShowConnectCalendar(true)}
+                >
                   <Plus className="h-4 w-4 mr-2" />
                   Connect Calendar
                 </Button>
@@ -1524,6 +1654,92 @@ export default function CalendarPage() {
           onClose={() => setShowAIScheduling(false)}
           onSchedule={handleAISchedule}
         />
+
+        {/* Connect Calendar Dialog */}
+        <Dialog open={showConnectCalendar} onOpenChange={setShowConnectCalendar}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Connect Calendar</DialogTitle>
+              <DialogDescription>
+                Connect your Google or Microsoft calendar to sync events automatically.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              {/* Google Calendar */}
+              <Button
+                variant="outline"
+                className="w-full justify-start gap-3 h-14"
+                onClick={() => connectCalendar("google")}
+                disabled={connectingProvider !== null}
+              >
+                <div className="w-8 h-8 flex items-center justify-center">
+                  <svg className="h-6 w-6" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                  </svg>
+                </div>
+                <div className="flex-1 text-left">
+                  <div className="font-medium">Google Calendar</div>
+                  <div className="text-xs text-muted-foreground">Connect your Google account</div>
+                </div>
+                {connectingProvider === "google" && (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                )}
+              </Button>
+
+              {/* Microsoft/Outlook Calendar */}
+              <Button
+                variant="outline"
+                className="w-full justify-start gap-3 h-14"
+                onClick={() => connectCalendar("microsoft")}
+                disabled={connectingProvider !== null}
+              >
+                <div className="w-8 h-8 flex items-center justify-center">
+                  <svg className="h-6 w-6" viewBox="0 0 21 21">
+                    <rect x="1" y="1" width="9" height="9" fill="#f25022"/>
+                    <rect x="1" y="11" width="9" height="9" fill="#00a4ef"/>
+                    <rect x="11" y="1" width="9" height="9" fill="#7fba00"/>
+                    <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
+                  </svg>
+                </div>
+                <div className="flex-1 text-left">
+                  <div className="font-medium">Microsoft Outlook</div>
+                  <div className="text-xs text-muted-foreground">Connect your Microsoft account</div>
+                </div>
+                {connectingProvider === "microsoft" && (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                )}
+              </Button>
+            </div>
+
+            {calendarConnections.length > 0 && (
+              <>
+                <div className="border-t pt-4">
+                  <Label className="text-sm text-muted-foreground mb-2 block">Connected Accounts</Label>
+                  <div className="space-y-2">
+                    {calendarConnections.map((conn) => (
+                      <div key={conn.id} className="flex items-center gap-2 text-sm p-2 rounded-lg bg-muted/50">
+                        {providerIcons[conn.provider]}
+                        <span className="flex-1 truncate">{conn.email}</span>
+                        <Badge variant="outline" className="text-xs bg-green-100">
+                          Connected
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowConnectCalendar(false)}>
+                Close
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </main>
     </TooltipProvider>
   );
