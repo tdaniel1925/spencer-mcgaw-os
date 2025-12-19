@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAccessToken } from "@/lib/goto";
+import { createClient } from "@/lib/supabase/server";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -12,6 +13,17 @@ interface RouteParams {
  * This is needed because GoTo's recording URLs require OAuth authentication
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
+  // Authentication check
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json(
+      { error: "Unauthorized" },
+      { status: 401 }
+    );
+  }
+
   const { id: recordingId } = await params;
 
   if (!recordingId) {

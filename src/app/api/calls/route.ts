@@ -2,9 +2,21 @@ import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { calls } from "@/db/schema";
 import { desc } from "drizzle-orm";
+import { createClient } from "@/lib/supabase/server";
 
 export async function GET() {
   try {
+    // Authentication check
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized", calls: [] },
+        { status: 401 }
+      );
+    }
+
     // Fetch calls from database, ordered by newest first
     const callRecords = await db
       .select()

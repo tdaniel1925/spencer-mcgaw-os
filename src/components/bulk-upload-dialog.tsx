@@ -33,7 +33,7 @@ import {
   ChevronRight,
   Loader2,
 } from "lucide-react";
-import * as XLSX from "xlsx";
+import readXlsxFile from "read-excel-file";
 
 interface FieldMapping {
   sourceColumn: string;
@@ -127,57 +127,61 @@ export function BulkUploadDialog({
   };
 
   const parseFile = async (file: File): Promise<Record<string, any>[]> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-
-      reader.onload = (e) => {
-        try {
-          const data = e.target?.result;
-          if (!data) {
-            reject(new Error("No data"));
-            return;
-          }
-
-          if (file.name.endsWith(".csv")) {
-            // Parse CSV
-            const text = data as string;
-            const lines = text.split(/\r?\n/).filter((line) => line.trim());
-            if (lines.length < 2) {
-              resolve([]);
-              return;
-            }
-
-            const headers = parseCSVLine(lines[0]);
-            const rows = lines.slice(1).map((line) => {
-              const values = parseCSVLine(line);
-              const obj: Record<string, any> = {};
-              headers.forEach((header, i) => {
-                obj[header.trim()] = values[i]?.trim() || "";
-              });
-              return obj;
-            });
-            resolve(rows);
-          } else {
-            // Parse Excel
-            const workbook = XLSX.read(data, { type: "array" });
-            const sheetName = workbook.SheetNames[0];
-            const sheet = workbook.Sheets[sheetName];
-            const jsonData = XLSX.utils.sheet_to_json<Record<string, any>>(sheet);
-            resolve(jsonData);
-          }
-        } catch (error) {
-          reject(error);
-        }
-      };
-
-      reader.onerror = () => reject(reader.error);
-
-      if (file.name.endsWith(".csv")) {
-        reader.readAsText(file);
-      } else {
-        reader.readAsArrayBuffer(file);
+    if (file.name.endsWith(".csv")) {
+      // Parse CSV
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter((line) => line.trim());
+      if (lines.length < 2) {
+        return [];
       }
-    });
+
+      const headers = parseCSVLine(lines[0]);
+      const rows = lines.slice(1).map((line) => {
+        const values = parseCSVLine(line);
+        const obj: Record<string, any> = {};
+        headers.forEach((header, i) => {
+          obj[header.trim()] = values[i]?.trim() || "";
+        });
+        return obj;
+      });
+      return rows;
+    } else {
+      // Parse Excel with read-excel-file
+      const rows = await readXlsxFile(file);
+
+      if (rows.length < 2) {
+        return [];
+      }
+
+      // First row is headers
+      const headers = rows[0].map((cell, i) =>
+        cell !== null && cell !== undefined ? String(cell) : `Column${i + 1}`
+      );
+
+      // Convert remaining rows to objects
+      const jsonData: Record<string, any>[] = [];
+      for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        const obj: Record<string, any> = {};
+        let hasData = false;
+
+        headers.forEach((header, colIndex) => {
+          const value = row[colIndex];
+          if (value === null || value === undefined) {
+            obj[header] = "";
+          } else {
+            obj[header] = String(value);
+            hasData = true;
+          }
+        });
+
+        if (hasData) {
+          jsonData.push(obj);
+        }
+      }
+
+      return jsonData;
+    }
   };
 
   const parseCSVLine = (line: string): string[] => {

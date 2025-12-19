@@ -30,6 +30,7 @@ import {
   MessageSquare,
   MessagesSquare,
   Kanban,
+  FileSpreadsheet,
 } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -83,19 +84,12 @@ const navSections: NavSection[] = [
     ],
   },
   {
-    label: "Tasks",
+    label: "Work",
     items: [
       {
-        title: "Task Table",
-        href: "/tasks-table",
-        icon: ClipboardList,
-        permission: "tasks:view_all",
-        adminOnly: true,
-      },
-      {
-        title: "My Tasks",
+        title: "Tasks",
         href: "/tasks",
-        icon: Kanban,
+        icon: ClipboardList,
         permission: "tasks:view",
       },
     ],
@@ -178,11 +172,11 @@ const navSections: NavSection[] = [
         icon: Calendar,
         permission: "calendar:view",
       },
-      {
-        title: "Activity",
-        href: "/activity",
-        icon: Activity,
-        permission: "activity:view",
+            {
+        title: "Reports",
+        href: "/reports",
+        icon: FileSpreadsheet,
+        permission: "analytics:view",
       },
     ],
   },
@@ -612,4 +606,6 @@ export function Sidebar() {
     </>
   );
 }
+
+
 

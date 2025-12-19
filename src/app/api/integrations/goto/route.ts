@@ -8,6 +8,7 @@ import {
   disconnectGoTo,
   runDiagnostics,
 } from "@/lib/goto";
+import { createClient } from "@/lib/supabase/server";
 
 /**
  * GET /api/integrations/goto
@@ -16,6 +17,17 @@ import {
  */
 export async function GET() {
   try {
+    // Authentication check
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
     // Get status from database
     const status = await getIntegrationStatus();
     const authenticated = await isAuthenticatedAsync();
@@ -66,6 +78,17 @@ export async function GET() {
  */
 export async function POST(request: NextRequest) {
   try {
+    // Authentication check
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
     const body = await request.json().catch(() => ({}));
     const action = body.action as string | undefined;
 
