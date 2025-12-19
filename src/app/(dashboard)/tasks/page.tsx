@@ -287,6 +287,45 @@ export default function TasksPage() {
     const SourceIcon = sourceIcons[task.source_type as keyof typeof sourceIcons] || ClipboardList;
     const isTestTask = task.source_email_id?.startsWith("test_");
 
+    // Extract caller/sender info from source_metadata or ai_extracted_data
+    const getContactInfo = () => {
+      // If we have a matched client, use that
+      if (task.client) {
+        return {
+          name: `${task.client.first_name} ${task.client.last_name}`,
+          detail: task.client.phone || task.client.email || null,
+          isMatched: true,
+        };
+      }
+
+      // For phone calls, check source_metadata
+      if (task.source_type === "phone_call" && task.source_metadata) {
+        const callerName = task.source_metadata.caller_name;
+        const callerPhone = task.source_metadata.caller_phone;
+        if (callerName || callerPhone) {
+          return {
+            name: callerName || null,
+            detail: callerPhone || null,
+            isMatched: false,
+          };
+        }
+      }
+
+      // For emails, check ai_extracted_data
+      if (task.source_type === "email" && task.ai_extracted_data?.client_match) {
+        const match = task.ai_extracted_data.client_match;
+        return {
+          name: match.name || match.company || null,
+          detail: match.email || null,
+          isMatched: false,
+        };
+      }
+
+      return null;
+    };
+
+    const contactInfo = getContactInfo();
+
     // Handle card click to open details (but not when clicking dropdown)
     const handleCardClick = (e: React.MouseEvent) => {
       // Don't open modal if clicking on dropdown trigger or its contents
@@ -332,6 +371,40 @@ export default function TasksPage() {
                 <span className="flex-shrink-0">{format(new Date(task.created_at), "MMM d, h:mm a")}</span>
               </>
             )}
+          </div>
+        )}
+
+        {/* Contact info - caller/sender */}
+        {contactInfo && (contactInfo.name || contactInfo.detail) && (
+          <div className={cn(
+            "flex items-center gap-2 text-xs mb-2 p-2 rounded-md",
+            contactInfo.isMatched ? "bg-green-50 border border-green-200" : "bg-blue-50 border border-blue-200"
+          )}>
+            <User className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
+            <div className="flex-1 min-w-0 truncate">
+              {contactInfo.name && (
+                <span className="font-medium">{contactInfo.name}</span>
+              )}
+              {contactInfo.name && contactInfo.detail && (
+                <span className="text-muted-foreground mx-1">•</span>
+              )}
+              {contactInfo.detail && (
+                <span className="text-muted-foreground">{contactInfo.detail}</span>
+              )}
+            </div>
+            {contactInfo.isMatched && (
+              <Badge variant="outline" className="text-[9px] px-1 py-0 bg-green-100 text-green-700 border-green-300 flex-shrink-0">
+                Matched
+              </Badge>
+            )}
+          </div>
+        )}
+
+        {/* Unknown caller warning */}
+        {task.source_type === "phone_call" && !contactInfo && (
+          <div className="flex items-center gap-2 text-xs mb-2 p-2 rounded-md bg-amber-50 border border-amber-200">
+            <AlertCircle className="h-3.5 w-3.5 flex-shrink-0 text-amber-600" />
+            <span className="text-amber-700">Unknown caller - needs identification</span>
           </div>
         )}
 

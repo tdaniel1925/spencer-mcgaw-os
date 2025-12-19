@@ -12,7 +12,21 @@ export interface Task {
   priority: "low" | "medium" | "high" | "urgent";
   source_type: "phone_call" | "email" | "document_intake" | "manual" | null;
   source_email_id: string | null;
-  source_metadata: Record<string, unknown> | null;
+  source_metadata: {
+    caller_phone?: string;
+    caller_name?: string;
+    conversation_space_id?: string;
+    extraction_summary?: string;
+    [key: string]: unknown;
+  } | null;
+  ai_extracted_data?: {
+    client_match?: {
+      name?: string;
+      email?: string;
+      company?: string;
+    };
+    [key: string]: unknown;
+  } | null;
   client_id: string | null;
   assigned_to: string | null;
   assigned_at: string | null;
