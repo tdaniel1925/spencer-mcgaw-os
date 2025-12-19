@@ -291,13 +291,13 @@ export default function TasksPage() {
         onDragStart={(e) => handleDragStart(e, task)}
         onDragEnd={handleDragEnd}
         className={cn(
-          "transition-all border-border/50 hover:shadow-md overflow-hidden",
+          "transition-all border-border/50 hover:shadow-md overflow-hidden w-full max-w-full",
           currentView !== "team-pool" && "cursor-grab active:cursor-grabbing",
           draggedTask?.id === task.id && "opacity-50 ring-2 ring-primary",
           isTestTask && "border-amber-200 bg-amber-50/30"
         )}
       >
-        <CardContent className="p-3 overflow-hidden">
+        <CardContent className="p-3 overflow-hidden max-w-full">
           {/* Source breadcrumb */}
           {task.source_type && task.source_type !== "manual" && (
             <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mb-2 pb-2 border-b border-dashed">
@@ -372,8 +372,8 @@ export default function TasksPage() {
           </div>
 
           {task.description && (
-            <div className="bg-muted/50 rounded-lg p-2 mb-2">
-              <p className="text-xs text-muted-foreground line-clamp-2">
+            <div className="bg-muted/50 rounded-lg p-2 mb-2 overflow-hidden">
+              <p className="text-xs text-muted-foreground line-clamp-2 break-words overflow-hidden">
                 {task.description}
               </p>
             </div>
@@ -721,7 +721,7 @@ export default function TasksPage() {
                   <div
                     key={status}
                     className={cn(
-                      "flex flex-col rounded-lg bg-muted/30 transition-colors",
+                      "flex flex-col rounded-lg bg-muted/30 transition-colors overflow-hidden min-w-0",
                       dragOverColumn === status && "bg-primary/10"
                     )}
                     onDragOver={(e) => handleDragOver(e, status)}
@@ -743,8 +743,8 @@ export default function TasksPage() {
                       </div>
                     </div>
 
-                    <ScrollArea className="flex-1">
-                      <div className="p-2 space-y-2 min-h-[200px]">
+                    <ScrollArea className="flex-1 w-full">
+                      <div className="p-2 space-y-2 min-h-[200px] overflow-hidden">
                         {statusTasks.length === 0 ? (
                           <div className={cn(
                             "flex flex-col items-center justify-center py-8 text-center border-2 border-dashed rounded-lg transition-colors",
