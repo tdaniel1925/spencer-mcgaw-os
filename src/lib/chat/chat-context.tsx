@@ -11,6 +11,25 @@ interface User {
   avatar_url: string | null;
 }
 
+export type PresenceStatus = "online" | "away" | "busy" | "offline";
+
+export interface UserPresence {
+  user_id: string;
+  status: PresenceStatus;
+  last_seen_at: string;
+  current_room_id?: string;
+  user?: User;
+}
+
+export interface MessageReaction {
+  id: string;
+  message_id: string;
+  user_id: string;
+  emoji: string;
+  created_at: string;
+  user?: User;
+}
+
 interface Message {
   id: string;
   room_id: string;
@@ -20,9 +39,13 @@ interface Message {
   reply_to: string | null;
   is_edited: boolean;
   is_deleted: boolean;
+  edited_at?: string;
+  original_content?: string;
+  attachments?: { url: string; name: string; type: string; size: number }[];
   created_at: string;
   updated_at: string;
   users: User | null;
+  reactions?: MessageReaction[];
 }
 
 interface Room {
@@ -47,6 +70,7 @@ interface ChatContextType {
   currentRoom: Room | null;
   messages: Message[];
   typingUsers: TypingUser[];
+  presence: Map<string, UserPresence>;
   loading: boolean;
   loadingMessages: boolean;
   totalUnread: number;
@@ -57,6 +81,13 @@ interface ChatContextType {
   startDM: (userId: string) => Promise<Room | null>;
   setTyping: (isTyping: boolean) => void;
   markAsRead: (roomId: string) => void;
+  updatePresence: (status: PresenceStatus) => Promise<void>;
+  editMessage: (messageId: string, newContent: string) => Promise<void>;
+  deleteMessage: (messageId: string) => Promise<void>;
+  addReaction: (messageId: string, emoji: string) => Promise<void>;
+  removeReaction: (messageId: string, emoji: string) => Promise<void>;
+  getUserPresence: (userId: string) => UserPresence | undefined;
+  createChannel: (name: string, description?: string, isPrivate?: boolean) => Promise<Room | null>;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -67,11 +98,13 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [currentRoom, setCurrentRoom] = useState<Room | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [typingUsers, setTypingUsers] = useState<TypingUser[]>([]);
+  const [presence, setPresence] = useState<Map<string, UserPresence>>(new Map());
   const [loading, setLoading] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
 
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastTypingRef = useRef<boolean>(false);
+  const presenceIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const supabase = createClient();
 
   // Calculate total unread
@@ -206,6 +239,146 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     ));
   }, []);
 
+  // Update own presence
+  const updatePresence = useCallback(async (status: PresenceStatus) => {
+    if (!user) return;
+
+    try {
+      await fetch("/api/chat/presence", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status,
+          current_room_id: currentRoom?.id
+        })
+      });
+    } catch (error) {
+      console.error("Error updating presence:", error);
+    }
+  }, [user, currentRoom]);
+
+  // Get user presence
+  const getUserPresence = useCallback((userId: string) => {
+    return presence.get(userId);
+  }, [presence]);
+
+  // Edit a message
+  const editMessage = useCallback(async (messageId: string, newContent: string) => {
+    if (!user) return;
+
+    try {
+      const response = await fetch(`/api/chat/messages/${messageId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: newContent })
+      });
+
+      if (response.ok) {
+        setMessages(prev => prev.map(msg =>
+          msg.id === messageId
+            ? { ...msg, content: newContent, is_edited: true, edited_at: new Date().toISOString() }
+            : msg
+        ));
+      }
+    } catch (error) {
+      console.error("Error editing message:", error);
+    }
+  }, [user]);
+
+  // Delete a message
+  const deleteMessage = useCallback(async (messageId: string) => {
+    if (!user) return;
+
+    try {
+      const response = await fetch(`/api/chat/messages/${messageId}`, {
+        method: "DELETE"
+      });
+
+      if (response.ok) {
+        setMessages(prev => prev.map(msg =>
+          msg.id === messageId
+            ? { ...msg, is_deleted: true, content: "[Message deleted]" }
+            : msg
+        ));
+      }
+    } catch (error) {
+      console.error("Error deleting message:", error);
+    }
+  }, [user]);
+
+  // Add reaction to message
+  const addReaction = useCallback(async (messageId: string, emoji: string) => {
+    if (!user) return;
+
+    try {
+      const response = await fetch(`/api/chat/messages/${messageId}/reactions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emoji })
+      });
+
+      if (response.ok) {
+        const { reaction } = await response.json();
+        setMessages(prev => prev.map(msg => {
+          if (msg.id !== messageId) return msg;
+          const reactions = msg.reactions || [];
+          return { ...msg, reactions: [...reactions, reaction] };
+        }));
+      }
+    } catch (error) {
+      console.error("Error adding reaction:", error);
+    }
+  }, [user]);
+
+  // Remove reaction from message
+  const removeReaction = useCallback(async (messageId: string, emoji: string) => {
+    if (!user) return;
+
+    try {
+      const response = await fetch(`/api/chat/messages/${messageId}/reactions?emoji=${encodeURIComponent(emoji)}`, {
+        method: "DELETE"
+      });
+
+      if (response.ok) {
+        setMessages(prev => prev.map(msg => {
+          if (msg.id !== messageId) return msg;
+          const reactions = (msg.reactions || []).filter(
+            r => !(r.emoji === emoji && r.user_id === user.id)
+          );
+          return { ...msg, reactions };
+        }));
+      }
+    } catch (error) {
+      console.error("Error removing reaction:", error);
+    }
+  }, [user]);
+
+  // Create a channel (group or community room)
+  const createChannel = useCallback(async (name: string, description?: string, isPrivate: boolean = false): Promise<Room | null> => {
+    if (!user) return null;
+
+    try {
+      const response = await fetch("/api/chat/rooms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          description,
+          type: isPrivate ? "group" : "community"
+        })
+      });
+
+      if (response.ok) {
+        const { room } = await response.json();
+        await loadRooms();
+        return room;
+      }
+    } catch (error) {
+      console.error("Error creating channel:", error);
+    }
+    return null;
+  }, [user, loadRooms]);
+
   // Set up realtime subscriptions
   useEffect(() => {
     if (!user) return;
@@ -304,11 +477,128 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       )
       .subscribe();
 
+    // Subscribe to presence changes
+    const presenceChannel = supabase
+      .channel("presence_changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "user_presence"
+        },
+        (payload) => {
+          const record = payload.new as UserPresence | null;
+          if (record) {
+            setPresence(prev => {
+              const next = new Map(prev);
+              next.set(record.user_id, record);
+              return next;
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    // Subscribe to reaction changes
+    const reactionsChannel = supabase
+      .channel("reaction_changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "chat_message_reactions"
+        },
+        async (payload) => {
+          const record = payload.new as any;
+          const oldRecord = payload.old as any;
+
+          if (payload.eventType === "DELETE" && oldRecord) {
+            setMessages(prev => prev.map(msg => {
+              if (msg.id !== oldRecord.message_id) return msg;
+              return {
+                ...msg,
+                reactions: (msg.reactions || []).filter(r => r.id !== oldRecord.id)
+              };
+            }));
+          } else if (record) {
+            // Fetch the reaction with user info
+            const { data: reaction } = await supabase
+              .from("chat_message_reactions")
+              .select(`
+                *,
+                user:user_id (id, full_name, email, avatar_url)
+              `)
+              .eq("id", record.id)
+              .single();
+
+            if (reaction) {
+              setMessages(prev => prev.map(msg => {
+                if (msg.id !== reaction.message_id) return msg;
+                const existing = (msg.reactions || []).find(r => r.id === reaction.id);
+                if (existing) return msg;
+                return { ...msg, reactions: [...(msg.reactions || []), reaction] };
+              }));
+            }
+          }
+        }
+      )
+      .subscribe();
+
     return () => {
       supabase.removeChannel(messagesChannel);
       supabase.removeChannel(typingChannel);
+      supabase.removeChannel(presenceChannel);
+      supabase.removeChannel(reactionsChannel);
     };
   }, [user, currentRoom, supabase, markAsRead]);
+
+  // Presence heartbeat - update every 60 seconds
+  useEffect(() => {
+    if (!user) return;
+
+    // Set online when chat opens
+    updatePresence("online");
+
+    // Heartbeat interval
+    presenceIntervalRef.current = setInterval(() => {
+      updatePresence("online");
+    }, 60000);
+
+    // Load initial presence for all users
+    const loadPresence = async () => {
+      try {
+        const response = await fetch("/api/chat/presence");
+        if (response.ok) {
+          const { presence: presenceList } = await response.json();
+          const presenceMap = new Map<string, UserPresence>();
+          for (const p of presenceList) {
+            presenceMap.set(p.user_id, p);
+          }
+          setPresence(presenceMap);
+        }
+      } catch (error) {
+        console.error("Error loading presence:", error);
+      }
+    };
+    loadPresence();
+
+    // Set offline when leaving
+    const handleBeforeUnload = () => {
+      navigator.sendBeacon("/api/chat/presence", JSON.stringify({ status: "offline" }));
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      if (presenceIntervalRef.current) {
+        clearInterval(presenceIntervalRef.current);
+      }
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      // Set offline on unmount
+      fetch("/api/chat/presence", { method: "DELETE" }).catch(() => {});
+    };
+  }, [user, updatePresence]);
 
   // Load rooms on mount
   useEffect(() => {
@@ -333,6 +623,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         currentRoom,
         messages,
         typingUsers,
+        presence,
         loading,
         loadingMessages,
         totalUnread,
@@ -342,7 +633,14 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         loadMessages,
         startDM,
         setTyping,
-        markAsRead
+        markAsRead,
+        updatePresence,
+        editMessage,
+        deleteMessage,
+        addReaction,
+        removeReaction,
+        getUserPresence,
+        createChannel
       }}
     >
       {children}

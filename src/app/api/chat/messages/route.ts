@@ -184,6 +184,63 @@ export async function POST(request: NextRequest) {
 
     if (error) throw error;
 
+    // Extract @mentions from message content
+    const mentionRegex = /@(\w+(?:\s+\w+)?)/g;
+    const mentions: string[] = [];
+    let match;
+    while ((match = mentionRegex.exec(content)) !== null) {
+      mentions.push(match[1]);
+    }
+
+    // Find mentioned users and create mention records
+    if (mentions.length > 0 && message) {
+      // Get all users to match mentions
+      const { data: allUsers } = await supabase
+        .from("user_profiles")
+        .select("id, full_name, email");
+
+      if (allUsers) {
+        const mentionedUserIds = new Set<string>();
+
+        for (const mention of mentions) {
+          const mentionLower = mention.toLowerCase();
+          for (const u of allUsers) {
+            if (u.id === user.id) continue; // Don't mention self
+            const fullNameLower = (u.full_name || "").toLowerCase();
+            const emailPrefix = u.email.split("@")[0].toLowerCase();
+
+            if (fullNameLower.includes(mentionLower) || emailPrefix === mentionLower) {
+              mentionedUserIds.add(u.id);
+              break;
+            }
+          }
+        }
+
+        // Create mention records
+        if (mentionedUserIds.size > 0) {
+          const mentionRecords = Array.from(mentionedUserIds).map(userId => ({
+            message_id: message.id,
+            mentioned_user_id: userId
+          }));
+
+          await supabase.from("chat_mentions").insert(mentionRecords);
+
+          // Create notifications for mentioned users
+          const notifications = Array.from(mentionedUserIds).map(userId => ({
+            user_id: userId,
+            type: "mention" as const,
+            title: "You were mentioned",
+            message: `${user.email} mentioned you in a chat message`,
+            link: `/chat?room=${room_id}`,
+            triggered_by_user_id: user.id,
+            metadata: { room_id, message_id: message.id }
+          }));
+
+          await supabase.from("notifications").insert(notifications);
+        }
+      }
+    }
+
     // Clear typing indicator
     await supabase
       .from("chat_typing_indicators")
