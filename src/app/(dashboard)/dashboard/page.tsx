@@ -206,7 +206,7 @@ export default function DashboardPage() {
         {/* Main Content */}
         <div className="flex-1 overflow-hidden">
           <ScrollArea className="h-full">
-            <div className="p-4 space-y-4 max-w-4xl mx-auto">
+            <div className="p-4 space-y-4 max-w-5xl mx-auto 2xl:max-w-6xl">
               {/* Greeting Card */}
               <Card className="border-border/50">
                 <CardContent className="p-4">

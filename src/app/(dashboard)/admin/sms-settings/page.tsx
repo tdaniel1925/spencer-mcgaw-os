@@ -342,7 +342,7 @@ export default function SmsSettingsPage() {
       <>
         <Header title="SMS Settings" />
         <main className="flex-1 overflow-auto p-6">
-          <div className="max-w-4xl mx-auto space-y-6">
+          <div className="max-w-5xl mx-auto 2xl:max-w-6xl space-y-6">
             {[1, 2, 3].map(i => (
               <Card key={i}>
                 <CardHeader>
@@ -364,7 +364,7 @@ export default function SmsSettingsPage() {
       <Header title="SMS Settings" />
 
       <main className="flex-1 overflow-auto">
-        <div className="max-w-4xl mx-auto p-6">
+        <div className="max-w-5xl mx-auto 2xl:max-w-6xl p-6">
           <Tabs defaultValue="general" className="space-y-6">
             <TabsList className="grid grid-cols-5 w-full">
               <TabsTrigger value="general">General</TabsTrigger>

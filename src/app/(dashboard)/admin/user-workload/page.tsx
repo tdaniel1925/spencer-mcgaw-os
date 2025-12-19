@@ -182,7 +182,7 @@ export default function UserWorkloadPage() {
     <div className="flex flex-col min-h-screen bg-background">
       <Header title="User Workload" />
       <main className="flex-1 p-6">
-        <div className="max-w-7xl mx-auto space-y-6">
+        <div className="max-w-7xl mx-auto 2xl:max-w-none 2xl:px-4 space-y-6">
           {/* Page Header */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">

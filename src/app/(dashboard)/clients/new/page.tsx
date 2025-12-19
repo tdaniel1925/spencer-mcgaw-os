@@ -90,11 +90,11 @@ export default function NewClientPage() {
         </div>
 
         {/* Form Progress Indicator */}
-        <div className="mb-8 max-w-4xl">
+        <div className="mb-8 max-w-5xl 2xl:max-w-6xl">
           <FormProgress steps={formSteps} currentStep={currentStep} />
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6 max-w-4xl">
+        <form onSubmit={handleSubmit} className="space-y-6 max-w-5xl 2xl:max-w-6xl">
           {/* Client Type - Step 0 */}
           <div ref={(el) => { sectionRefs.current[0] = el; }}>
           <Card className={currentStep === 0 ? "ring-2 ring-primary" : ""}>

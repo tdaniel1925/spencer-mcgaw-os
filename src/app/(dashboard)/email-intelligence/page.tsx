@@ -1379,7 +1379,7 @@ function EmailIntelligenceContent() {
         {/* Main Email List */}
         <div className="flex-1 overflow-hidden">
           <ScrollArea className="h-full">
-            <div className="p-4 space-y-2 max-w-6xl mx-auto">
+            <div className="p-4 space-y-2 max-w-7xl mx-auto 2xl:max-w-none 2xl:px-8">
               {loading && (
                 <>
                   {[1, 2, 3, 4, 5].map((i) => (

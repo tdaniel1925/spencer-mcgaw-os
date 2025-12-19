@@ -1605,7 +1605,7 @@ function CallsPageContent() {
         {/* Main Calls List */}
         <div className="flex-1 overflow-hidden">
           <ScrollArea className="h-full">
-            <div className="p-4 space-y-2 max-w-6xl mx-auto">
+            <div className="p-4 space-y-2 max-w-7xl mx-auto 2xl:max-w-none 2xl:px-8">
               {mounted && filteredCalls.length === 0 && (
                 <div className="text-center py-12 text-muted-foreground">
                   <Phone className="h-12 w-12 mx-auto mb-4 opacity-50" />
