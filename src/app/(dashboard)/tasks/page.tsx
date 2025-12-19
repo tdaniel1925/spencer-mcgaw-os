@@ -9,6 +9,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { useTaskContext, Task, TaskView } from "@/lib/tasks/task-context";
 import {
@@ -62,9 +63,13 @@ import {
   LayoutList,
   Hand,
   UserCheck,
+  ChevronDown,
+  ChevronUp,
+  User,
+  AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 
 // Types
@@ -282,17 +287,17 @@ export default function TasksPage() {
 
     return (
       <Card
-        draggable={currentView === "my-work"}
+        draggable={currentView !== "team-pool"}
         onDragStart={(e) => handleDragStart(e, task)}
         onDragEnd={handleDragEnd}
         className={cn(
-          "transition-all border-border/50 hover:shadow-md",
-          currentView === "my-work" && "cursor-grab active:cursor-grabbing",
+          "transition-all border-border/50 hover:shadow-md overflow-hidden",
+          currentView !== "team-pool" && "cursor-grab active:cursor-grabbing",
           draggedTask?.id === task.id && "opacity-50 ring-2 ring-primary",
           isTestTask && "border-amber-200 bg-amber-50/30"
         )}
       >
-        <CardContent className="p-3">
+        <CardContent className="p-3 overflow-hidden">
           {/* Source breadcrumb */}
           {task.source_type && task.source_type !== "manual" && (
             <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mb-2 pb-2 border-b border-dashed">
@@ -307,10 +312,10 @@ export default function TasksPage() {
             </div>
           )}
 
-          <div className="flex items-start justify-between gap-2 mb-2">
-            <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-start justify-between gap-2 mb-2 min-w-0">
+            <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
               <div className={cn("w-2 h-2 rounded-full flex-shrink-0", priorityConfig[task.priority]?.dot)} />
-              <span className="font-medium text-sm truncate">{task.title}</span>
+              <span className="font-medium text-sm truncate block max-w-full">{task.title}</span>
             </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -567,11 +572,143 @@ export default function TasksPage() {
               )}
             </div>
           ) : currentView === "team-pool" ? (
-            // Team Pool: Simple grid of claimable tasks
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {currentTasks.map((task) => (
-                <TaskCard key={task.id} task={task} showClaimButton />
-              ))}
+            // Team Pool: List format like email/phone views
+            <div className="space-y-2">
+              {currentTasks.map((task) => {
+                const SourceIcon = sourceIcons[task.source_type as keyof typeof sourceIcons] || ClipboardList;
+                return (
+                  <Card key={task.id} className="hover:shadow-md transition-all overflow-hidden">
+                    <CardContent className="p-0">
+                      <div className="flex items-start gap-3 p-4">
+                        {/* Priority indicator */}
+                        <div className={cn(
+                          "w-1 self-stretch rounded-full flex-shrink-0",
+                          priorityConfig[task.priority]?.dot
+                        )} />
+
+                        {/* Source icon avatar */}
+                        <Avatar className="h-10 w-10 flex-shrink-0">
+                          <AvatarFallback className={cn(
+                            task.source_type === "phone_call" && "bg-green-100 text-green-700",
+                            task.source_type === "email" && "bg-blue-100 text-blue-700",
+                            task.source_type === "document_intake" && "bg-purple-100 text-purple-700",
+                            (!task.source_type || task.source_type === "manual") && "bg-muted text-muted-foreground"
+                          )}>
+                            <SourceIcon className="h-4 w-4" />
+                          </AvatarFallback>
+                        </Avatar>
+
+                        {/* Main content */}
+                        <div className="flex-1 min-w-0">
+                          {/* Title row */}
+                          <div className="flex items-start justify-between gap-2 mb-1">
+                            <h3 className="font-medium text-sm line-clamp-1">{task.title}</h3>
+                            <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0" suppressHydrationWarning>
+                              {formatDistanceToNow(new Date(task.created_at), { addSuffix: true })}
+                            </span>
+                          </div>
+
+                          {/* Description */}
+                          {task.description && (
+                            <p className="text-sm text-muted-foreground line-clamp-2 mb-2">
+                              {task.description}
+                            </p>
+                          )}
+
+                          {/* Metadata row */}
+                          <div className="flex items-center flex-wrap gap-2 text-xs">
+                            {/* Source badge */}
+                            <Badge variant="outline" className="text-[10px] gap-1">
+                              <SourceIcon className="h-3 w-3" />
+                              {(task.source_type || "manual").replace(/_/g, " ")}
+                            </Badge>
+
+                            {/* Priority badge for high/urgent */}
+                            {(task.priority === "urgent" || task.priority === "high") && (
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  "text-[10px]",
+                                  task.priority === "urgent" && "bg-red-100 text-red-700 border-red-200",
+                                  task.priority === "high" && "bg-orange-100 text-orange-700 border-orange-200"
+                                )}
+                              >
+                                <AlertCircle className="h-3 w-3 mr-1" />
+                                {task.priority}
+                              </Badge>
+                            )}
+
+                            {/* Client info */}
+                            {task.client && (
+                              <div className="flex items-center gap-1 text-muted-foreground">
+                                <User className="h-3 w-3" />
+                                <span>{task.client.first_name} {task.client.last_name}</span>
+                                {task.client.phone && (
+                                  <>
+                                    <span>•</span>
+                                    <span>{task.client.phone}</span>
+                                  </>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Due date if set */}
+                            {task.due_date && (
+                              <div className={cn(
+                                "flex items-center gap-1",
+                                new Date(task.due_date) < new Date() ? "text-red-600" : "text-muted-foreground"
+                              )}>
+                                <Clock className="h-3 w-3" />
+                                <span>Due {format(new Date(task.due_date), "MMM d")}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <Button
+                            size="sm"
+                            onClick={() => handleClaimTask(task)}
+                            className="h-8"
+                          >
+                            <Hand className="h-4 w-4 mr-1.5" />
+                            Claim
+                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setSelectedTask(task);
+                                  setViewDialogOpen(true);
+                                }}
+                              >
+                                <Eye className="h-4 w-4 mr-2" />
+                                View Details
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setSelectedTask(task);
+                                  fetchTeamMembers();
+                                  setReassignDialogOpen(true);
+                                }}
+                              >
+                                <UserPlus className="h-4 w-4 mr-2" />
+                                Assign to Someone
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           ) : (
             // My Work & All: Kanban board
@@ -585,11 +722,11 @@ export default function TasksPage() {
                     key={status}
                     className={cn(
                       "flex flex-col rounded-lg bg-muted/30 transition-colors",
-                      currentView === "my-work" && dragOverColumn === status && "bg-primary/10"
+                      dragOverColumn === status && "bg-primary/10"
                     )}
-                    onDragOver={(e) => currentView === "my-work" && handleDragOver(e, status)}
+                    onDragOver={(e) => handleDragOver(e, status)}
                     onDragLeave={handleDragLeave}
-                    onDrop={(e) => currentView === "my-work" && handleDrop(e, status)}
+                    onDrop={(e) => handleDrop(e, status)}
                   >
                     <div className="p-3 border-b bg-card rounded-t-lg">
                       <div className="flex items-center gap-2">
@@ -611,10 +748,10 @@ export default function TasksPage() {
                         {statusTasks.length === 0 ? (
                           <div className={cn(
                             "flex flex-col items-center justify-center py-8 text-center border-2 border-dashed rounded-lg transition-colors",
-                            currentView === "my-work" && dragOverColumn === status && "border-primary bg-primary/5"
+                            dragOverColumn === status && "border-primary bg-primary/5"
                           )}>
                             <p className="text-xs text-muted-foreground">
-                              {currentView === "my-work" ? "Drop tasks here" : "No tasks"}
+                              Drop tasks here
                             </p>
                           </div>
                         ) : (
