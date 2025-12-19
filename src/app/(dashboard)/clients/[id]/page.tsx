@@ -358,6 +358,16 @@ export default function ClientDetailPage() {
   const [showAddService, setShowAddService] = useState(false);
   const [showAddFiling, setShowAddFiling] = useState(false);
   const [showAddDeadline, setShowAddDeadline] = useState(false);
+  const [showSendSMS, setShowSendSMS] = useState(false);
+
+  // SMS state
+  const [smsForm, setSmsForm] = useState({
+    contact_id: "",
+    message: "",
+  });
+  const [sendingSms, setSendingSms] = useState(false);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [replyMessage, setReplyMessage] = useState("");
 
   // Note form state
   const [noteForm, setNoteForm] = useState({
@@ -878,7 +888,7 @@ export default function ClientDetailPage() {
     }
   };
 
-  // Start SMS conversation with contact
+  // Start SMS conversation with contact (navigates to SMS hub)
   const handleSendSMS = async (contact: ClientContact) => {
     const phoneNumber = contact.mobile || contact.phone;
     if (!phoneNumber) {
@@ -904,6 +914,91 @@ export default function ClientDetailPage() {
       }
     } catch (error) {
       toast.error("Failed to start conversation");
+    }
+  };
+
+  // Send SMS inline (without navigating away)
+  const handleSendSMSInline = async () => {
+    if (!smsForm.contact_id || !smsForm.message.trim()) {
+      toast.error("Please select a contact and enter a message");
+      return;
+    }
+
+    setSendingSms(true);
+    try {
+      // Create or get existing conversation
+      const convRes = await fetch("/api/sms/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contact_id: smsForm.contact_id }),
+      });
+
+      if (!convRes.ok) {
+        const error = await convRes.json();
+        throw new Error(error.error || "Failed to create conversation");
+      }
+
+      const conversation = await convRes.json();
+
+      // Send the message
+      const msgRes = await fetch("/api/sms/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversation_id: conversation.id,
+          body: smsForm.message.trim(),
+        }),
+      });
+
+      if (!msgRes.ok) {
+        const error = await msgRes.json();
+        throw new Error(error.error || "Failed to send message");
+      }
+
+      toast.success("SMS sent successfully!");
+      setShowSendSMS(false);
+      setSmsForm({ contact_id: "", message: "" });
+
+      // Refresh SMS conversations and switch to SMS tab
+      await loadSmsConversations();
+      setActiveTab("sms");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to send SMS");
+    } finally {
+      setSendingSms(false);
+    }
+  };
+
+  // Send reply to existing conversation
+  const handleSendReply = async (conversationId: string) => {
+    if (!replyMessage.trim()) return;
+
+    setSendingSms(true);
+    try {
+      const res = await fetch("/api/sms/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversation_id: conversationId,
+          body: replyMessage.trim(),
+        }),
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "Failed to send message");
+      }
+
+      toast.success("Message sent!");
+      setReplyMessage("");
+      setActiveConversationId(null);
+
+      // Refresh the conversation
+      await loadSmsConversations();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to send message");
+    } finally {
+      setSendingSms(false);
     }
   };
 
@@ -1153,6 +1248,25 @@ export default function ClientDetailPage() {
             <Button variant="outline" size="sm" className="h-8">
               <Mail className="h-4 w-4 mr-1.5" />
               Email
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8"
+              onClick={() => {
+                // Pre-select primary contact if available
+                const primaryContact = contacts.find(c => c.is_primary);
+                const contactWithPhone = contacts.find(c => c.phone || c.mobile);
+                setSmsForm({
+                  contact_id: primaryContact?.id || contactWithPhone?.id || "",
+                  message: "",
+                });
+                setShowSendSMS(true);
+              }}
+              disabled={!contacts.some(c => c.phone || c.mobile)}
+            >
+              <MessageSquare className="h-4 w-4 mr-1.5" />
+              SMS
             </Button>
             <Button variant="outline" size="sm" className="h-8">
               <Edit className="h-4 w-4 mr-1.5" />
@@ -2231,8 +2345,24 @@ export default function ClientDetailPage() {
                     <MessageSquare className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                     <h3 className="font-medium mb-2">No SMS conversations yet</h3>
                     <p className="text-sm text-muted-foreground mb-4">
-                      Start messaging by clicking &quot;Send SMS&quot; on any contact with a phone number.
+                      Start messaging by sending an SMS to any contact with a phone number.
                     </p>
+                    {contacts.some(c => c.phone || c.mobile) && (
+                      <Button
+                        onClick={() => {
+                          const primaryContact = contacts.find(c => c.is_primary && (c.phone || c.mobile));
+                          const contactWithPhone = contacts.find(c => c.phone || c.mobile);
+                          setSmsForm({
+                            contact_id: primaryContact?.id || contactWithPhone?.id || "",
+                            message: "",
+                          });
+                          setShowSendSMS(true);
+                        }}
+                      >
+                        <MessageSquare className="h-4 w-4 mr-2" />
+                        Send First SMS
+                      </Button>
+                    )}
                   </Card>
                 ) : (
                   <div className="space-y-4">
@@ -2266,12 +2396,14 @@ export default function ClientDetailPage() {
                                 </div>
                               </div>
                               <Button
-                                variant="outline"
+                                variant={activeConversationId === conversation.id ? "secondary" : "outline"}
                                 size="sm"
-                                onClick={() => contact && handleSendSMS(contact)}
+                                onClick={() => setActiveConversationId(
+                                  activeConversationId === conversation.id ? null : conversation.id
+                                )}
                               >
                                 <MessageSquare className="h-4 w-4 mr-1.5" />
-                                Reply
+                                {activeConversationId === conversation.id ? "Close" : "Reply"}
                               </Button>
                             </div>
                           </CardHeader>
@@ -2320,10 +2452,48 @@ export default function ClientDetailPage() {
                                 <Button
                                   variant="link"
                                   size="sm"
-                                  onClick={() => contact && handleSendSMS(contact)}
+                                  onClick={() => router.push(`/sms?conversation=${conversation.id}`)}
                                 >
                                   View all {messages.length} messages →
                                 </Button>
+                              </div>
+                            )}
+                            {/* Inline Reply Input */}
+                            {activeConversationId === conversation.id && (
+                              <div className="mt-4 pt-4 border-t">
+                                <div className="flex gap-2">
+                                  <div className="flex-1 relative">
+                                    <Input
+                                      placeholder="Type your message..."
+                                      value={replyMessage}
+                                      onChange={(e) => setReplyMessage(e.target.value)}
+                                      maxLength={160}
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter" && !e.shiftKey) {
+                                          e.preventDefault();
+                                          handleSendReply(conversation.id);
+                                        }
+                                      }}
+                                    />
+                                    <span className={cn(
+                                      "absolute right-2 top-1/2 -translate-y-1/2 text-[10px]",
+                                      replyMessage.length > 160 ? "text-destructive" : "text-muted-foreground"
+                                    )}>
+                                      {replyMessage.length}/160
+                                    </span>
+                                  </div>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleSendReply(conversation.id)}
+                                    disabled={sendingSms || !replyMessage.trim() || replyMessage.length > 160}
+                                  >
+                                    {sendingSms ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      "Send"
+                                    )}
+                                  </Button>
+                                </div>
                               </div>
                             )}
                           </CardContent>
@@ -2905,6 +3075,92 @@ export default function ClientDetailPage() {
               disabled={submittingDeadline || !deadlineForm.title.trim() || !deadlineForm.due_date}
             >
               {submittingDeadline ? "Adding..." : "Add Deadline"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Send SMS Dialog */}
+      <Dialog open={showSendSMS} onOpenChange={setShowSendSMS}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Send SMS</DialogTitle>
+            <DialogDescription>
+              Send a text message to a contact. Standard messaging rates may apply.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>To</Label>
+              <Select
+                value={smsForm.contact_id}
+                onValueChange={(value) => setSmsForm(prev => ({ ...prev, contact_id: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a contact" />
+                </SelectTrigger>
+                <SelectContent>
+                  {contacts
+                    .filter(c => c.phone || c.mobile)
+                    .map(contact => (
+                      <SelectItem key={contact.id} value={contact.id}>
+                        <div className="flex items-center gap-2">
+                          <span>{contact.first_name} {contact.last_name}</span>
+                          {contact.is_primary && (
+                            <Badge variant="secondary" className="text-[10px]">Primary</Badge>
+                          )}
+                          <span className="text-muted-foreground text-sm">
+                            {contact.mobile || contact.phone}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Message</Label>
+                <span className={cn(
+                  "text-xs",
+                  smsForm.message.length > 160 ? "text-destructive" : "text-muted-foreground"
+                )}>
+                  {smsForm.message.length}/160
+                </span>
+              </div>
+              <Textarea
+                placeholder="Type your message..."
+                value={smsForm.message}
+                onChange={(e) => setSmsForm(prev => ({ ...prev, message: e.target.value }))}
+                rows={4}
+                maxLength={160}
+              />
+              {smsForm.message.length > 160 && (
+                <p className="text-xs text-destructive">
+                  Message exceeds SMS character limit
+                </p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSendSMS(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSendSMSInline}
+              disabled={sendingSms || !smsForm.contact_id || !smsForm.message.trim() || smsForm.message.length > 160}
+            >
+              {sendingSms ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Sending...
+                </>
+              ) : (
+                <>
+                  <MessageSquare className="h-4 w-4 mr-2" />
+                  Send SMS
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
