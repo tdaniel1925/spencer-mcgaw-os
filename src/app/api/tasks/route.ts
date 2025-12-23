@@ -9,6 +9,7 @@ export async function GET(request: NextRequest) {
   const search = searchParams.get("search");
   const limit = searchParams.get("limit") || "50";
   const offset = searchParams.get("offset") || "0";
+  const unassigned = searchParams.get("unassigned");
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -19,7 +20,7 @@ export async function GET(request: NextRequest) {
 
   let query = supabase
     .from("tasks")
-    .select("*", { count: "exact" })
+    .select("*, clients(id, first_name, last_name, email, phone)", { count: "exact" })
     .order("created_at", { ascending: false })
     .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
 
@@ -39,6 +40,11 @@ export async function GET(request: NextRequest) {
     query = query.or(`title.ilike.%${search}%,description.ilike.%${search}%`);
   }
 
+  // Filter for unassigned tasks (for Org Tasks Kanban)
+  if (unassigned === "true") {
+    query = query.is("assigned_to", null);
+  }
+
   const { data: tasks, error, count } = await query;
 
   if (error) {
@@ -46,7 +52,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Failed to fetch tasks" }, { status: 500 });
   }
 
-  return NextResponse.json({ tasks, count });
+  // Reshape tasks to include client as a nested object
+  const reshapedTasks = (tasks || []).map((task: Record<string, unknown>) => ({
+    ...task,
+    client: task.clients || null,
+    clients: undefined, // Remove the raw join field
+  }));
+
+  return NextResponse.json({ tasks: reshapedTasks, count });
 }
 
 export async function POST(request: NextRequest) {

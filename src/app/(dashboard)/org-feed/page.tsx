@@ -48,6 +48,7 @@ import {
   Volume2,
   PhoneIncoming,
   PhoneOutgoing,
+  ClipboardList,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow } from "date-fns";
@@ -96,11 +97,18 @@ interface TaskCreationState {
   description: string;
   priority: "low" | "medium" | "high" | "urgent";
   clientId: string | null;
+  assignTo: "general" | string; // "general" for Org Tasks, or user ID
 }
 
 interface ClientOption {
   id: string;
   name: string;
+}
+
+interface TeamMember {
+  id: string;
+  full_name: string | null;
+  email: string;
 }
 
 const priorityConfig = {
@@ -129,10 +137,13 @@ export default function OrgFeedPage() {
     description: "",
     priority: "medium",
     clientId: null,
+    assignTo: "general",
   });
   const [creatingTask, setCreatingTask] = useState(false);
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [loadingClients, setLoadingClients] = useState(false);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [loadingTeam, setLoadingTeam] = useState(false);
 
   // Fetch clients list
   const fetchClients = useCallback(async () => {
@@ -151,6 +162,22 @@ export default function OrgFeedPage() {
       console.error("Error fetching clients:", error);
     } finally {
       setLoadingClients(false);
+    }
+  }, []);
+
+  // Fetch team members for assignment
+  const fetchTeamMembers = useCallback(async () => {
+    setLoadingTeam(true);
+    try {
+      const response = await fetch("/api/users/team");
+      if (response.ok) {
+        const data = await response.json();
+        setTeamMembers(data.users || []);
+      }
+    } catch (error) {
+      console.error("Error fetching team members:", error);
+    } finally {
+      setLoadingTeam(false);
     }
   }, []);
 
@@ -205,11 +232,15 @@ export default function OrgFeedPage() {
       description: defaultDescription,
       priority: item.priority,
       clientId: item.matchedClientId,
+      assignTo: "general", // Default to general tasks pool
     });
 
-    // Fetch clients when dialog opens
+    // Fetch clients and team members when dialog opens
     if (clients.length === 0) {
       fetchClients();
+    }
+    if (teamMembers.length === 0) {
+      fetchTeamMembers();
     }
   };
 
@@ -233,12 +264,17 @@ export default function OrgFeedPage() {
           sourceType: taskDialog.item.type === "call" ? "phone_call" : "email",
           sourceId: taskDialog.item.id,
           clientId: taskDialog.clientId,
+          // Only set assignedTo if it's not "general"
+          assignedTo: taskDialog.assignTo === "general" ? undefined : taskDialog.assignTo,
         }),
       });
 
       if (response.ok) {
-        toast.success("Task created successfully");
-        setTaskDialog({ open: false, item: null, title: "", description: "", priority: "medium", clientId: null });
+        const destination = taskDialog.assignTo === "general"
+          ? "Org Tasks"
+          : teamMembers.find(m => m.id === taskDialog.assignTo)?.full_name || "user";
+        toast.success(`Task created and added to ${destination}`);
+        setTaskDialog({ open: false, item: null, title: "", description: "", priority: "medium", clientId: null, assignTo: "general" });
         // Mark item as having a task
         setItems((prev) =>
           prev.map((i) =>
@@ -413,6 +449,44 @@ export default function OrgFeedPage() {
                   <SelectItem value="urgent">Urgent</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Assign To</Label>
+              <Select
+                value={taskDialog.assignTo}
+                onValueChange={(v) => setTaskDialog({ ...taskDialog, assignTo: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select assignment..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="general">
+                    <div className="flex items-center gap-2">
+                      <ClipboardList className="h-3 w-3" />
+                      <span>General Tasks (Org Tasks Pool)</span>
+                    </div>
+                  </SelectItem>
+                  {loadingTeam ? (
+                    <SelectItem value="__loading__" disabled>
+                      <span className="text-muted-foreground">Loading team...</span>
+                    </SelectItem>
+                  ) : (
+                    teamMembers.map((member) => (
+                      <SelectItem key={member.id} value={member.id}>
+                        <div className="flex items-center gap-2">
+                          <User className="h-3 w-3" />
+                          {member.full_name || member.email}
+                        </div>
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {taskDialog.assignTo === "general"
+                  ? "Task will go to the Org Tasks pool for anyone to claim"
+                  : "Task will be assigned directly to the selected user"}
+              </p>
             </div>
             <div className="space-y-2">
               <Label>Link to Client</Label>

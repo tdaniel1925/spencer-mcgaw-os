@@ -110,6 +110,12 @@ const navSections: NavSection[] = [
         permission: "tasks:view",
       },
       {
+        title: "Org Tasks",
+        href: "/org-tasks",
+        icon: Kanban,
+        permission: "tasks:view",
+      },
+      {
         title: "Calendar",
         href: "/calendar",
         icon: Calendar,
