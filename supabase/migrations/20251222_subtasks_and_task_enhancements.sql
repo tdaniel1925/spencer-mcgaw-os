@@ -2,6 +2,15 @@
 -- Adds subtasks table for breaking down tasks into checklist items
 -- Enhances task activity tracking
 
+-- Create updated_at trigger function if it doesn't exist
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 -- Subtasks Table (checklist items within a task)
 CREATE TABLE IF NOT EXISTS subtasks (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -51,10 +60,11 @@ CREATE POLICY "Authenticated users can delete subtasks"
     USING (true);
 
 -- Trigger to update updated_at on subtasks
+DROP TRIGGER IF EXISTS subtasks_updated_at ON subtasks;
 CREATE TRIGGER subtasks_updated_at
     BEFORE UPDATE ON subtasks
     FOR EACH ROW
-    EXECUTE FUNCTION update_calendar_updated_at();
+    EXECUTE FUNCTION update_updated_at_column();
 
 -- Add task_activity table if it doesn't exist (unified activity feed for tasks)
 CREATE TABLE IF NOT EXISTS task_activity (
