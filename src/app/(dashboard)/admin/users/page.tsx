@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { Header } from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -132,6 +133,7 @@ function RoleIcon({ role }: { role: UserRole }) {
 }
 
 export default function UserManagementPage() {
+  const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [members, setMembers] = useState<TeamMember[]>([]);
@@ -608,7 +610,11 @@ export default function UserManagementPage() {
             </TableHeader>
             <TableBody>
               {filteredMembers.map((member) => (
-                <TableRow key={member.id}>
+                <TableRow
+                  key={member.id}
+                  className="cursor-pointer hover:bg-muted/50"
+                  onClick={() => router.push(`/admin/users/${member.id}`)}
+                >
                   <TableCell>
                     <div className="flex items-center gap-3">
                       <Avatar className="h-9 w-9">
@@ -680,7 +686,7 @@ export default function UserManagementPage() {
                       <span className="text-sm text-muted-foreground">Never</span>
                     )}
                   </TableCell>
-                  <TableCell>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -689,23 +695,10 @@ export default function UserManagementPage() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem
-                          onClick={() => {
-                            setSelectedUser(member);
-                            setEditUserOpen(true);
-                          }}
+                          onClick={() => router.push(`/admin/users/${member.id}`)}
                         >
-                          <Edit className="h-4 w-4 mr-2" />
-                          Edit User
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => {
-                            setSelectedUser(member);
-                            setPermissionsOpen(true);
-                            loadPermissionOverrides(member.id);
-                          }}
-                        >
-                          <Key className="h-4 w-4 mr-2" />
-                          {isOwner ? "Manage Permissions" : "View Permissions"}
+                          <Eye className="h-4 w-4 mr-2" />
+                          View Details
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem

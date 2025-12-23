@@ -100,8 +100,8 @@ export function Header({ title, breadcrumbItems, currentPageLabel }: HeaderProps
               )}
             </Button>
           </PopoverTrigger>
-          <PopoverContent align="end" className="w-80 p-0">
-            <div className="flex items-center justify-between px-4 py-3 border-b">
+          <PopoverContent align="end" className="w-80 p-0 overflow-hidden bg-popover">
+            <div className="flex items-center justify-between px-4 py-3 border-b bg-popover">
               <div className="flex items-center gap-2">
                 <Phone className="h-4 w-4 text-primary" />
                 <span className="font-medium text-sm">Call Notifications</span>
@@ -117,9 +117,9 @@ export function Header({ title, breadcrumbItems, currentPageLabel }: HeaderProps
                 </Button>
               )}
             </div>
-            <ScrollArea className="max-h-[300px]">
+            <ScrollArea className="h-auto max-h-[300px]">
               {unreadNotifications.length === 0 ? (
-                <div className="py-8 text-center text-muted-foreground">
+                <div className="py-8 text-center text-muted-foreground bg-popover">
                   <Phone className="h-8 w-8 mx-auto mb-2 opacity-50" />
                   <p className="text-sm">No new call notifications</p>
                 </div>
@@ -131,8 +131,8 @@ export function Header({ title, breadcrumbItems, currentPageLabel }: HeaderProps
                       <div
                         key={notification.id}
                         className={cn(
-                          "p-3 hover:bg-muted/50 transition-colors relative",
-                          notification.urgency === "urgent" && "bg-red-50"
+                          "p-3 hover:bg-muted transition-colors relative bg-popover",
+                          notification.urgency === "urgent" && "bg-red-50 hover:bg-red-100"
                         )}
                       >
                         <div className="flex gap-3">
@@ -201,7 +201,7 @@ export function Header({ title, breadcrumbItems, currentPageLabel }: HeaderProps
                 </div>
               )}
             </ScrollArea>
-            <div className="border-t p-2">
+            <div className="border-t p-2 bg-popover">
               <Button variant="ghost" size="sm" className="w-full" asChild>
                 <Link href="/calls">View all calls</Link>
               </Button>

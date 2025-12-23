@@ -126,6 +126,7 @@ function formatDuration(seconds: number): string {
 
 export default function OrgFeedPage() {
   const [items, setItems] = useState<OrgFeedItem[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "calls" | "emails">("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -185,10 +186,11 @@ export default function OrgFeedPage() {
   const fetchFeed = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/org-feed?type=${filter}&limit=100`);
+      const response = await fetch(`/api/org-feed?type=${filter}&limit=200`);
       if (response.ok) {
         const data = await response.json();
         setItems(data.items || []);
+        setTotalCount(data.total || 0);
       } else {
         toast.error("Failed to load feed");
       }
@@ -322,21 +324,21 @@ export default function OrgFeedPage() {
                 <TabsTrigger value="all" className="gap-2 px-3">
                   All
                   <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">
-                    {items.length}
+                    {totalCount}
                   </Badge>
                 </TabsTrigger>
                 <TabsTrigger value="calls" className="gap-2 px-3">
                   <Phone className="h-4 w-4" />
                   Calls
                   <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">
-                    {callCount}
+                    {filter === "calls" ? totalCount : callCount}
                   </Badge>
                 </TabsTrigger>
                 <TabsTrigger value="emails" className="gap-2 px-3">
                   <Mail className="h-4 w-4" />
                   Emails
                   <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">
-                    {emailCount}
+                    {filter === "emails" ? totalCount : emailCount}
                   </Badge>
                 </TabsTrigger>
               </TabsList>

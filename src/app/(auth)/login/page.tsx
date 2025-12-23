@@ -37,6 +37,14 @@ function LoginForm() {
       return;
     }
 
+    // Update last login timestamp
+    try {
+      await fetch("/api/auth/update-last-login", { method: "POST" });
+    } catch (e) {
+      // Non-critical - don't block login if this fails
+      console.error("Failed to update last login:", e);
+    }
+
     router.push(redirectTo);
     router.refresh();
   };

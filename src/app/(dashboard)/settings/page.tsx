@@ -36,6 +36,10 @@ import {
   Sparkles,
   Clock,
   MessageSquare,
+  Eye,
+  EyeOff,
+  AlertCircle,
+  Check,
 } from "lucide-react";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { toast } from "sonner";
@@ -122,7 +126,7 @@ const DEFAULT_NOTIFICATIONS: NotificationPreferences = {
 };
 
 export default function SettingsPage() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const [emailAccounts, setEmailAccounts] = useState<EmailAccount[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [connecting, setConnecting] = useState(false);
@@ -152,6 +156,18 @@ export default function SettingsPage() {
   // Notification preferences state
   const [notifications, setNotifications] = useState<NotificationPreferences>(DEFAULT_NOTIFICATIONS);
   const [savingNotifications, setSavingNotifications] = useState(false);
+
+  // Password form state
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [savingPassword, setSavingPassword] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [passwordErrors, setPasswordErrors] = useState<string[]>([]);
 
   // Load profile, company, and notification settings
   useEffect(() => {
@@ -275,6 +291,67 @@ export default function SettingsPage() {
     setNotifications(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
+  // Password validation checks
+  const passwordChecks = {
+    minLength: passwordForm.newPassword.length >= 8,
+    hasUppercase: /[A-Z]/.test(passwordForm.newPassword),
+    hasLowercase: /[a-z]/.test(passwordForm.newPassword),
+    hasNumber: /[0-9]/.test(passwordForm.newPassword),
+    passwordsMatch: passwordForm.newPassword === passwordForm.confirmPassword && passwordForm.confirmPassword !== "",
+  };
+
+  const allPasswordChecksPassed = Object.values(passwordChecks).every(Boolean);
+
+  // Handle password change
+  const handleChangePassword = async () => {
+    setPasswordErrors([]);
+
+    // Client-side validation
+    if (!passwordForm.currentPassword) {
+      setPasswordErrors(["Current password is required"]);
+      return;
+    }
+
+    if (!passwordForm.newPassword) {
+      setPasswordErrors(["New password is required"]);
+      return;
+    }
+
+    if (!allPasswordChecksPassed) {
+      setPasswordErrors(["Please meet all password requirements"]);
+      return;
+    }
+
+    setSavingPassword(true);
+    try {
+      const response = await fetch("/api/settings/password", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(passwordForm),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        toast.success("Password updated successfully");
+        setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      } else {
+        if (data.details && Array.isArray(data.details)) {
+          setPasswordErrors(data.details);
+        } else {
+          setPasswordErrors([data.error || "Failed to update password"]);
+        }
+        toast.error(data.error || "Failed to update password");
+      }
+    } catch (error) {
+      console.error("Error changing password:", error);
+      setPasswordErrors(["An unexpected error occurred"]);
+      toast.error("Failed to update password");
+    } finally {
+      setSavingPassword(false);
+    }
+  };
+
   const loadEmailAccounts = useCallback(async () => {
     try {
       const response = await fetch("/api/email/accounts");
@@ -381,10 +458,12 @@ export default function SettingsPage() {
               <User className="h-4 w-4" />
               Profile
             </TabsTrigger>
-            <TabsTrigger value="company" className="flex items-center gap-2">
-              <Building className="h-4 w-4" />
-              Company
-            </TabsTrigger>
+            {isAdmin && (
+              <TabsTrigger value="company" className="flex items-center gap-2">
+                <Building className="h-4 w-4" />
+                Company
+              </TabsTrigger>
+            )}
             <TabsTrigger value="notifications" className="flex items-center gap-2">
               <Bell className="h-4 w-4" />
               Notifications
@@ -393,9 +472,9 @@ export default function SettingsPage() {
               <Shield className="h-4 w-4" />
               Security
             </TabsTrigger>
-            <TabsTrigger value="integrations" className="flex items-center gap-2">
-              <Phone className="h-4 w-4" />
-              Integrations
+            <TabsTrigger value="my-emails" className="flex items-center gap-2">
+              <Mail className="h-4 w-4" />
+              My Email Accounts
             </TabsTrigger>
           </TabsList>
 
@@ -498,7 +577,8 @@ export default function SettingsPage() {
             </Card>
           </TabsContent>
 
-          {/* Company Settings */}
+          {/* Company Settings - Admin Only */}
+          {isAdmin && (
           <TabsContent value="company">
             <Card>
               <CardHeader>
@@ -579,6 +659,7 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
           </TabsContent>
+          )}
 
           {/* Notifications Settings */}
           <TabsContent value="notifications">
@@ -898,48 +979,174 @@ export default function SettingsPage() {
           <TabsContent value="security">
             <Card>
               <CardHeader>
-                <CardTitle>Security Settings</CardTitle>
+                <CardTitle>Change Password</CardTitle>
                 <CardDescription>
-                  Manage your password and security preferences
+                  Update your password to keep your account secure
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
+                {/* Error Messages */}
+                {passwordErrors.length > 0 && (
+                  <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
+                    <div className="flex items-start gap-3">
+                      <AlertCircle className="h-5 w-5 text-destructive mt-0.5 flex-shrink-0" />
+                      <div>
+                        {passwordErrors.map((error, index) => (
+                          <p key={index} className="text-sm text-destructive">{error}</p>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="space-y-4">
+                  {/* Current Password */}
                   <div className="space-y-2">
                     <Label htmlFor="currentPassword">Current Password</Label>
-                    <Input id="currentPassword" type="password" />
+                    <div className="relative">
+                      <Input
+                        id="currentPassword"
+                        type={showCurrentPassword ? "text" : "password"}
+                        value={passwordForm.currentPassword}
+                        onChange={(e) => setPasswordForm(p => ({ ...p, currentPassword: e.target.value }))}
+                        placeholder="Enter your current password"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                        onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                      >
+                        {showCurrentPassword ? (
+                          <EyeOff className="h-4 w-4 text-muted-foreground" />
+                        ) : (
+                          <Eye className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </Button>
+                    </div>
                   </div>
+
+                  {/* New Password */}
                   <div className="space-y-2">
                     <Label htmlFor="newPassword">New Password</Label>
-                    <Input id="newPassword" type="password" />
+                    <div className="relative">
+                      <Input
+                        id="newPassword"
+                        type={showNewPassword ? "text" : "password"}
+                        value={passwordForm.newPassword}
+                        onChange={(e) => setPasswordForm(p => ({ ...p, newPassword: e.target.value }))}
+                        placeholder="Enter your new password"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                        onClick={() => setShowNewPassword(!showNewPassword)}
+                      >
+                        {showNewPassword ? (
+                          <EyeOff className="h-4 w-4 text-muted-foreground" />
+                        ) : (
+                          <Eye className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </Button>
+                    </div>
                   </div>
+
+                  {/* Password Requirements */}
+                  {passwordForm.newPassword && (
+                    <div className="p-4 bg-muted/50 rounded-lg space-y-2">
+                      <p className="text-sm font-medium">Password Requirements:</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div className={`flex items-center gap-2 text-sm ${passwordChecks.minLength ? "text-green-600" : "text-muted-foreground"}`}>
+                          {passwordChecks.minLength ? <Check className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+                          At least 8 characters
+                        </div>
+                        <div className={`flex items-center gap-2 text-sm ${passwordChecks.hasUppercase ? "text-green-600" : "text-muted-foreground"}`}>
+                          {passwordChecks.hasUppercase ? <Check className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+                          One uppercase letter
+                        </div>
+                        <div className={`flex items-center gap-2 text-sm ${passwordChecks.hasLowercase ? "text-green-600" : "text-muted-foreground"}`}>
+                          {passwordChecks.hasLowercase ? <Check className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+                          One lowercase letter
+                        </div>
+                        <div className={`flex items-center gap-2 text-sm ${passwordChecks.hasNumber ? "text-green-600" : "text-muted-foreground"}`}>
+                          {passwordChecks.hasNumber ? <Check className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+                          One number
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Confirm Password */}
                   <div className="space-y-2">
                     <Label htmlFor="confirmPassword">Confirm New Password</Label>
-                    <Input id="confirmPassword" type="password" />
+                    <div className="relative">
+                      <Input
+                        id="confirmPassword"
+                        type={showConfirmPassword ? "text" : "password"}
+                        value={passwordForm.confirmPassword}
+                        onChange={(e) => setPasswordForm(p => ({ ...p, confirmPassword: e.target.value }))}
+                        placeholder="Confirm your new password"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      >
+                        {showConfirmPassword ? (
+                          <EyeOff className="h-4 w-4 text-muted-foreground" />
+                        ) : (
+                          <Eye className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </Button>
+                    </div>
+                    {passwordForm.confirmPassword && (
+                      <p className={`text-sm flex items-center gap-1 ${passwordChecks.passwordsMatch ? "text-green-600" : "text-destructive"}`}>
+                        {passwordChecks.passwordsMatch ? (
+                          <><Check className="h-4 w-4" /> Passwords match</>
+                        ) : (
+                          <><XCircle className="h-4 w-4" /> Passwords do not match</>
+                        )}
+                      </p>
+                    )}
                   </div>
                 </div>
 
+                <Separator />
+
                 <div className="flex justify-end">
-                  <Button className="bg-primary">
-                    Update Password
+                  <Button
+                    onClick={handleChangePassword}
+                    disabled={savingPassword || !allPasswordChecksPassed || !passwordForm.currentPassword}
+                  >
+                    {savingPassword ? (
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Shield className="h-4 w-4 mr-2" />
+                    )}
+                    {savingPassword ? "Updating..." : "Update Password"}
                   </Button>
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
 
-          {/* Integrations Settings */}
-          <TabsContent value="integrations">
+          {/* My Email Accounts */}
+          <TabsContent value="my-emails">
             <div className="space-y-6">
-              {/* Email Connections */}
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Mail className="h-5 w-5" />
-                    Email Accounts
+                    My Email Accounts
                   </CardTitle>
                   <CardDescription>
-                    Connect your email accounts to sync emails and automatically create tasks
+                    Connect your personal email accounts to sync emails and get AI-powered insights.
+                    Emails from your personal accounts will appear in your My Inbox.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -959,7 +1166,9 @@ export default function SettingsPage() {
                               <Mail className="h-6 w-6 text-purple-600" />
                             </div>
                             <div>
-                              <p className="font-medium">{account.displayName}</p>
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium">{account.displayName}</p>
+                              </div>
                               <p className="text-sm text-muted-foreground">
                                 {account.email}
                               </p>
@@ -997,8 +1206,11 @@ export default function SettingsPage() {
                   ) : (
                     <div className="text-center py-8 text-muted-foreground">
                       <Mail className="h-12 w-12 mx-auto mb-4 opacity-20" />
-                      <p>No email accounts connected</p>
-                      <p className="text-sm">Connect your Microsoft 365 account to start syncing emails</p>
+                      <p className="font-medium">No email accounts connected</p>
+                      <p className="text-sm mt-1">Connect your Microsoft 365 account to start syncing emails</p>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Your emails will be processed by AI to extract action items and create tasks
+                      </p>
 
                       {/* Warning about orphaned data */}
                       {orphanedDataCount > 0 && (
@@ -1050,7 +1262,7 @@ export default function SettingsPage() {
                       <div>
                         <p className="font-medium">Microsoft 365 / Outlook</p>
                         <p className="text-sm text-muted-foreground">
-                          Connect to sync emails, calendar, and contacts
+                          Connect to sync your personal emails
                         </p>
                       </div>
                     </div>
@@ -1074,47 +1286,43 @@ export default function SettingsPage() {
                 </CardContent>
               </Card>
 
-              {/* Other Integrations */}
+              {/* How It Works */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Other Integrations</CardTitle>
-                  <CardDescription>
-                    Additional services and connections
-                  </CardDescription>
+                  <CardTitle className="flex items-center gap-2">
+                    <Sparkles className="h-5 w-5" />
+                    How Email Intelligence Works
+                  </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center">
-                        <Phone className="h-6 w-6 text-blue-600" />
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="p-4 rounded-lg border bg-muted/30">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-semibold">1</div>
+                        <p className="font-medium">Sync</p>
                       </div>
-                      <div>
-                        <p className="font-medium">VAPI Voice Agent</p>
-                        <p className="text-sm text-muted-foreground">
-                          AI-powered phone agent for calls
-                        </p>
-                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Your emails are synced and processed securely in the background
+                      </p>
                     </div>
-                    <Badge className="bg-green-100 text-green-700">Connected</Badge>
-                  </div>
-
-                  <div className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-lg bg-green-100 flex items-center justify-center">
-                        <svg className="h-6 w-6 text-green-600" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
-                        </svg>
+                    <div className="p-4 rounded-lg border bg-muted/30">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 font-semibold">2</div>
+                        <p className="font-medium">Analyze</p>
                       </div>
-                      <div>
-                        <p className="font-medium">Twilio SMS</p>
-                        <p className="text-sm text-muted-foreground">
-                          SMS messaging integration
-                        </p>
-                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        AI extracts action items, deadlines, and client mentions
+                      </p>
                     </div>
-                    <Button variant="outline" size="sm" asChild>
-                      <a href="/admin/sms-settings">Configure</a>
-                    </Button>
+                    <div className="p-4 rounded-lg border bg-muted/30">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-600 font-semibold">3</div>
+                        <p className="font-medium">Create Tasks</p>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        One-click task creation from extracted action items
+                      </p>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
