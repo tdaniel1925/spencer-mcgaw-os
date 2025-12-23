@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
 
   let query = supabase
     .from("tasks")
-    .select("*, clients(id, first_name, last_name, email, phone)", { count: "exact" })
+    .select("*, client:clients!client_id(id, first_name, last_name, email, phone)", { count: "exact" })
     .order("created_at", { ascending: false })
     .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
 
@@ -52,14 +52,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Failed to fetch tasks" }, { status: 500 });
   }
 
-  // Reshape tasks to include client as a nested object
-  const reshapedTasks = (tasks || []).map((task: Record<string, unknown>) => ({
-    ...task,
-    client: task.clients || null,
-    clients: undefined, // Remove the raw join field
-  }));
-
-  return NextResponse.json({ tasks: reshapedTasks, count });
+  // Tasks now include client as a nested object via the join alias
+  return NextResponse.json({ tasks: tasks || [], count });
 }
 
 export async function POST(request: NextRequest) {
