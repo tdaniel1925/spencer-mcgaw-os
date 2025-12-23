@@ -1,10 +1,52 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import twilio from "twilio";
+
+// Validate Twilio webhook signature
+async function validateTwilioSignature(request: NextRequest, formData: FormData): Promise<boolean> {
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+
+  // Skip validation in development or if auth token not set
+  if (!authToken || process.env.NODE_ENV === "development") {
+    console.warn("Skipping Twilio signature validation (development mode or missing auth token)");
+    return true;
+  }
+
+  const signature = request.headers.get("x-twilio-signature");
+  if (!signature) {
+    console.error("Missing Twilio signature header");
+    return false;
+  }
+
+  // Get the full URL that Twilio called
+  const url = request.url;
+
+  // Convert FormData to object for validation
+  const params: Record<string, string> = {};
+  formData.forEach((value, key) => {
+    params[key] = value.toString();
+  });
+
+  // Validate using Twilio's built-in validator
+  const isValid = twilio.validateRequest(authToken, signature, url, params);
+
+  if (!isValid) {
+    console.error("Invalid Twilio signature");
+  }
+
+  return isValid;
+}
 
 // Twilio webhook for inbound SMS messages
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
+
+    // Validate Twilio signature to prevent spoofed webhooks
+    const isValid = await validateTwilioSignature(request, formData);
+    if (!isValid) {
+      return new NextResponse("Forbidden", { status: 403 });
+    }
 
     // Extract Twilio webhook data
     const from = formData.get("From")?.toString() || "";
@@ -273,6 +315,12 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const formData = await request.formData();
+
+    // Validate Twilio signature to prevent spoofed webhooks
+    const isValid = await validateTwilioSignature(request, formData);
+    if (!isValid) {
+      return new NextResponse("Forbidden", { status: 403 });
+    }
 
     const messageSid = formData.get("MessageSid")?.toString();
     const messageStatus = formData.get("MessageStatus")?.toString();

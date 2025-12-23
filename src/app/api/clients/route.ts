@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getApiUser, canViewAll } from "@/lib/auth/api-rbac";
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -8,18 +9,24 @@ export async function GET(request: NextRequest) {
   const limit = searchParams.get("limit") || "100";
   const offset = searchParams.get("offset") || "0";
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
+  // Get authenticated user with role
+  const apiUser = await getApiUser();
+  if (!apiUser) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
+
+  const supabase = await createClient();
 
   let query = supabase
     .from("clients")
     .select("*", { count: "exact" })
     .order("name", { ascending: true })
     .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
+
+  // RBAC: Staff can only see clients they created
+  if (!canViewAll(apiUser)) {
+    query = query.eq("created_by", apiUser.id);
+  }
 
   if (search) {
     query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`);
@@ -40,12 +47,13 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
+  // Get authenticated user with role
+  const apiUser = await getApiUser();
+  if (!apiUser) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
+
+  const supabase = await createClient();
 
   try {
     const body = await request.json();
@@ -79,7 +87,7 @@ export async function POST(request: NextRequest) {
         status,
         notes,
         tags,
-        created_by: user.id,
+        created_by: apiUser.id,
       })
       .select()
       .single();
@@ -91,8 +99,8 @@ export async function POST(request: NextRequest) {
 
     // Log activity
     await supabase.from("activity_log").insert({
-      user_id: user.id,
-      user_email: user.email,
+      user_id: apiUser.id,
+      user_email: apiUser.email,
       action: "created",
       resource_type: "client",
       resource_id: client.id,

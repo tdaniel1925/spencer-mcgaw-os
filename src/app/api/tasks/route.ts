@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getApiUser, canViewAll } from "@/lib/auth/api-rbac";
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -11,18 +12,24 @@ export async function GET(request: NextRequest) {
   const offset = searchParams.get("offset") || "0";
   const unassigned = searchParams.get("unassigned");
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
+  // Get authenticated user with role
+  const apiUser = await getApiUser();
+  if (!apiUser) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
+
+  const supabase = await createClient();
 
   let query = supabase
     .from("tasks")
     .select("*, client:clients!client_id(id, first_name, last_name, email, phone)", { count: "exact" })
     .order("created_at", { ascending: false })
     .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
+
+  // RBAC: Staff can only see their assigned, created, or claimed tasks
+  if (!canViewAll(apiUser)) {
+    query = query.or(`created_by.eq.${apiUser.id},assigned_to.eq.${apiUser.id},claimed_by.eq.${apiUser.id}`);
+  }
 
   if (status && status !== "all") {
     query = query.eq("status", status);
@@ -57,12 +64,13 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
+  // Get authenticated user with role
+  const apiUser = await getApiUser();
+  if (!apiUser) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
+
+  const supabase = await createClient();
 
   try {
     const body = await request.json();
@@ -102,7 +110,7 @@ export async function POST(request: NextRequest) {
         source_id,
         tags,
         estimated_minutes,
-        created_by: user.id,
+        created_by: apiUser.id,
       })
       .select()
       .single();
@@ -114,8 +122,8 @@ export async function POST(request: NextRequest) {
 
     // Log activity
     await supabase.from("activity_log").insert({
-      user_id: user.id,
-      user_email: user.email,
+      user_id: apiUser.id,
+      user_email: apiUser.email,
       action: "created",
       resource_type: "task",
       resource_id: task.id,

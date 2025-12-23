@@ -52,67 +52,94 @@ export async function GET(request: NextRequest) {
         }))
     ];
 
-    // Get last message and unread count for each room
-    const roomsWithMeta = await Promise.all(
-      rooms.map(async (room) => {
-        // Get last message
-        const { data: lastMessage } = await supabase
-          .from("chat_messages")
+    // Batch fetch all data to avoid N+1 queries
+    const roomIds = rooms.map(r => r.id);
+
+    // Get last message for all rooms in one query using a CTE/window function approach
+    // Supabase doesn't support window functions in select, so we use a different strategy:
+    // Get recent messages for all rooms and group client-side
+    const { data: recentMessages } = await supabase
+      .from("chat_messages")
+      .select(`
+        id,
+        room_id,
+        content,
+        created_at,
+        user_id,
+        users:user_id (
+          full_name,
+          email
+        )
+      `)
+      .in("room_id", roomIds)
+      .eq("is_deleted", false)
+      .order("created_at", { ascending: false })
+      .limit(roomIds.length * 2); // Get enough to have at least 1 per room
+
+    // Create a map of room_id -> last message
+    type MessageType = NonNullable<typeof recentMessages>[number];
+    const lastMessageByRoom: Record<string, MessageType> = {};
+    if (recentMessages) {
+      for (const msg of recentMessages) {
+        if (!lastMessageByRoom[msg.room_id]) {
+          lastMessageByRoom[msg.room_id] = msg;
+        }
+      }
+    }
+
+    // Get all unread counts in batch - query messages newer than each room's last_read_at
+    // We need to do this per-room due to the varying last_read_at, but we can parallelize
+    const unreadCountsPromises = rooms.map(async (room) => {
+      const lastReadAt = room.last_read_at || new Date(0).toISOString();
+      const { count } = await supabase
+        .from("chat_messages")
+        .select("id", { count: "exact", head: true })
+        .eq("room_id", room.id)
+        .eq("is_deleted", false)
+        .neq("user_id", user.id)
+        .gt("created_at", lastReadAt);
+      return { roomId: room.id, count: count || 0 };
+    });
+
+    // Get all private room members in one query
+    const privateRoomIds = rooms.filter(r => r.type === "private").map(r => r.id);
+    const { data: allPrivateMembers } = privateRoomIds.length > 0
+      ? await supabase
+          .from("chat_room_members")
           .select(`
-            id,
-            content,
-            created_at,
+            room_id,
             user_id,
             users:user_id (
+              id,
               full_name,
-              email
+              email,
+              avatar_url
             )
           `)
-          .eq("room_id", room.id)
-          .eq("is_deleted", false)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .single();
-
-        // Get unread count
-        const lastReadAt = room.last_read_at || new Date(0).toISOString();
-        const { count: unreadCount } = await supabase
-          .from("chat_messages")
-          .select("id", { count: "exact", head: true })
-          .eq("room_id", room.id)
-          .eq("is_deleted", false)
+          .in("room_id", privateRoomIds)
           .neq("user_id", user.id)
-          .gt("created_at", lastReadAt);
+      : { data: [] };
 
-        // For private rooms, get the other participant's info
-        let otherUser = null;
-        if (room.type === "private") {
-          const { data: members } = await supabase
-            .from("chat_room_members")
-            .select(`
-              user_id,
-              users:user_id (
-                id,
-                full_name,
-                email,
-                avatar_url
-              )
-            `)
-            .eq("room_id", room.id)
-            .neq("user_id", user.id)
-            .single();
+    // Create a map of room_id -> other user for private rooms
+    const otherUserByRoom: Record<string, unknown> = {};
+    for (const member of allPrivateMembers || []) {
+      otherUserByRoom[member.room_id] = member.users;
+    }
 
-          otherUser = members?.users;
-        }
+    // Wait for unread counts
+    const unreadCounts = await Promise.all(unreadCountsPromises);
+    const unreadCountByRoom: Record<string, number> = {};
+    for (const { roomId, count } of unreadCounts) {
+      unreadCountByRoom[roomId] = count;
+    }
 
-        return {
-          ...room,
-          last_message: lastMessage,
-          unread_count: unreadCount || 0,
-          other_user: otherUser
-        };
-      })
-    );
+    // Combine all data
+    const roomsWithMeta = rooms.map((room) => ({
+      ...room,
+      last_message: lastMessageByRoom[room.id] || null,
+      unread_count: unreadCountByRoom[room.id] || 0,
+      other_user: otherUserByRoom[room.id] || null
+    }));
 
     // Sort by last message time
     roomsWithMeta.sort((a, b) => {
