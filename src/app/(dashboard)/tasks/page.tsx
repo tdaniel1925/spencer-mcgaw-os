@@ -6,12 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Card, CardContent } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { useTaskContext, Task, TaskView } from "@/lib/tasks/task-context";
+import { TaskDetailPanel } from "@/components/tasks/task-detail-panel";
 import {
   Select,
   SelectContent,
@@ -62,8 +60,6 @@ import {
   LayoutList,
   Hand,
   UserCheck,
-  ChevronDown,
-  ChevronUp,
   User,
   AlertCircle,
 } from "lucide-react";
@@ -745,111 +741,13 @@ export default function TasksPage() {
         </div>
       </main>
 
-      {/* View Task Dialog */}
-      <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>Task Details</DialogTitle>
-          </DialogHeader>
-          {selectedTask && (
-            <div className="space-y-4 py-4">
-              {/* Source breadcrumb in dialog */}
-              {selectedTask.source_type && selectedTask.source_type !== "manual" && (
-                <div className="flex items-center gap-2 p-2 bg-muted/50 rounded-lg text-sm">
-                  {selectedTask.source_type === "phone_call" && <Phone className="h-4 w-4" />}
-                  {selectedTask.source_type === "email" && <Mail className="h-4 w-4" />}
-                  {selectedTask.source_type === "document_intake" && <FileText className="h-4 w-4" />}
-                  <span>Created from {selectedTask.source_type.replace(/_/g, " ")}</span>
-                  <span className="text-muted-foreground">•</span>
-                  <span className="text-muted-foreground">
-                    {format(new Date(selectedTask.created_at), "MMM d, yyyy 'at' h:mm a")}
-                  </span>
-                </div>
-              )}
-
-              <div>
-                <Label className="text-muted-foreground">Task ID</Label>
-                <p className="font-medium">#{selectedTask.id.slice(0, 8)}</p>
-              </div>
-              <div>
-                <Label className="text-muted-foreground">Title</Label>
-                <p className="font-medium">{selectedTask.title}</p>
-              </div>
-              {selectedTask.description && (
-                <div>
-                  <Label className="text-muted-foreground">Description</Label>
-                  <p>{selectedTask.description}</p>
-                </div>
-              )}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-muted-foreground">Status</Label>
-                  <div className="mt-1">
-                    <Badge
-                      variant="outline"
-                      className={cn("font-normal", statusConfig[selectedTask.status]?.className)}
-                    >
-                      {statusConfig[selectedTask.status]?.label}
-                    </Badge>
-                  </div>
-                </div>
-                <div>
-                  <Label className="text-muted-foreground">Priority</Label>
-                  <div className="mt-1">
-                    <Badge
-                      variant="secondary"
-                      className={cn("font-normal", priorityConfig[selectedTask.priority]?.className)}
-                    >
-                      {priorityConfig[selectedTask.priority]?.label}
-                    </Badge>
-                  </div>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-muted-foreground">Client</Label>
-                  <p>
-                    {selectedTask.client
-                      ? `${selectedTask.client.first_name} ${selectedTask.client.last_name}`
-                      : "-"}
-                  </p>
-                </div>
-                <div>
-                  <Label className="text-muted-foreground">Source</Label>
-                  <p className="capitalize">{(selectedTask.source_type || "manual").replace(/_/g, " ")}</p>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-muted-foreground">Due Date</Label>
-                  <p>{selectedTask.due_date ? format(new Date(selectedTask.due_date), "MMM d, yyyy") : "-"}</p>
-                </div>
-                <div>
-                  <Label className="text-muted-foreground">Created</Label>
-                  <p>{format(new Date(selectedTask.created_at), "MMM d, yyyy")}</p>
-                </div>
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setViewDialogOpen(false)}>
-              Close
-            </Button>
-            <Button
-              onClick={() => {
-                setViewDialogOpen(false);
-                if (selectedTask) {
-                  fetchTeamMembers();
-                  setReassignDialogOpen(true);
-                }
-              }}
-            >
-              <UserPlus className="h-4 w-4 mr-2" />
-              Assign to Someone
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Task Detail Panel (Slide-out Sheet with Subtasks and Activity) */}
+      <TaskDetailPanel
+        task={selectedTask}
+        open={viewDialogOpen}
+        onOpenChange={setViewDialogOpen}
+        onTaskUpdate={refreshTasks}
+      />
 
       {/* Reassign Dialog */}
       <Dialog open={reassignDialogOpen} onOpenChange={setReassignDialogOpen}>

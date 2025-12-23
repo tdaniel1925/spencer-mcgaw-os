@@ -73,7 +73,7 @@ interface NavSection {
 
 const navSections: NavSection[] = [
   {
-    // Core section (no label, always visible at top)
+    // Core section - main navigation
     items: [
       {
         title: "Dashboard",
@@ -84,36 +84,36 @@ const navSections: NavSection[] = [
     ],
   },
   {
-    label: "Work",
+    label: "Inbox",
     items: [
       {
-        title: "Tasks",
-        href: "/tasks",
-        icon: ClipboardList,
-        permission: "tasks:view",
+        title: "Org Feed",
+        href: "/org-feed",
+        icon: Activity,
+        permission: "dashboard:view",
+      },
+      {
+        title: "My Inbox",
+        href: "/my-inbox",
+        icon: Mail,
+        permission: "email:view",
       },
     ],
   },
   {
-    label: "Communication",
+    label: "Work",
     items: [
       {
-        title: "Email Intelligence",
-        href: "/email-intelligence",
-        icon: Sparkles,
-        permission: "email:view",
+        title: "My Tasks",
+        href: "/tasks",
+        icon: ClipboardList,
+        permission: "tasks:view",
       },
       {
-        title: "Phone Agent",
-        href: "/calls",
-        icon: Phone,
-        permission: "calls:view",
-      },
-      {
-        title: "SMS",
-        href: "/sms",
-        icon: MessageSquare,
-        permission: "clients:view",
+        title: "Calendar",
+        href: "/calendar",
+        icon: Calendar,
+        permission: "calendar:view",
       },
     ],
   },
@@ -149,33 +149,27 @@ const navSections: NavSection[] = [
         icon: FolderOpen,
         permission: "documents:view",
       },
-      {
-        title: "Documents",
-        href: "/documents",
-        icon: FileText,
-        permission: "documents:view",
-      },
     ],
   },
   {
-    label: "Insights",
+    label: "Admin",
     items: [
       {
-        title: "Calendar",
-        href: "/calendar",
-        icon: Calendar,
-        permission: "calendar:view",
-      },
-      {
-        title: "Reports",
-        href: "/reports",
-        icon: FileSpreadsheet,
-        permission: "analytics:view",
+        title: "Oversight",
+        href: "/oversight",
+        icon: BarChart3,
+        permission: "system:view_audit_logs",
+        adminOnly: true,
       },
     ],
   },
   {
     items: [
+      {
+        title: "Settings",
+        href: "/settings",
+        icon: Settings,
+      },
       {
         title: "Help",
         href: "/help",

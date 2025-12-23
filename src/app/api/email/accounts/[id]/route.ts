@@ -166,7 +166,7 @@ export async function GET(
 
   const { data: connection, error } = await supabase
     .from("email_connections")
-    .select("id, provider, email, display_name, expires_at, updated_at, scopes")
+    .select("id, provider, email, display_name, expires_at, updated_at, scopes, is_global, description, display_order")
     .eq("id", id)
     .eq("user_id", user.id)
     .single();
@@ -185,5 +185,133 @@ export async function GET(
     provider: connection.provider,
     isConnected: new Date(connection.expires_at) > new Date(),
     lastSyncAt: connection.updated_at ? new Date(connection.updated_at) : null,
+    isGlobal: connection.is_global || false,
+    description: connection.description || null,
+    displayOrder: connection.display_order || 0,
   });
+}
+
+/**
+ * PUT /api/email/accounts/[id]
+ *
+ * Update email account settings (display name, global status, etc.)
+ * Only owner or admin can update
+ */
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  try {
+    const body = await request.json();
+    const { displayName, description, isGlobal, displayOrder } = body;
+
+    // Check if user owns the connection or is admin
+    const { data: connection, error: connError } = await supabase
+      .from("email_connections")
+      .select("id, user_id")
+      .eq("id", id)
+      .single();
+
+    if (connError || !connection) {
+      return NextResponse.json(
+        { error: "Email connection not found" },
+        { status: 404 }
+      );
+    }
+
+    // Check user role if not owner
+    let isAdmin = false;
+    if (connection.user_id !== user.id) {
+      const { data: profile } = await supabase
+        .from("user_profiles")
+        .select("role")
+        .eq("id", user.id)
+        .single();
+
+      isAdmin = profile?.role === "admin";
+
+      if (!isAdmin) {
+        return NextResponse.json(
+          { error: "Not authorized to update this connection" },
+          { status: 403 }
+        );
+      }
+    }
+
+    // Build update object
+    const updates: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
+
+    if (displayName !== undefined) updates.display_name = displayName;
+    if (description !== undefined) updates.description = description;
+    if (displayOrder !== undefined) updates.display_order = displayOrder;
+
+    // Only admins can set global status
+    if (isGlobal !== undefined) {
+      if (!isAdmin && connection.user_id !== user.id) {
+        return NextResponse.json(
+          { error: "Only admins can change global status" },
+          { status: 403 }
+        );
+      }
+
+      // Check if user is admin for global changes
+      const { data: profile } = await supabase
+        .from("user_profiles")
+        .select("role")
+        .eq("id", user.id)
+        .single();
+
+      if (profile?.role !== "admin" && isGlobal === true) {
+        return NextResponse.json(
+          { error: "Only admins can make accounts global" },
+          { status: 403 }
+        );
+      }
+
+      updates.is_global = isGlobal;
+    }
+
+    const { data: updated, error: updateError } = await supabase
+      .from("email_connections")
+      .update(updates)
+      .eq("id", id)
+      .select("id, email, display_name, is_global, description, display_order")
+      .single();
+
+    if (updateError) {
+      console.error("[Email Account Update] Error:", updateError);
+      return NextResponse.json(
+        { error: "Failed to update email account" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      account: {
+        id: updated.id,
+        email: updated.email,
+        displayName: updated.display_name,
+        isGlobal: updated.is_global,
+        description: updated.description,
+        displayOrder: updated.display_order,
+      },
+    });
+  } catch (error) {
+    console.error("[Email Account Update] Error:", error);
+    return NextResponse.json(
+      { error: "Invalid request body" },
+      { status: 400 }
+    );
+  }
 }

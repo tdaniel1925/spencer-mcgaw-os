@@ -769,11 +769,16 @@ export default function CalendarPage() {
   const [showConnectCalendar, setShowConnectCalendar] = useState(false);
   const [connectingProvider, setConnectingProvider] = useState<string | null>(null);
 
+  // Task deadline events (displayed separately from regular events)
+  const [taskDeadlines, setTaskDeadlines] = useState<CalendarEvent[]>([]);
+  const [showTaskDeadlines, setShowTaskDeadlines] = useState(true);
+
   // Fetch calendar connections and events on mount
   useEffect(() => {
     setMounted(true);
     fetchCalendarConnections();
     fetchCalendarEvents();
+    fetchTaskDeadlines();
   }, []);
 
   // Fetch calendar connections
@@ -806,6 +811,25 @@ export default function CalendarPage() {
       }
     } catch (error) {
       console.error("Error fetching calendar events:", error);
+    }
+  };
+
+  // Fetch task deadlines as calendar events
+  const fetchTaskDeadlines = async () => {
+    try {
+      const response = await fetch("/api/calendar/task-deadlines");
+      if (response.ok) {
+        const data = await response.json();
+        const transformedDeadlines = (data.events || []).map((e: Record<string, unknown>) => ({
+          ...e,
+          startTime: new Date(e.startTime as string),
+          endTime: new Date(e.endTime as string),
+          createdAt: e.createdAt ? new Date(e.createdAt as string) : undefined,
+        }));
+        setTaskDeadlines(transformedDeadlines);
+      }
+    } catch (error) {
+      console.error("Error fetching task deadlines:", error);
     }
   };
 
@@ -883,9 +907,10 @@ export default function CalendarPage() {
     return eachDayOfInterval({ start, end });
   }, [currentDate]);
 
-  // Filter events
+  // Filter events (including task deadlines when enabled)
   const filteredEvents = useMemo(() => {
-    let result = events;
+    // Combine regular events with task deadlines if enabled
+    let result = showTaskDeadlines ? [...events, ...taskDeadlines] : events;
 
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
@@ -906,14 +931,14 @@ export default function CalendarPage() {
     }
 
     return result;
-  }, [events, searchQuery, filterCategories, filterProviders]);
+  }, [events, taskDeadlines, showTaskDeadlines, searchQuery, filterCategories, filterProviders]);
 
   // Sync calendars - fetches events from all connected providers
   const syncCalendars = async () => {
     setSyncing(true);
     try {
-      // Fetch local events
-      await fetchCalendarEvents();
+      // Fetch local events and task deadlines
+      await Promise.all([fetchCalendarEvents(), fetchTaskDeadlines()]);
 
       // Fetch from Microsoft if connected
       const hasMicrosoft = calendarConnections.some(c => c.provider === "microsoft");
@@ -1247,6 +1272,30 @@ export default function CalendarPage() {
               </CardContent>
             </Card>
 
+            {/* Task Deadlines Toggle */}
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded bg-red-500" />
+                    <span className="text-sm font-medium">Task Deadlines</span>
+                    {taskDeadlines.length > 0 && (
+                      <Badge variant="secondary" className="text-xs">
+                        {taskDeadlines.length}
+                      </Badge>
+                    )}
+                  </div>
+                  <Switch
+                    checked={showTaskDeadlines}
+                    onCheckedChange={setShowTaskDeadlines}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Show task due dates on calendar
+                </p>
+              </CardContent>
+            </Card>
+
             {/* Categories */}
             <Card>
               <CardHeader className="p-4 pb-2">
@@ -1268,9 +1317,10 @@ export default function CalendarPage() {
                 <CardTitle className="text-sm font-medium">Upcoming</CardTitle>
               </CardHeader>
               <CardContent className="p-4 pt-2 space-y-2">
-                {events
+                {[...events, ...(showTaskDeadlines ? taskDeadlines : [])]
                   .filter((e) => isAfter(e.startTime, new Date()))
-                  .slice(0, 3)
+                  .sort((a, b) => a.startTime.getTime() - b.startTime.getTime())
+                  .slice(0, 5)
                   .map((event) => (
                     <div
                       key={event.id}
