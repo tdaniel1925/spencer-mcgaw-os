@@ -12,21 +12,20 @@ export interface InboxItem {
   };
   subject: string;
   summary: string | null;
-  bodyPreview: string | null;
   category: string;
   priority: "low" | "medium" | "high" | "urgent";
+  priorityScore: number;
   sentiment: string | null;
+  urgency: string | null;
   requiresResponse: boolean;
   hasAttachments: boolean;
   receivedAt: string;
-  status: "pending" | "approved" | "dismissed" | "delegated";
-  hasTask: boolean;
-  matchedClientId: string | null;
-  matchedClientName: string | null;
+  keyPoints: string[];
   actionItems: Array<{
     id: string;
     title: string;
     type: string;
+    status: string;
   }>;
 }
 
@@ -43,8 +42,7 @@ export async function GET(request: NextRequest) {
   }
 
   const searchParams = request.nextUrl.searchParams;
-  const status = searchParams.get("status") || "all";
-  const priority = searchParams.get("priority") || "all";
+  const category = searchParams.get("category");
   const limit = parseInt(searchParams.get("limit") || "50");
   const offset = parseInt(searchParams.get("offset") || "0");
 
@@ -68,37 +66,37 @@ export async function GET(request: NextRequest) {
     const accountIds = personalAccounts.map(a => a.id);
     const accountEmailMap = new Map(personalAccounts.map(a => [a.id, a.email]));
 
-    // Build query for email classifications
+    // Build query using columns that exist (same as email-intelligence)
     let query = supabase
       .from("email_classifications")
       .select(`
         id,
-        email_id,
+        email_message_id,
         account_id,
-        from_name,
-        from_email,
+        sender_name,
+        sender_email,
         subject,
-        summary,
-        body_preview,
-        category,
-        priority,
-        sentiment,
-        requires_response,
         has_attachments,
-        matched_client_id,
-        status,
+        received_at,
+        category,
+        subcategory,
+        is_business_relevant,
+        priority_score,
+        sentiment,
+        urgency,
+        requires_response,
+        summary,
+        key_points,
+        confidence,
         created_at
       `, { count: "exact" })
       .in("account_id", accountIds)
-      .order("created_at", { ascending: false })
+      .order("received_at", { ascending: false, nullsFirst: false })
       .range(offset, offset + limit - 1);
 
-    if (status !== "all") {
-      query = query.eq("status", status);
-    }
-
-    if (priority !== "all") {
-      query = query.eq("priority", priority);
+    // Apply category filter if provided
+    if (category && category !== "all") {
+      query = query.eq("category", category);
     }
 
     const { data: emails, error, count } = await query;
@@ -121,65 +119,55 @@ export async function GET(request: NextRequest) {
     }
 
     // Get action items for these emails
-    const emailIds = emails.map(e => e.email_id);
-    const { data: actionItems } = await supabase
-      .from("email_action_items")
-      .select("email_id, id, title, type")
-      .in("email_id", emailIds);
+    const emailMessageIds = emails.map(e => e.email_message_id).filter(Boolean);
+    let actionItemsByEmail: Record<string, Array<{ id: string; title: string; type: string; status: string }>> = {};
 
-    const actionItemsByEmail = new Map<string, Array<{ id: string; title: string; type: string }>>();
-    for (const item of actionItems || []) {
-      if (!actionItemsByEmail.has(item.email_id)) {
-        actionItemsByEmail.set(item.email_id, []);
+    if (emailMessageIds.length > 0) {
+      const { data: actionItems } = await supabase
+        .from("email_action_items")
+        .select("*")
+        .in("email_message_id", emailMessageIds);
+
+      if (actionItems) {
+        for (const item of actionItems) {
+          if (!actionItemsByEmail[item.email_message_id]) {
+            actionItemsByEmail[item.email_message_id] = [];
+          }
+          actionItemsByEmail[item.email_message_id].push({
+            id: item.id,
+            title: item.title,
+            type: item.action_type,
+            status: item.status,
+          });
+        }
       }
-      actionItemsByEmail.get(item.email_id)!.push({
-        id: item.id,
-        title: item.title,
-        type: item.type,
-      });
     }
-
-    // Check which emails have tasks
-    const { data: tasksWithEmails } = await supabase
-      .from("tasks")
-      .select("source_email_id")
-      .in("source_email_id", emailIds);
-
-    const emailsWithTasks = new Set(tasksWithEmails?.map(t => t.source_email_id) || []);
-
-    // Get client names for matched clients
-    const clientIds = emails.filter(e => e.matched_client_id).map(e => e.matched_client_id);
-    const { data: clients } = await supabase
-      .from("clients")
-      .select("id, first_name, last_name")
-      .in("id", clientIds);
-
-    const clientMap = new Map(clients?.map(c => [c.id, `${c.first_name} ${c.last_name}`]) || []);
 
     // Transform to InboxItem format
     const items: InboxItem[] = emails.map(email => ({
       id: email.id,
-      emailId: email.email_id,
+      emailId: email.email_message_id || email.id,
       accountId: email.account_id,
-      accountEmail: accountEmailMap.get(email.account_id) || email.account_id,
+      accountEmail: accountEmailMap.get(email.account_id) || "",
       from: {
-        name: email.from_name || "",
-        email: email.from_email || "",
+        name: email.sender_name || "Unknown",
+        email: email.sender_email || "",
       },
       subject: email.subject || "(No Subject)",
-      summary: email.summary,
-      bodyPreview: email.body_preview,
+      summary: email.summary || null,
       category: email.category || "other",
-      priority: email.priority || "medium",
-      sentiment: email.sentiment,
+      priority: email.priority_score >= 80 ? "urgent"
+        : email.priority_score >= 60 ? "high"
+        : email.priority_score >= 40 ? "medium"
+        : "low",
+      priorityScore: email.priority_score || 50,
+      sentiment: email.sentiment || null,
+      urgency: email.urgency || null,
       requiresResponse: email.requires_response || false,
       hasAttachments: email.has_attachments || false,
-      receivedAt: email.created_at,
-      status: email.status || "pending",
-      hasTask: emailsWithTasks.has(email.email_id),
-      matchedClientId: email.matched_client_id,
-      matchedClientName: email.matched_client_id ? clientMap.get(email.matched_client_id) || null : null,
-      actionItems: actionItemsByEmail.get(email.email_id) || [],
+      receivedAt: email.received_at || email.created_at,
+      keyPoints: email.key_points || [],
+      actionItems: actionItemsByEmail[email.email_message_id] || [],
     }));
 
     return NextResponse.json({

@@ -8,7 +8,7 @@ export interface UserPresence {
   status: PresenceStatus;
   last_seen_at: string;
   current_room_id?: string;
-  user?: {
+  user_profiles?: {
     full_name: string;
     email: string;
     avatar_url?: string;
@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
         status,
         last_seen_at,
         current_room_id,
-        users:user_id (
+        user_profiles:user_id (
           full_name,
           email,
           avatar_url

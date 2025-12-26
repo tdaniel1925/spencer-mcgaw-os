@@ -208,19 +208,60 @@ export async function parseWebhookWithAI(
 
     return result;
   } catch (error) {
-    console.error("[AI Parser] Error parsing webhook:", error);
+    // Log detailed error info for debugging
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorName = error instanceof Error ? error.name : "Unknown";
+    console.error("[AI Parser] Error parsing webhook:", {
+      errorName,
+      errorMessage,
+      stack: error instanceof Error ? error.stack : undefined,
+      hasApiKey: !!process.env.OPENAI_API_KEY,
+      apiKeyLength: process.env.OPENAI_API_KEY?.length || 0,
+    });
 
-    // Return a minimal parsed result on error
+    // Try to extract basic info from raw payload for a better fallback
+    const message = rawPayload.message as Record<string, unknown> | undefined;
+    const call = (message?.call || rawPayload.call) as Record<string, unknown> | undefined;
+    const customer = (call?.customer || message?.customer || rawPayload.customer) as Record<string, unknown> | undefined;
+    const artifact = (message?.artifact || rawPayload.artifact) as Record<string, unknown> | undefined;
+
+    // Try to get caller info
+    const callerPhone = (customer?.number || customer?.phoneNumber || rawPayload.phoneNumber) as string | undefined;
+    const callerName = (customer?.name || rawPayload.callerName) as string | undefined;
+
+    // Try to get a summary from VAPI's built-in summary
+    const vapiSummary = (message?.summary || rawPayload.summary) as string | undefined;
+
+    // Build a fallback summary
+    let fallbackSummary = "Call received";
+    if (callerName && callerPhone) {
+      fallbackSummary = `Call from ${callerName} (${callerPhone})`;
+    } else if (callerName) {
+      fallbackSummary = `Call from ${callerName}`;
+    } else if (callerPhone) {
+      fallbackSummary = `Call from ${callerPhone}`;
+    }
+
+    if (vapiSummary) {
+      fallbackSummary = vapiSummary;
+    } else if (artifact?.messages) {
+      fallbackSummary += " - transcript available, review for details";
+    }
+
+    // Return a minimal parsed result on error with better fallback
     return {
-      source: "unknown",
-      contact: {},
+      source: detectSourceType(rawPayload),
+      contact: {
+        name: callerName,
+        phone: callerPhone,
+      },
       analysis: {
         category: "other",
         sentiment: "unknown",
         urgency: "medium",
-        summary: "Failed to parse webhook payload",
+        summary: fallbackSummary,
         keyPoints: [],
-        suggestedActions: ["Manual review required"],
+        suggestedActions: ["Review call details manually"],
       },
       rawPayload,
       parsedAt: new Date().toISOString(),

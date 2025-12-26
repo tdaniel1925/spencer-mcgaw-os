@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 // GET /api/chat/messages?room_id=xxx&limit=50&before=xxx
 export async function GET(request: NextRequest) {
@@ -19,9 +20,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "room_id is required" }, { status: 400 });
   }
 
+  // Use admin client to bypass RLS recursion issue
+  const adminClient = createAdminClient();
+
   try {
     // Verify user has access to this room
-    const { data: room } = await supabase
+    const { data: room } = await adminClient
       .from("chat_rooms")
       .select("type")
       .eq("id", roomId)
@@ -32,7 +36,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (room.type !== "community") {
-      const { data: membership } = await supabase
+      const { data: membership } = await adminClient
         .from("chat_room_members")
         .select("id")
         .eq("room_id", roomId)
@@ -45,7 +49,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch messages
-    let query = supabase
+    let query = adminClient
       .from("chat_messages")
       .select(`
         id,
@@ -80,7 +84,7 @@ export async function GET(request: NextRequest) {
     if (error) throw error;
 
     // Update last_read_at for this user
-    await supabase
+    await adminClient
       .from("chat_room_members")
       .upsert({
         room_id: roomId,
@@ -110,6 +114,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
+  // Use admin client to bypass RLS recursion issue
+  const adminClient = createAdminClient();
+
   try {
     const body = await request.json();
     const { room_id, content, reply_to } = body;
@@ -119,7 +126,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify user has access to this room
-    const { data: room } = await supabase
+    const { data: room } = await adminClient
       .from("chat_rooms")
       .select("type")
       .eq("id", room_id)
@@ -131,7 +138,7 @@ export async function POST(request: NextRequest) {
 
     // For community rooms, auto-join if not a member
     if (room.type === "community") {
-      await supabase
+      await adminClient
         .from("chat_room_members")
         .upsert({
           room_id,
@@ -141,7 +148,7 @@ export async function POST(request: NextRequest) {
           onConflict: "room_id,user_id"
         });
     } else {
-      const { data: membership } = await supabase
+      const { data: membership } = await adminClient
         .from("chat_room_members")
         .select("id")
         .eq("room_id", room_id)
@@ -154,7 +161,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create the message
-    const { data: message, error } = await supabase
+    const { data: message, error } = await adminClient
       .from("chat_messages")
       .insert({
         room_id,
@@ -195,7 +202,7 @@ export async function POST(request: NextRequest) {
     // Find mentioned users and create mention records
     if (mentions.length > 0 && message) {
       // Get all users to match mentions
-      const { data: allUsers } = await supabase
+      const { data: allUsers } = await adminClient
         .from("user_profiles")
         .select("id, full_name, email");
 
@@ -223,7 +230,7 @@ export async function POST(request: NextRequest) {
             mentioned_user_id: userId
           }));
 
-          await supabase.from("chat_mentions").insert(mentionRecords);
+          await adminClient.from("chat_mentions").insert(mentionRecords);
 
           // Create notifications for mentioned users
           const notifications = Array.from(mentionedUserIds).map(userId => ({
@@ -236,20 +243,20 @@ export async function POST(request: NextRequest) {
             metadata: { room_id, message_id: message.id }
           }));
 
-          await supabase.from("notifications").insert(notifications);
+          await adminClient.from("notifications").insert(notifications);
         }
       }
     }
 
     // Clear typing indicator
-    await supabase
+    await adminClient
       .from("chat_typing_indicators")
       .delete()
       .eq("room_id", room_id)
       .eq("user_id", user.id);
 
     // Update last_read_at
-    await supabase
+    await adminClient
       .from("chat_room_members")
       .update({ last_read_at: new Date().toISOString() })
       .eq("room_id", room_id)

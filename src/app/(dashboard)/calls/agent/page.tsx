@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Header } from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,23 +31,99 @@ import {
   Play,
   Pause,
   RefreshCw,
+  Save,
+  Loader2,
 } from "lucide-react";
+import { toast } from "sonner";
+
+interface PhoneAgentSettings {
+  isAgentActive: boolean;
+  voiceType: string;
+  speakingSpeed: string;
+  autoCreateTasks: boolean;
+  recordCalls: boolean;
+  transcribeCalls: boolean;
+  greetingScript: string;
+  businessHoursResponse: string;
+  transferMessage: string;
+}
+
+const defaultSettings: PhoneAgentSettings = {
+  isAgentActive: true,
+  voiceType: "professional",
+  speakingSpeed: "normal",
+  autoCreateTasks: true,
+  recordCalls: true,
+  transcribeCalls: true,
+  greetingScript: "Hello, thank you for calling Spencer McGaw CPA. This is our automated assistant. How may I help you today?",
+  businessHoursResponse: "Our office hours are Monday through Friday, 9 AM to 5 PM Central Time. Is there anything else I can help you with?",
+  transferMessage: "I'd be happy to connect you with one of our team members. Please hold while I transfer your call.",
+};
+
+const STORAGE_KEY = "phone-agent-settings";
 
 export default function PhoneAgentPage() {
-  const [isAgentActive, setIsAgentActive] = useState(true);
+  const [settings, setSettings] = useState<PhoneAgentSettings>(defaultSettings);
   const [isTestMode, setIsTestMode] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
+
+  // Load settings from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        setSettings({ ...defaultSettings, ...parsed });
+      } catch {
+        console.error("Failed to parse saved settings");
+      }
+    }
+  }, []);
+
+  // Update a single setting
+  const updateSetting = <K extends keyof PhoneAgentSettings>(
+    key: K,
+    value: PhoneAgentSettings[K]
+  ) => {
+    setSettings((prev) => ({ ...prev, [key]: value }));
+    setHasChanges(true);
+  };
+
+  // Save settings to localStorage
+  const saveSettings = () => {
+    setIsSaving(true);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+      setHasChanges(false);
+      toast.success("Settings saved successfully");
+    } catch {
+      toast.error("Failed to save settings");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Handle agent active toggle (saves immediately)
+  const handleAgentToggle = (active: boolean) => {
+    updateSetting("isAgentActive", active);
+    // Save immediately for critical settings
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...settings, isAgentActive: active }));
+    toast.success(active ? "Phone agent activated" : "Phone agent paused");
+    setHasChanges(false);
+  };
 
   return (
     <>
       <Header title="Phone Agent" />
       <main className="p-6 space-y-6">
         {/* Status Banner */}
-        <Card className={isAgentActive ? "border-green-200 bg-green-50" : "border-yellow-200 bg-yellow-50"}>
+        <Card className={settings.isAgentActive ? "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950" : "border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-950"}>
           <CardContent className="py-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <div className={`w-12 h-12 rounded-full flex items-center justify-center ${isAgentActive ? "bg-green-100" : "bg-yellow-100"}`}>
-                  {isAgentActive ? (
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center ${settings.isAgentActive ? "bg-green-100 dark:bg-green-900" : "bg-yellow-100 dark:bg-yellow-900"}`}>
+                  {settings.isAgentActive ? (
                     <PhoneCall className="h-6 w-6 text-green-600" />
                   ) : (
                     <PhoneOff className="h-6 w-6 text-yellow-600" />
@@ -55,10 +131,10 @@ export default function PhoneAgentPage() {
                 </div>
                 <div>
                   <h3 className="font-semibold">
-                    AI Phone Agent is {isAgentActive ? "Active" : "Paused"}
+                    AI Phone Agent is {settings.isAgentActive ? "Active" : "Paused"}
                   </h3>
                   <p className="text-sm text-muted-foreground">
-                    {isAgentActive
+                    {settings.isAgentActive
                       ? "Handling incoming calls automatically"
                       : "Calls will go to voicemail"}
                   </p>
@@ -67,11 +143,11 @@ export default function PhoneAgentPage() {
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2">
                   <Switch
-                    checked={isAgentActive}
-                    onCheckedChange={setIsAgentActive}
+                    checked={settings.isAgentActive}
+                    onCheckedChange={handleAgentToggle}
                   />
                   <span className="text-sm font-medium">
-                    {isAgentActive ? "Active" : "Paused"}
+                    {settings.isAgentActive ? "Active" : "Paused"}
                   </span>
                 </div>
               </div>
@@ -201,7 +277,10 @@ export default function PhoneAgentPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Voice Type</Label>
-                    <Select defaultValue="professional">
+                    <Select
+                      value={settings.voiceType}
+                      onValueChange={(v) => updateSetting("voiceType", v)}
+                    >
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
@@ -214,7 +293,10 @@ export default function PhoneAgentPage() {
                   </div>
                   <div className="space-y-2">
                     <Label>Speaking Speed</Label>
-                    <Select defaultValue="normal">
+                    <Select
+                      value={settings.speakingSpeed}
+                      onValueChange={(v) => updateSetting("speakingSpeed", v)}
+                    >
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
@@ -241,7 +323,10 @@ export default function PhoneAgentPage() {
                       Automatically create tasks from call outcomes
                     </p>
                   </div>
-                  <Switch defaultChecked />
+                  <Switch
+                    checked={settings.autoCreateTasks}
+                    onCheckedChange={(v) => updateSetting("autoCreateTasks", v)}
+                  />
                 </div>
                 <div className="flex items-center justify-between">
                   <div>
@@ -250,7 +335,10 @@ export default function PhoneAgentPage() {
                       Save call recordings for review
                     </p>
                   </div>
-                  <Switch defaultChecked />
+                  <Switch
+                    checked={settings.recordCalls}
+                    onCheckedChange={(v) => updateSetting("recordCalls", v)}
+                  />
                 </div>
                 <div className="flex items-center justify-between">
                   <div>
@@ -259,10 +347,27 @@ export default function PhoneAgentPage() {
                       Generate text transcripts of conversations
                     </p>
                   </div>
-                  <Switch defaultChecked />
+                  <Switch
+                    checked={settings.transcribeCalls}
+                    onCheckedChange={(v) => updateSetting("transcribeCalls", v)}
+                  />
                 </div>
               </CardContent>
             </Card>
+
+            {/* Save Button */}
+            {hasChanges && (
+              <div className="flex justify-end">
+                <Button onClick={saveSettings} disabled={isSaving}>
+                  {isSaving ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4 mr-2" />
+                  )}
+                  {isSaving ? "Saving..." : "Save Settings"}
+                </Button>
+              </div>
+            )}
           </TabsContent>
 
           {/* Scripts Tab */}
@@ -276,7 +381,8 @@ export default function PhoneAgentPage() {
               </CardHeader>
               <CardContent>
                 <Textarea
-                  defaultValue="Hello, thank you for calling Spencer McGaw CPA. This is our automated assistant. How may I help you today?"
+                  value={settings.greetingScript}
+                  onChange={(e) => updateSetting("greetingScript", e.target.value)}
                   rows={3}
                 />
               </CardContent>
@@ -288,7 +394,8 @@ export default function PhoneAgentPage() {
               </CardHeader>
               <CardContent>
                 <Textarea
-                  defaultValue="Our office hours are Monday through Friday, 9 AM to 5 PM Central Time. Is there anything else I can help you with?"
+                  value={settings.businessHoursResponse}
+                  onChange={(e) => updateSetting("businessHoursResponse", e.target.value)}
                   rows={3}
                 />
               </CardContent>
@@ -300,11 +407,26 @@ export default function PhoneAgentPage() {
               </CardHeader>
               <CardContent>
                 <Textarea
-                  defaultValue="I'd be happy to connect you with one of our team members. Please hold while I transfer your call."
+                  value={settings.transferMessage}
+                  onChange={(e) => updateSetting("transferMessage", e.target.value)}
                   rows={3}
                 />
               </CardContent>
             </Card>
+
+            {/* Save Button */}
+            {hasChanges && (
+              <div className="flex justify-end">
+                <Button onClick={saveSettings} disabled={isSaving}>
+                  {isSaving ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4 mr-2" />
+                  )}
+                  {isSaving ? "Saving..." : "Save Scripts"}
+                </Button>
+              </div>
+            )}
           </TabsContent>
 
           {/* Test Tab */}

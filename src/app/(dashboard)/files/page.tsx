@@ -88,12 +88,16 @@ import {
   Info,
   CheckCircle,
   AlertCircle,
+  Cloud,
+  FileUp,
+  FolderUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow } from "date-fns";
 import { useFiles } from "@/lib/files";
-import { Folder as FolderType, FileRecord, formatFileSize, getFileCategory } from "@/lib/files/types";
+import { Folder as FolderType, FileRecord, formatFileSize, getFileCategory, DEFAULT_STORAGE_QUOTA_BYTES } from "@/lib/files/types";
 import { FilePreview } from "@/components/files/file-preview";
+import { StorageInfo, SyncStatusBadge } from "@/components/files/sync-status-badge";
 
 // File type to icon mapping
 const getFileIcon = (mimeType: string) => {
@@ -415,18 +419,17 @@ export default function FilesPage() {
             </nav>
 
             {/* Storage Quota */}
-            {quota && (
-              <div className="p-4 border-t">
-                <div className="flex items-center gap-2 mb-2">
-                  <HardDrive className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-xs text-muted-foreground">Storage</span>
-                </div>
-                <Progress value={quota.percentUsed} className="h-1.5 mb-1" />
-                <p className="text-xs text-muted-foreground">
-                  {formatFileSize(quota.usedBytes)} of {formatFileSize(quota.quotaBytes)} used
-                </p>
+            <div className="p-4 border-t">
+              <div className="flex items-center gap-2 mb-3">
+                <Cloud className="h-4 w-4 text-primary" />
+                <span className="text-xs font-medium">Cloud Storage</span>
               </div>
-            )}
+              <StorageInfo
+                usedBytes={quota?.usedBytes ?? 0}
+                quotaBytes={quota?.quotaBytes ?? DEFAULT_STORAGE_QUOTA_BYTES}
+                fileCount={quota?.fileCount ?? 0}
+              />
+            </div>
           </aside>
 
           {/* Main Content */}
@@ -597,31 +600,92 @@ export default function FilesPage() {
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                   </div>
                 ) : displayFolders.length === 0 && displayFiles.length === 0 ? (
-                  <div className="text-center py-12">
-                    <div className="w-16 h-16 rounded-full bg-muted mx-auto flex items-center justify-center mb-4">
-                      <Folder className="h-8 w-8 text-muted-foreground" />
-                    </div>
-                    <h3 className="font-semibold text-lg mb-1">
-                      {activeSection === "all" ? "This folder is empty" : `No ${activeSection} files`}
-                    </h3>
-                    <p className="text-muted-foreground text-sm mb-4">
-                      {activeSection === "all"
-                        ? "Upload files or create a folder to get started"
-                        : `Files you ${activeSection === "starred" ? "star" : activeSection === "recent" ? "access" : "delete"} will appear here`
-                      }
-                    </p>
-                    {activeSection === "all" && (
-                      <div className="flex gap-2 justify-center">
-                        <Button onClick={() => fileInputRef.current?.click()}>
+                  <div className="flex flex-col items-center justify-center py-16">
+                    {activeSection === "all" ? (
+                      <>
+                        {/* Empty folder state with illustration */}
+                        <div className="relative mb-6">
+                          <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
+                            <FolderUp className="h-12 w-12 text-primary/60" />
+                          </div>
+                          <div className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                            <Upload className="h-4 w-4 text-primary" />
+                          </div>
+                        </div>
+                        <h3 className="font-semibold text-xl mb-2">
+                          {currentFolder ? "This folder is empty" : "Welcome to your Files"}
+                        </h3>
+                        <p className="text-muted-foreground text-sm text-center max-w-sm mb-6">
+                          {currentFolder
+                            ? "Drag and drop files here or use the buttons below to add content"
+                            : "Your personal cloud storage. Upload files, create folders, and keep everything organized in one place."
+                          }
+                        </p>
+                        <div className="flex flex-col sm:flex-row gap-3">
+                          <Button size="lg" onClick={() => fileInputRef.current?.click()}>
+                            <Upload className="h-4 w-4 mr-2" />
+                            Upload Files
+                          </Button>
+                          <Button size="lg" variant="outline" onClick={() => setShowNewFolderDialog(true)}>
+                            <FolderPlus className="h-4 w-4 mr-2" />
+                            Create Folder
+                          </Button>
+                        </div>
+                        {!currentFolder && (
+                          <div className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-4 text-center max-w-2xl">
+                            <div className="p-4 rounded-lg bg-muted/30">
+                              <Cloud className="h-6 w-6 mx-auto mb-2 text-primary" />
+                              <p className="text-sm font-medium">25 GB Storage</p>
+                              <p className="text-xs text-muted-foreground">Plenty of room for all your files</p>
+                            </div>
+                            <div className="p-4 rounded-lg bg-muted/30">
+                              <Share2 className="h-6 w-6 mx-auto mb-2 text-primary" />
+                              <p className="text-sm font-medium">Easy Sharing</p>
+                              <p className="text-xs text-muted-foreground">Share files with secure links</p>
+                            </div>
+                            <div className="p-4 rounded-lg bg-muted/30">
+                              <Lock className="h-6 w-6 mx-auto mb-2 text-primary" />
+                              <p className="text-sm font-medium">Private & Secure</p>
+                              <p className="text-xs text-muted-foreground">Your files are encrypted</p>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    ) : activeSection === "starred" ? (
+                      <>
+                        <div className="w-20 h-20 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center mb-4">
+                          <Star className="h-10 w-10 text-amber-500" />
+                        </div>
+                        <h3 className="font-semibold text-lg mb-2">No starred files</h3>
+                        <p className="text-muted-foreground text-sm text-center max-w-xs">
+                          Star important files for quick access. Right-click any file and select "Add Star" to get started.
+                        </p>
+                      </>
+                    ) : activeSection === "recent" ? (
+                      <>
+                        <div className="w-20 h-20 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center mb-4">
+                          <Clock className="h-10 w-10 text-blue-500" />
+                        </div>
+                        <h3 className="font-semibold text-lg mb-2">No recent files</h3>
+                        <p className="text-muted-foreground text-sm text-center max-w-xs">
+                          Files you open or edit will appear here for quick access. Start by uploading some files!
+                        </p>
+                        <Button className="mt-4" onClick={() => { setActiveSection("all"); navigateToFolder(null); }}>
                           <Upload className="h-4 w-4 mr-2" />
                           Upload Files
                         </Button>
-                        <Button variant="outline" onClick={() => setShowNewFolderDialog(true)}>
-                          <FolderPlus className="h-4 w-4 mr-2" />
-                          New Folder
-                        </Button>
-                      </div>
-                    )}
+                      </>
+                    ) : activeSection === "trash" ? (
+                      <>
+                        <div className="w-20 h-20 rounded-full bg-muted flex items-center justify-center mb-4">
+                          <Trash2 className="h-10 w-10 text-muted-foreground" />
+                        </div>
+                        <h3 className="font-semibold text-lg mb-2">Trash is empty</h3>
+                        <p className="text-muted-foreground text-sm text-center max-w-xs">
+                          Files you delete will appear here for 30 days before being permanently removed.
+                        </p>
+                      </>
+                    ) : null}
                   </div>
                 ) : viewMode === "grid" ? (
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">

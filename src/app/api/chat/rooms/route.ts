@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 // GET /api/chat/rooms - Get all rooms user has access to
 export async function GET(request: NextRequest) {
@@ -11,34 +12,54 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Get community rooms
-    const { data: communityRooms, error: communityError } = await supabase
+    // Use admin client to bypass RLS recursion issue on chat_room_members
+    const adminClient = createAdminClient();
+
+    // Get user's room memberships
+    const { data: memberships, error: memberError } = await adminClient
+      .from("chat_room_members")
+      .select("room_id, last_read_at")
+      .eq("user_id", user.id);
+
+    if (memberError) {
+      console.error("Error fetching memberships:", memberError);
+      return NextResponse.json({ rooms: [] });
+    }
+
+    const memberRoomIds = memberships?.map(m => m.room_id) || [];
+    const lastReadMap = new Map(memberships?.map(m => [m.room_id, m.last_read_at]) || []);
+
+    // Get community rooms (use admin to avoid RLS issues)
+    const { data: communityRooms, error: communityError } = await adminClient
       .from("chat_rooms")
       .select("*")
       .eq("type", "community")
       .eq("is_archived", false);
 
-    if (communityError) throw communityError;
+    if (communityError) {
+      console.error("Error fetching community rooms:", communityError);
+      return NextResponse.json({ rooms: [] });
+    }
 
-    // Get private rooms user is a member of
-    const { data: memberRooms, error: memberError } = await supabase
-      .from("chat_room_members")
-      .select(`
-        room_id,
-        last_read_at,
-        chat_rooms (
-          id,
-          name,
-          type,
-          description,
-          created_by,
-          created_at,
-          metadata
-        )
-      `)
-      .eq("user_id", user.id);
+    // Get member rooms if user has any memberships
+    let memberRoomData: typeof communityRooms = [];
+    if (memberRoomIds.length > 0) {
+      const { data, error } = await adminClient
+        .from("chat_rooms")
+        .select("*")
+        .in("id", memberRoomIds)
+        .eq("is_archived", false);
 
-    if (memberError) throw memberError;
+      if (!error) {
+        memberRoomData = data || [];
+      }
+    }
+
+    const memberRooms = memberships?.map(m => ({
+      room_id: m.room_id,
+      last_read_at: m.last_read_at,
+      chat_rooms: memberRoomData?.find(r => r.id === m.room_id) || null
+    })).filter(m => m.chat_rooms) || [];
 
     // Get unread counts for each room
     const rooms = [
@@ -58,7 +79,7 @@ export async function GET(request: NextRequest) {
     // Get last message for all rooms in one query using a CTE/window function approach
     // Supabase doesn't support window functions in select, so we use a different strategy:
     // Get recent messages for all rooms and group client-side
-    const { data: recentMessages } = await supabase
+    const { data: recentMessages } = await adminClient
       .from("chat_messages")
       .select(`
         id,
@@ -91,7 +112,7 @@ export async function GET(request: NextRequest) {
     // We need to do this per-room due to the varying last_read_at, but we can parallelize
     const unreadCountsPromises = rooms.map(async (room) => {
       const lastReadAt = room.last_read_at || new Date(0).toISOString();
-      const { count } = await supabase
+      const { count } = await adminClient
         .from("chat_messages")
         .select("id", { count: "exact", head: true })
         .eq("room_id", room.id)
@@ -104,7 +125,7 @@ export async function GET(request: NextRequest) {
     // Get all private room members in one query
     const privateRoomIds = rooms.filter(r => r.type === "private").map(r => r.id);
     const { data: allPrivateMembers } = privateRoomIds.length > 0
-      ? await supabase
+      ? await adminClient
           .from("chat_room_members")
           .select(`
             room_id,

@@ -318,8 +318,15 @@ export default function ClientsPage() {
                         {clients.map((client) => (
                           <TableRow
                             key={client.id}
-                            className="cursor-pointer hover:bg-muted/50 transition-colors"
+                            tabIndex={0}
+                            className="cursor-pointer hover:bg-muted/50 transition-colors focus:outline-none focus:bg-muted/50 focus:ring-2 focus:ring-inset focus:ring-primary"
                             onClick={() => router.push(`/clients/${client.id}`)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                router.push(`/clients/${client.id}`);
+                              }
+                            }}
                           >
                             <TableCell className="font-medium text-primary">
                               #{client.id.slice(0, 8)}

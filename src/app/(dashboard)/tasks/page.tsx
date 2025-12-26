@@ -62,6 +62,10 @@ import {
   UserCheck,
   User,
   AlertCircle,
+  Plus,
+  X,
+  Pencil,
+  GripVertical,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow } from "date-fns";
@@ -74,6 +78,23 @@ interface TeamMember {
   email: string;
   role: string;
 }
+
+interface CustomColumn {
+  id: string;
+  name: string;
+  color: string;
+  taskIds: string[];
+}
+
+// Column colors for custom columns
+const columnColors = [
+  { name: "purple", class: "bg-purple-400", header: "bg-purple-50 border-purple-200" },
+  { name: "pink", class: "bg-pink-400", header: "bg-pink-50 border-pink-200" },
+  { name: "indigo", class: "bg-indigo-400", header: "bg-indigo-50 border-indigo-200" },
+  { name: "teal", class: "bg-teal-400", header: "bg-teal-50 border-teal-200" },
+  { name: "orange", class: "bg-orange-400", header: "bg-orange-50 border-orange-200" },
+  { name: "cyan", class: "bg-cyan-400", header: "bg-cyan-50 border-cyan-200" },
+];
 
 // Config
 const statusConfig = {
@@ -146,6 +167,96 @@ export default function TasksPage() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [reassignDialogOpen, setReassignDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+
+  // Custom columns state
+  const [customColumns, setCustomColumns] = useState<CustomColumn[]>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("task-custom-columns");
+      return saved ? JSON.parse(saved) : [];
+    }
+    return [];
+  });
+  const [isAddingColumn, setIsAddingColumn] = useState(false);
+  const [newColumnName, setNewColumnName] = useState("");
+  const [newColumnColor, setNewColumnColor] = useState(columnColors[0].class);
+  const [editingColumnId, setEditingColumnId] = useState<string | null>(null);
+  const [editingColumnName, setEditingColumnName] = useState("");
+
+  // Persist custom columns to localStorage
+  const saveCustomColumns = useCallback((columns: CustomColumn[]) => {
+    setCustomColumns(columns);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("task-custom-columns", JSON.stringify(columns));
+    }
+  }, []);
+
+  // Add new custom column
+  const handleAddColumn = useCallback(() => {
+    if (!newColumnName.trim()) return;
+    const newColumn: CustomColumn = {
+      id: `col-${Date.now()}`,
+      name: newColumnName.trim(),
+      color: newColumnColor,
+      taskIds: [],
+    };
+    saveCustomColumns([...customColumns, newColumn]);
+    setNewColumnName("");
+    setNewColumnColor(columnColors[0].class);
+    setIsAddingColumn(false);
+    toast.success(`Column "${newColumn.name}" created`);
+  }, [newColumnName, newColumnColor, customColumns, saveCustomColumns]);
+
+  // Delete custom column
+  const handleDeleteColumn = useCallback((columnId: string) => {
+    const column = customColumns.find((c) => c.id === columnId);
+    saveCustomColumns(customColumns.filter((c) => c.id !== columnId));
+    toast.success(`Column "${column?.name}" deleted`);
+  }, [customColumns, saveCustomColumns]);
+
+  // Rename custom column
+  const handleRenameColumn = useCallback((columnId: string, newName: string) => {
+    if (!newName.trim()) return;
+    saveCustomColumns(
+      customColumns.map((c) =>
+        c.id === columnId ? { ...c, name: newName.trim() } : c
+      )
+    );
+    setEditingColumnId(null);
+    setEditingColumnName("");
+  }, [customColumns, saveCustomColumns]);
+
+  // Move task to custom column
+  const handleMoveToCustomColumn = useCallback((columnId: string, taskId: string) => {
+    saveCustomColumns(
+      customColumns.map((c) => {
+        // Remove from all custom columns first
+        const filtered = c.taskIds.filter((id) => id !== taskId);
+        // Add to target column
+        if (c.id === columnId) {
+          return { ...c, taskIds: [...filtered, taskId] };
+        }
+        return { ...c, taskIds: filtered };
+      })
+    );
+  }, [customColumns, saveCustomColumns]);
+
+  // Remove task from all custom columns (when moved back to status column)
+  const handleRemoveFromCustomColumns = useCallback((taskId: string) => {
+    saveCustomColumns(
+      customColumns.map((c) => ({
+        ...c,
+        taskIds: c.taskIds.filter((id) => id !== taskId),
+      }))
+    );
+  }, [customColumns, saveCustomColumns]);
+
+  // Get tasks in custom column
+  const getTasksInCustomColumn = useCallback((columnId: string) => {
+    const column = customColumns.find((c) => c.id === columnId);
+    if (!column) return [];
+    const tasks = getTasksForView();
+    return tasks.filter((t) => column.taskIds.includes(t.id));
+  }, [customColumns]);
 
   // Fetch team members for reassignment
   const fetchTeamMembers = useCallback(async () => {
@@ -657,9 +768,10 @@ export default function TasksPage() {
           ) : (
             // Kanban board for all views
             <div
-              className="grid grid-cols-1 md:grid-cols-3 gap-4 h-full w-full"
-              style={{ minWidth: 0, maxWidth: '100%', overflow: 'hidden' }}
+              className="flex gap-4 h-full overflow-x-auto pb-4"
+              style={{ minWidth: 0 }}
             >
+              {/* Status Columns */}
               {KANBAN_STATUSES.map((status) => {
                 const statusTasks = getTasksByStatus(status);
                 const config = statusConfig[status];
@@ -668,14 +780,13 @@ export default function TasksPage() {
                   <div
                     key={status}
                     className={cn(
-                      "flex flex-col rounded-lg bg-muted/30 transition-colors w-full",
+                      "flex flex-col rounded-lg bg-muted/30 transition-colors flex-shrink-0",
                       dragOverColumn === status && "bg-primary/10"
                     )}
                     style={{
-                      overflow: 'hidden',
-                      minWidth: 0,
-                      maxWidth: '100%',
-                      width: '100%'
+                      width: '320px',
+                      minWidth: '320px',
+                      maxWidth: '320px',
                     }}
                     onDragOver={(e) => handleDragOver(e, status)}
                     onDragLeave={handleDragLeave}
@@ -696,19 +807,8 @@ export default function TasksPage() {
                       </div>
                     </div>
 
-                    <div
-                      className="flex-1 w-full"
-                      style={{
-                        overflowY: 'auto',
-                        overflowX: 'hidden',
-                        width: '100%',
-                        maxWidth: '100%'
-                      }}
-                    >
-                      <div
-                        className="p-2 space-y-2 min-h-[200px] w-full"
-                        style={{ maxWidth: '100%', width: '100%' }}
-                      >
+                    <div className="flex-1 overflow-y-auto overflow-x-hidden">
+                      <div className="p-2 space-y-2 min-h-[200px]">
                         {statusTasks.length === 0 ? (
                           <div className={cn(
                             "flex flex-col items-center justify-center py-8 text-center border-2 border-dashed rounded-lg transition-colors",
@@ -736,6 +836,171 @@ export default function TasksPage() {
                   </div>
                 );
               })}
+
+              {/* Custom Columns */}
+              {customColumns.map((column) => {
+                const columnTasks = getTasksInCustomColumn(column.id);
+                const colorConfig = columnColors.find(c => c.class === column.color) || columnColors[0];
+
+                return (
+                  <div
+                    key={column.id}
+                    className={cn(
+                      "flex flex-col rounded-lg bg-muted/30 transition-colors flex-shrink-0",
+                      dragOverColumn === column.id && "bg-primary/10"
+                    )}
+                    style={{
+                      width: '320px',
+                      minWidth: '320px',
+                      maxWidth: '320px',
+                    }}
+                    onDragOver={(e) => handleDragOver(e, column.id)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setDragOverColumn(null);
+                      if (draggedTask) {
+                        handleMoveToCustomColumn(column.id, draggedTask.id);
+                        toast.success(`Moved to ${column.name}`);
+                        setDraggedTask(null);
+                      }
+                    }}
+                  >
+                    <div className={cn("p-3 border-b rounded-t-lg flex-shrink-0", colorConfig.header)}>
+                      <div className="flex items-center gap-2">
+                        <div className={cn("w-2 h-2 rounded-full", column.color)} />
+                        {editingColumnId === column.id ? (
+                          <Input
+                            value={editingColumnName}
+                            onChange={(e) => setEditingColumnName(e.target.value)}
+                            onBlur={() => {
+                              handleRenameColumn(column.id, editingColumnName);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                handleRenameColumn(column.id, editingColumnName);
+                              } else if (e.key === "Escape") {
+                                setEditingColumnId(null);
+                                setEditingColumnName("");
+                              }
+                            }}
+                            className="h-6 text-sm font-medium px-1"
+                            autoFocus
+                          />
+                        ) : (
+                          <h3 className="font-medium text-sm">{column.name}</h3>
+                        )}
+                        <Badge variant="secondary" className="ml-auto text-[10px]">
+                          {columnTasks.length}
+                        </Badge>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-6 w-6">
+                              <MoreHorizontal className="h-3.5 w-3.5" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setEditingColumnId(column.id);
+                                setEditingColumnName(column.name);
+                              }}
+                            >
+                              <Pencil className="h-4 w-4 mr-2" />
+                              Rename
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-destructive"
+                              onClick={() => handleDeleteColumn(column.id)}
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Delete Column
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto overflow-x-hidden">
+                      <div className="p-2 space-y-2 min-h-[200px]">
+                        {columnTasks.length === 0 ? (
+                          <div className={cn(
+                            "flex flex-col items-center justify-center py-8 text-center border-2 border-dashed rounded-lg transition-colors",
+                            dragOverColumn === column.id && "border-primary bg-primary/5"
+                          )}>
+                            <p className="text-xs text-muted-foreground">
+                              Drop tasks here
+                            </p>
+                          </div>
+                        ) : (
+                          columnTasks.map((task) => (
+                            <TaskCard key={task.id} task={task} />
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Add Column Button */}
+              <div className="flex-shrink-0" style={{ width: '280px', minWidth: '280px' }}>
+                {isAddingColumn ? (
+                  <div className="rounded-lg border bg-card p-4 space-y-3">
+                    <Input
+                      placeholder="Column name..."
+                      value={newColumnName}
+                      onChange={(e) => setNewColumnName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleAddColumn();
+                        if (e.key === "Escape") setIsAddingColumn(false);
+                      }}
+                      autoFocus
+                    />
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">Color:</span>
+                      {columnColors.map((color) => (
+                        <button
+                          key={color.name}
+                          onClick={() => setNewColumnColor(color.class)}
+                          className={cn(
+                            "w-5 h-5 rounded-full transition-all",
+                            color.class,
+                            newColumnColor === color.class && "ring-2 ring-offset-2 ring-primary"
+                          )}
+                        />
+                      ))}
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => setIsAddingColumn(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="flex-1"
+                        onClick={handleAddColumn}
+                        disabled={!newColumnName.trim()}
+                      >
+                        Add
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setIsAddingColumn(true)}
+                    className="w-full h-full min-h-[200px] rounded-lg border-2 border-dashed border-muted-foreground/20 hover:border-muted-foreground/40 hover:bg-muted/20 transition-colors flex flex-col items-center justify-center gap-2 text-muted-foreground"
+                  >
+                    <Plus className="h-6 w-6" />
+                    <span className="text-sm font-medium">Add Column</span>
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </div>

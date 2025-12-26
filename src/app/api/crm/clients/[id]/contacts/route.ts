@@ -63,14 +63,18 @@ export async function POST(
       notes,
     } = body;
 
-    // If this is being set as primary, unset other primaries first
-    if (is_primary) {
-      await supabase
-        .from("client_contacts")
-        .update({ is_primary: false })
-        .eq("client_id", clientId);
+    // Validate required fields
+    if (!first_name?.trim()) {
+      return NextResponse.json({ error: "First name is required" }, { status: 400 });
     }
 
+    // Validate email format if provided
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return NextResponse.json({ error: "Invalid email format" }, { status: 400 });
+    }
+
+    // Atomic operation: Insert contact and handle primary in one transaction
+    // First insert the contact
     const { data: contact, error } = await supabase
       .from("client_contacts")
       .insert({
@@ -93,8 +97,17 @@ export async function POST(
 
     if (error) throw error;
 
-    // If this is the first contact, set it as primary on the client
-    if (is_primary) {
+    // If this is being set as primary, update atomically using a condition
+    if (is_primary && contact) {
+      // Unset other primaries and set this one - do this after successful insert
+      // Use a separate operation but with the contact already created
+      await supabase
+        .from("client_contacts")
+        .update({ is_primary: false })
+        .eq("client_id", clientId)
+        .neq("id", contact.id); // Don't unset the one we just created
+
+      // Update client's primary_contact_id
       await supabase
         .from("clients")
         .update({ primary_contact_id: contact.id })

@@ -44,8 +44,8 @@ import {
   FileText,
   MessageSquare,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { format, formatDistanceToNow, isToday, isPast } from "date-fns";
+import { cn, safeFormatDistanceToNow, safeFormatDate, isValidDate } from "@/lib/utils";
+import { format, isToday, isPast } from "date-fns";
 import { toast } from "sonner";
 
 interface DashboardTask {
@@ -512,10 +512,10 @@ export default function DashboardPage() {
                                       )}>
                                         <Clock className="h-3 w-3" />
                                         {isOverdue
-                                          ? `${formatDistanceToNow(new Date(task.due_date))} overdue`
+                                          ? `${safeFormatDistanceToNow(task.due_date)} overdue`
                                           : isDueToday
                                             ? "Due today"
-                                            : format(new Date(task.due_date), "MMM d")
+                                            : safeFormatDate(task.due_date, "MMM d") || "Unknown"
                                         }
                                       </span>
                                     )}
@@ -581,7 +581,7 @@ export default function DashboardPage() {
                                   )}
                                 </p>
                                 <p className="text-muted-foreground/70 mt-0.5">
-                                  {formatDistanceToNow(new Date(activity.created_at), { addSuffix: true })}
+                                  {safeFormatDistanceToNow(activity.created_at, { addSuffix: true })}
                                 </p>
                               </div>
                             </div>

@@ -655,20 +655,25 @@ function ExpandableEmailCard({
               </div>
             )}
 
-            {/* Action Buttons */}
-            <div className="flex items-center gap-2 pt-2 border-t">
-              <Button variant="outline" size="sm" onClick={() => onQuickAction("reply")}>
-                <Mail className="h-4 w-4 mr-2" />
-                Reply
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => onQuickAction("call_back")}>
-                <Phone className="h-4 w-4 mr-2" />
-                Call
+            {/* Action Buttons - Streamlined */}
+            <div className="flex items-center gap-2 pt-3 border-t">
+              <Button variant="outline" size="sm" onClick={() => onQuickAction("create_task")}>
+                <ListTodo className="h-4 w-4 mr-2" />
+                Add to Tasks
               </Button>
               <div className="flex-1" />
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground"
+                onClick={() => onQuickAction("dismiss")}
+              >
+                <Trash2 className="h-4 w-4 mr-1.5" />
+                Dismiss
+              </Button>
               <Button size="sm" onClick={() => onQuickAction("complete")}>
-                <CheckCircle className="h-4 w-4 mr-2" />
-                Mark Complete
+                <CheckCircle className="h-4 w-4 mr-1.5" />
+                Done
               </Button>
             </div>
           </div>
@@ -1204,30 +1209,66 @@ function EmailIntelligenceContent() {
 
   // Quick action handler
   const handleQuickAction = useCallback(
-    (emailId: string, action: string, actionItem?: ActionItem) => {
+    async (emailId: string, action: string, actionItem?: ActionItem) => {
       const email = intelligences.find((e) => e.id === emailId);
       if (!email) return;
 
       switch (action) {
         case "complete":
-          setIntelligences((prev) =>
-            prev.map((e) => (e.id === emailId ? { ...e, status: "approved" as const } : e))
-          );
-          toast.success("Email marked as complete");
-          setExpandedEmailId(null);
+          try {
+            const res = await fetch(`/api/email-intelligence/${emailId}/complete`, {
+              method: "POST",
+            });
+            if (res.ok) {
+              setIntelligences((prev) =>
+                prev.map((e) => (e.id === emailId ? { ...e, status: "approved" as const } : e))
+              );
+              toast.success("Email marked as complete");
+              setExpandedEmailId(null);
+            } else {
+              toast.error("Failed to mark email as complete");
+            }
+          } catch {
+            toast.error("Failed to mark email as complete");
+          }
           break;
         case "dismiss":
-          setIntelligences((prev) =>
-            prev.map((e) => (e.id === emailId ? { ...e, status: "dismissed" as const } : e))
-          );
-          toast.success("Email dismissed");
-          setExpandedEmailId(null);
+          try {
+            const res = await fetch(`/api/email-intelligence/${emailId}/dismiss`, {
+              method: "POST",
+            });
+            if (res.ok) {
+              setIntelligences((prev) =>
+                prev.map((e) => (e.id === emailId ? { ...e, status: "dismissed" as const } : e))
+              );
+              toast.success("Email dismissed");
+              setExpandedEmailId(null);
+            } else {
+              toast.error("Failed to dismiss email");
+            }
+          } catch {
+            toast.error("Failed to dismiss email");
+          }
           break;
         case "reply":
-          toast.info("Email reply feature coming soon");
+          // Open default email client with reply
+          if (email.from?.email) {
+            const subject = `Re: ${email.subject}`;
+            const mailtoUrl = `mailto:${email.from.email}?subject=${encodeURIComponent(subject)}`;
+            window.open(mailtoUrl, "_blank");
+            toast.success("Opening email client...");
+          } else {
+            toast.error("No email address available");
+          }
           break;
         case "call_back":
-          toast.info("Call back feature coming soon");
+          // Navigate to client page if matched, otherwise show message
+          if (email.matchedClientId) {
+            window.location.href = `/clients/${email.matchedClientId}`;
+            toast.info("Opening client page to find phone number...");
+          } else {
+            toast.info("No matched client found. Check the sender's contact information.");
+          }
           break;
         case "create_task":
           // Open task creation dialog with first action item or default

@@ -1389,10 +1389,28 @@ function CallsPageContent() {
           });
           break;
         case "call_back":
-          toast.info("Call back feature coming soon");
+          // Open phone dialer with caller's number
+          if (call.callerPhone) {
+            const telUrl = `tel:${call.callerPhone.replace(/\D/g, "")}`;
+            window.open(telUrl, "_self");
+            toast.success("Opening phone dialer...");
+          } else {
+            toast.error("No phone number available");
+          }
           break;
         case "send_email":
-          toast.info("Email feature coming soon");
+          // Open default email client
+          if (call.callerEmail) {
+            const subject = `Following up on our call`;
+            const mailtoUrl = `mailto:${call.callerEmail}?subject=${encodeURIComponent(subject)}`;
+            window.open(mailtoUrl, "_blank");
+            toast.success("Opening email client...");
+          } else if (call.matchedClientId) {
+            window.location.href = `/clients/${call.matchedClientId}`;
+            toast.info("Opening client page to find email...");
+          } else {
+            toast.info("No email address available. Check caller's contact information.");
+          }
           break;
         case "create_task":
           // Open task creation dialog

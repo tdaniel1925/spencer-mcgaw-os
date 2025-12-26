@@ -48,8 +48,8 @@ import {
   AlertCircle,
   Link2,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { format, formatDistanceToNow } from "date-fns";
+import { cn, safeFormatDistanceToNow, safeFormatDate } from "@/lib/utils";
+import { format } from "date-fns";
 import { toast } from "sonner";
 import { Task } from "@/lib/tasks/task-context";
 
@@ -332,7 +332,7 @@ export function TaskDetailPanel({
                   <span>{task.client.first_name} {task.client.last_name}</span>
                 </div>
               )}
-              {task.due_date && (
+              {task.due_date && safeFormatDate(task.due_date, "MMM d, yyyy") && (
                 <div className="flex items-center gap-2">
                   <Calendar className="h-4 w-4 text-muted-foreground" />
                   <span className={cn(
@@ -340,13 +340,13 @@ export function TaskDetailPanel({
                       ? "text-red-600 font-medium"
                       : ""
                   )}>
-                    Due {format(new Date(task.due_date), "MMM d, yyyy")}
+                    Due {safeFormatDate(task.due_date, "MMM d, yyyy")}
                   </span>
                 </div>
               )}
               <div className="flex items-center gap-2">
                 <Clock className="h-4 w-4 text-muted-foreground" />
-                <span>Created {formatDistanceToNow(new Date(task.created_at))} ago</span>
+                <span>Created {safeFormatDistanceToNow(task.created_at)} ago</span>
               </div>
             </div>
 
@@ -432,7 +432,7 @@ export function TaskDetailPanel({
                           </p>
                           {subtask.completed_at && (
                             <p className="text-xs text-muted-foreground">
-                              Completed {formatDistanceToNow(new Date(subtask.completed_at))} ago
+                              Completed {safeFormatDistanceToNow(subtask.completed_at)} ago
                             </p>
                           )}
                         </div>
@@ -500,7 +500,7 @@ export function TaskDetailPanel({
                         <div className="flex-1 min-w-0">
                           <p className="text-sm">{item.description}</p>
                           <p className="text-xs text-muted-foreground">
-                            {formatDistanceToNow(new Date(item.created_at))} ago
+                            {safeFormatDistanceToNow(item.created_at)} ago
                           </p>
                         </div>
                       </div>

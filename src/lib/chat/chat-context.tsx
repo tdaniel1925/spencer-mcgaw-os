@@ -558,14 +558,6 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!user) return;
 
-    // Set online when chat opens
-    updatePresence("online");
-
-    // Heartbeat interval
-    presenceIntervalRef.current = setInterval(() => {
-      updatePresence("online");
-    }, 60000);
-
     // Load initial presence for all users
     const loadPresence = async () => {
       try {
@@ -574,7 +566,15 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
           const { presence: presenceList } = await response.json();
           const presenceMap = new Map<string, UserPresence>();
           for (const p of presenceList) {
-            presenceMap.set(p.user_id, p);
+            // Map user_profiles to user for consistency
+            const presence: UserPresence = {
+              user_id: p.user_id,
+              status: p.status,
+              last_seen_at: p.last_seen_at,
+              current_room_id: p.current_room_id,
+              user: p.user_profiles || p.user,
+            };
+            presenceMap.set(p.user_id, presence);
           }
           setPresence(presenceMap);
         }
@@ -582,7 +582,19 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         console.error("Error loading presence:", error);
       }
     };
-    loadPresence();
+
+    // Set online when chat opens, then load presence
+    const initPresence = async () => {
+      await updatePresence("online");
+      await loadPresence();
+    };
+    initPresence();
+
+    // Heartbeat interval - update and refresh presence
+    presenceIntervalRef.current = setInterval(async () => {
+      await updatePresence("online");
+      await loadPresence();
+    }, 30000); // Reduced to 30 seconds for better updates
 
     // Set offline when leaving
     const handleBeforeUnload = () => {

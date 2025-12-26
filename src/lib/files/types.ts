@@ -263,13 +263,22 @@ export function getFileIcon(mimeType: string): string {
   return iconMap[category];
 }
 
-export function formatFileSize(bytes: number): string {
+export function formatFileSize(bytes: number | undefined | null): string {
+  // Handle undefined, null, NaN, or negative values
+  if (bytes === undefined || bytes === null || isNaN(bytes) || bytes < 0) {
+    return "0 B";
+  }
   if (bytes === 0) return "0 B";
   const k = 1024;
   const sizes = ["B", "KB", "MB", "GB", "TB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+  // Ensure i is within bounds
+  const safeIndex = Math.min(Math.max(i, 0), sizes.length - 1);
+  return parseFloat((bytes / Math.pow(k, safeIndex)).toFixed(2)) + " " + sizes[safeIndex];
 }
+
+// 25GB storage quota constant (in bytes)
+export const DEFAULT_STORAGE_QUOTA_BYTES = 26843545600;
 
 export function generateSlug(name: string): string {
   return name

@@ -17,6 +17,7 @@ import {
   Permission,
   BreadcrumbItem,
   generateSlug,
+  DEFAULT_STORAGE_QUOTA_BYTES,
 } from "./types";
 
 interface FileContextType {
@@ -192,34 +193,85 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Initialize storage quota if not exists
-      const { data: quotaData } = await supabase
-        .from("storage_quotas")
-        .select("*")
-        .eq("user_id", user.id)
-        .single();
+      try {
+        const { data: quotaData, error: quotaError } = await supabase
+          .from("storage_quotas")
+          .select("*")
+          .eq("user_id", user.id)
+          .single();
 
-      if (!quotaData) {
-        await supabase.from("storage_quotas").insert({
-          user_id: user.id,
-          quota_bytes: 10737418240, // 10GB default
-          used_bytes: 0,
-          file_count: 0,
-        });
-      }
+        if (quotaError && quotaError.code !== "PGRST116") {
+          // PGRST116 is "no rows returned" which is expected for new users
+          // Other errors might indicate the table doesn't exist yet
+          console.warn("Could not fetch storage quota, using default:", quotaError.message);
+        }
 
-      // Fetch quota
-      const { data: newQuota } = await supabase
-        .from("storage_quotas")
-        .select("*")
-        .eq("user_id", user.id)
-        .single();
+        if (!quotaData) {
+          // Try to insert a new quota record
+          const { error: insertError } = await supabase.from("storage_quotas").insert({
+            user_id: user.id,
+            quota_bytes: DEFAULT_STORAGE_QUOTA_BYTES, // 25GB default
+            used_bytes: 0,
+            file_count: 0,
+          });
 
-      if (newQuota) {
+          if (insertError) {
+            console.warn("Could not create storage quota record:", insertError.message);
+          }
+        }
+
+        // Fetch quota again
+        const { data: newQuota } = await supabase
+          .from("storage_quotas")
+          .select("*")
+          .eq("user_id", user.id)
+          .single();
+
+        if (newQuota && newQuota.quota_bytes && newQuota.used_bytes !== undefined) {
+          const quotaBytes = newQuota.quota_bytes || DEFAULT_STORAGE_QUOTA_BYTES;
+          const usedBytes = newQuota.used_bytes || 0;
+          setQuota({
+            id: newQuota.id || user.id,
+            userId: user.id,
+            quotaBytes: quotaBytes,
+            usedBytes: usedBytes,
+            fileCount: newQuota.file_count || 0,
+            lastCalculatedAt: newQuota.last_calculated_at ? new Date(newQuota.last_calculated_at) : new Date(),
+            createdAt: newQuota.created_at ? new Date(newQuota.created_at) : new Date(),
+            updatedAt: newQuota.updated_at ? new Date(newQuota.updated_at) : new Date(),
+            percentUsed: (usedBytes / quotaBytes) * 100,
+            remainingBytes: quotaBytes - usedBytes,
+          });
+        } else {
+          // Set default quota if no data available (table might not exist yet)
+          setQuota({
+            id: user.id,
+            userId: user.id,
+            quotaBytes: DEFAULT_STORAGE_QUOTA_BYTES, // 25GB
+            usedBytes: 0,
+            fileCount: 0,
+            lastCalculatedAt: new Date(),
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            percentUsed: 0,
+            remainingBytes: DEFAULT_STORAGE_QUOTA_BYTES,
+          });
+        }
+      } catch (quotaErr) {
+        console.warn("Storage quota initialization failed, using default:", quotaErr);
+        // Set default quota on any error
         setQuota({
-          ...newQuota,
-          percentUsed: (newQuota.used_bytes / newQuota.quota_bytes) * 100,
-          remainingBytes: newQuota.quota_bytes - newQuota.used_bytes,
-        } as StorageQuota);
+          id: user.id,
+          userId: user.id,
+          quotaBytes: DEFAULT_STORAGE_QUOTA_BYTES, // 25GB
+          usedBytes: 0,
+          fileCount: 0,
+          lastCalculatedAt: new Date(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          percentUsed: 0,
+          remainingBytes: DEFAULT_STORAGE_QUOTA_BYTES,
+        });
       }
     } catch (err) {
       console.error("Error initializing user storage:", err);
@@ -243,7 +295,19 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
           .order("folder_type", { ascending: true })
           .order("name", { ascending: true });
 
-        if (foldersError) throw foldersError;
+        // Handle table not existing or RLS errors gracefully
+        if (foldersError) {
+          console.warn("Folders query error:", foldersError);
+          // If error code indicates table doesn't exist or permission issue, show empty state
+          if (foldersError.code === "42P01" || foldersError.code === "PGRST116") {
+            setFolders([]);
+            setFiles([]);
+            setCurrentFolder(null);
+            setBreadcrumbs([{ id: "root", name: "All Files", type: "root" }]);
+            return;
+          }
+          throw foldersError;
+        }
 
         setFolders((rootFolders || []).map(transformFolder));
         setFiles([]);
@@ -310,9 +374,17 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
 
         setBreadcrumbs(newBreadcrumbs);
       }
-    } catch (err) {
-      console.error("Error navigating to folder:", err);
-      setError(err instanceof Error ? err.message : "Failed to navigate");
+    } catch (err: unknown) {
+      // Better error logging for Supabase errors
+      const errorMessage = err instanceof Error
+        ? err.message
+        : typeof err === 'object' && err !== null && 'message' in err
+          ? String((err as { message: unknown }).message)
+          : typeof err === 'object' && err !== null && 'code' in err
+            ? `Database error: ${String((err as { code: unknown }).code)}`
+            : "Failed to navigate";
+      console.error("Error navigating to folder:", errorMessage, err);
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }

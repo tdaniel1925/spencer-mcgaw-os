@@ -20,9 +20,10 @@ export async function GET(request: NextRequest) {
 
   const supabase = await createClient();
 
+  // Fetch tasks without FK join hint (client data fetched separately if needed)
   let query = supabase
     .from("tasks")
-    .select("*, client:clients!client_id(id, first_name, last_name, email, phone)", { count: "exact" })
+    .select("*", { count: "exact" })
     .order("created_at", { ascending: false })
     .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
 

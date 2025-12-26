@@ -47,9 +47,31 @@ import {
   MessageSquare,
   Archive,
   Settings,
+  Plus,
+  Trash2,
+  Link2,
+  Unlink,
+  ExternalLink,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { format, formatDistanceToNow } from "date-fns";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { cn, safeFormatDistanceToNow } from "@/lib/utils";
+import { format } from "date-fns";
 import { toast } from "sonner";
 import Link from "next/link";
 
@@ -96,6 +118,17 @@ interface ClientOption {
   name: string;
 }
 
+interface EmailAccount {
+  id: string;
+  email: string;
+  displayName: string;
+  provider: string;
+  isConnected: boolean;
+  lastSyncAt: string | null;
+  isGlobal: boolean;
+  isOwner: boolean;
+}
+
 const priorityConfig = {
   low: { label: "Low", className: "bg-gray-100 text-gray-600" },
   medium: { label: "Medium", className: "bg-blue-100 text-blue-600" },
@@ -132,6 +165,89 @@ export default function MyInboxPage() {
   const [creatingTask, setCreatingTask] = useState(false);
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [loadingClients, setLoadingClients] = useState(false);
+
+  // Email account management state
+  const [accountsSheetOpen, setAccountsSheetOpen] = useState(false);
+  const [emailAccounts, setEmailAccounts] = useState<EmailAccount[]>([]);
+  const [loadingAccounts, setLoadingAccounts] = useState(false);
+  const [disconnectConfirm, setDisconnectConfirm] = useState<EmailAccount | null>(null);
+  const [disconnecting, setDisconnecting] = useState(false);
+
+  // Fetch email accounts
+  const fetchAccounts = useCallback(async () => {
+    setLoadingAccounts(true);
+    try {
+      const response = await fetch("/api/email/accounts");
+      if (response.ok) {
+        const data = await response.json();
+        // Show all accounts owned by the user (both personal and organization)
+        const ownedAccounts = (data.accounts || []).filter(
+          (a: EmailAccount) => a.isOwner
+        );
+        setEmailAccounts(ownedAccounts);
+      }
+    } catch (error) {
+      console.error("Error fetching email accounts:", error);
+    } finally {
+      setLoadingAccounts(false);
+    }
+  }, []);
+
+  // Update account type (Personal/Organization)
+  const handleAccountTypeChange = async (account: EmailAccount, isGlobal: boolean) => {
+    try {
+      const response = await fetch(`/api/email/accounts/${account.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isGlobal }),
+      });
+      if (response.ok) {
+        toast.success(isGlobal ? "Account set to Organization" : "Account set to Personal");
+        // Update local state
+        setEmailAccounts((prev) =>
+          prev.map((a) => (a.id === account.id ? { ...a, isGlobal } : a))
+        );
+        // Refresh inbox since emails may have moved
+        fetchInbox();
+      } else {
+        const data = await response.json();
+        toast.error(data.error || "Failed to update account type");
+      }
+    } catch (error) {
+      console.error("Error updating account type:", error);
+      toast.error("Failed to update account type");
+    }
+  };
+
+  // Disconnect email account
+  const handleDisconnect = async (account: EmailAccount) => {
+    setDisconnecting(true);
+    try {
+      const response = await fetch(`/api/email/accounts/${account.id}`, {
+        method: "DELETE",
+      });
+      if (response.ok) {
+        toast.success(`Disconnected ${account.email}`);
+        setDisconnectConfirm(null);
+        // Refresh accounts and inbox
+        fetchAccounts();
+        fetchInbox();
+      } else {
+        toast.error("Failed to disconnect account");
+      }
+    } catch (error) {
+      console.error("Error disconnecting account:", error);
+      toast.error("Failed to disconnect account");
+    } finally {
+      setDisconnecting(false);
+    }
+  };
+
+  // Connect new email account
+  const handleConnectEmail = () => {
+    // Redirect to Microsoft OAuth
+    window.location.href = "/api/email/connect";
+  };
 
   // Fetch clients list
   const fetchClients = useCallback(async () => {
@@ -340,6 +456,27 @@ export default function MyInboxPage() {
               Refresh
             </Button>
 
+            {/* Account Management */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 gap-2"
+              onClick={() => {
+                setAccountsSheetOpen(true);
+                if (emailAccounts.length === 0) {
+                  fetchAccounts();
+                }
+              }}
+            >
+              <Settings className="h-4 w-4" />
+              Accounts
+              {accountCount > 0 && (
+                <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+                  {accountCount}
+                </Badge>
+              )}
+            </Button>
+
             {/* Stats */}
             {needsResponseCount > 0 && (
               <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
@@ -493,6 +630,171 @@ export default function MyInboxPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Email Account Management Sheet */}
+      <Sheet open={accountsSheetOpen} onOpenChange={setAccountsSheetOpen}>
+        <SheetContent className="w-full sm:max-w-md p-6">
+          <SheetHeader className="mb-6">
+            <SheetTitle className="flex items-center gap-2">
+              <Mail className="h-5 w-5" />
+              Email Accounts
+            </SheetTitle>
+            <SheetDescription>
+              Manage your connected email accounts for My Inbox
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="space-y-4">
+            {/* Connect New Account Button */}
+            <Button
+              className="w-full gap-2"
+              onClick={handleConnectEmail}
+            >
+              <Plus className="h-4 w-4" />
+              Connect Email Account
+            </Button>
+
+            <div className="border-t pt-4">
+              <h4 className="text-sm font-medium mb-3">Connected Accounts</h4>
+
+              {loadingAccounts ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : emailAccounts.length === 0 ? (
+                <div className="text-center py-8">
+                  <Mail className="h-10 w-10 text-muted-foreground/50 mx-auto mb-3" />
+                  <p className="text-sm text-muted-foreground">
+                    No email accounts connected yet
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Connect your Microsoft 365 email to get started
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {emailAccounts.map((account) => (
+                    <div
+                      key={account.id}
+                      className="p-3 rounded-lg border bg-card space-y-3"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className={cn(
+                            "w-10 h-10 rounded-full flex items-center justify-center",
+                            account.isConnected ? "bg-green-100" : "bg-amber-100"
+                          )}>
+                            <Mail className={cn(
+                              "h-5 w-5",
+                              account.isConnected ? "text-green-600" : "text-amber-600"
+                            )} />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-medium text-sm truncate">
+                              {account.displayName || account.email}
+                            </p>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              {account.isConnected ? (
+                                <span className="flex items-center gap-1 text-green-600">
+                                  <Link2 className="h-3 w-3" />
+                                  Connected
+                                </span>
+                              ) : (
+                                <span className="flex items-center gap-1 text-amber-600">
+                                  <AlertCircle className="h-3 w-3" />
+                                  Expired
+                                </span>
+                              )}
+                              {account.lastSyncAt && (
+                                <span>
+                                  • Synced {safeFormatDistanceToNow(account.lastSyncAt, { addSuffix: true })}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                          onClick={() => setDisconnectConfirm(account)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      {/* Account Type Selector */}
+                      <div className="flex items-center justify-between pl-13">
+                        <span className="text-xs text-muted-foreground">Route emails to:</span>
+                        <Select
+                          value={account.isGlobal ? "organization" : "personal"}
+                          onValueChange={(value) => handleAccountTypeChange(account, value === "organization")}
+                        >
+                          <SelectTrigger className="w-[140px] h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="personal">
+                              <div className="flex items-center gap-2">
+                                <Inbox className="h-3 w-3" />
+                                My Inbox
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="organization">
+                              <div className="flex items-center gap-2">
+                                <Building2 className="h-3 w-3" />
+                                Org Feed
+                              </div>
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Help text */}
+            <div className="border-t pt-4 space-y-2">
+              <p className="text-xs text-muted-foreground">
+                <strong>Personal accounts</strong> → emails appear in <strong>My Inbox</strong> (private to you)
+              </p>
+              <p className="text-xs text-muted-foreground">
+                <strong>Organization accounts</strong> → emails appear in <strong>Org Feed</strong> (visible to team)
+              </p>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Disconnect Confirmation Dialog */}
+      <AlertDialog open={!!disconnectConfirm} onOpenChange={(open) => !open && setDisconnectConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Disconnect Email Account?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will disconnect <strong>{disconnectConfirm?.email}</strong> and remove all
+              associated email data, classifications, and action items from the system.
+              Tasks created from emails will be preserved. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={disconnecting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => disconnectConfirm && handleDisconnect(disconnectConfirm)}
+              disabled={disconnecting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {disconnecting ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Unlink className="h-4 w-4 mr-2" />
+              )}
+              Disconnect
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
@@ -566,7 +868,7 @@ function InboxItemCard({
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               {item.hasAttachments && <Paperclip className="h-3 w-3" />}
               {item.requiresResponse && <MessageSquare className="h-3 w-3 text-amber-500" />}
-              <span>{formatDistanceToNow(new Date(item.receivedAt), { addSuffix: true })}</span>
+              <span>{safeFormatDistanceToNow(item.receivedAt, { addSuffix: true })}</span>
             </div>
           </div>
         </div>

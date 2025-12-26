@@ -264,12 +264,21 @@ export default function TaskPoolPage() {
     return (
       <div
         key={task.id}
+        role="button"
+        tabIndex={0}
         className={cn(
           "bg-background rounded-lg border cursor-pointer transition-all duration-200",
           "hover:shadow-md hover:border-border/80 hover:-translate-y-0.5",
+          "focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2",
           "group relative overflow-hidden"
         )}
         onClick={() => setSelectedTask(task)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setSelectedTask(task);
+          }
+        }}
       >
         {/* Priority indicator strip */}
         <div
