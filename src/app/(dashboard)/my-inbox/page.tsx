@@ -501,11 +501,9 @@ export default function MyInboxPage() {
                 <p className="text-sm text-muted-foreground mt-2 max-w-md">
                   Connect your personal email account to see your inbox here.
                 </p>
-                <Button asChild className="mt-4">
-                  <Link href="/email">
-                    <Mail className="h-4 w-4 mr-2" />
-                    Connect Email
-                  </Link>
+                <Button className="mt-4" onClick={handleConnectEmail}>
+                  <Mail className="h-4 w-4 mr-2" />
+                  Connect Email
                 </Button>
               </div>
             ) : filteredItems.length === 0 ? (
