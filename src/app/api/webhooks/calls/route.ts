@@ -4,6 +4,7 @@ import { parseWebhookWithAI, isAIParsingAvailable, detectSourceType } from "@/li
 import { db } from "@/db";
 import { calls, activityLogs } from "@/db/schema";
 import type { ParsedWebhookData } from "@/lib/ai";
+import logger from "@/lib/logger";
 
 // Store processed webhook IDs to prevent replay (in production, use Redis or database)
 const processedWebhooks = new Set<string>();
@@ -31,7 +32,7 @@ export async function POST(request: NextRequest) {
     const verification = verifyCallWebhookSignature(rawBody, signature);
 
     if (!verification.valid) {
-      console.error("[Webhook] Signature verification failed:", verification.error);
+      logger.error("[Webhook] Signature verification failed", verification.error);
       return NextResponse.json(
         { error: "Invalid webhook signature" },
         { status: 401 }
@@ -53,7 +54,7 @@ export async function POST(request: NextRequest) {
 
     // Verify timestamp is recent (within 5 minutes)
     if (data.timestamp && !isTimestampValid(timestamp)) {
-      console.error("[Webhook] Timestamp expired");
+      logger.error("[Webhook] Timestamp expired");
       return NextResponse.json(
         { error: "Webhook timestamp expired" },
         { status: 400 }
@@ -63,7 +64,6 @@ export async function POST(request: NextRequest) {
     // Check idempotency - prevent processing same webhook twice
     const idempotencyKey = generateIdempotencyKey(eventId, timestamp);
     if (processedWebhooks.has(idempotencyKey)) {
-      console.log("[Webhook] Duplicate webhook ignored:", idempotencyKey);
       return NextResponse.json({
         success: true,
         message: "Webhook already processed",
@@ -90,17 +90,12 @@ export async function POST(request: NextRequest) {
 
     // Quick source detection for logging
     const quickSourceType = detectSourceType(data);
-    console.log(`[Webhook] Received ${quickSourceType} data:`, JSON.stringify(data, null, 2));
 
     // Parse webhook with AI if available
     let parsedData: ParsedWebhookData | null = null;
 
     if (isAIParsingAvailable()) {
-      console.log("[Webhook] AI parsing available, processing payload...");
       parsedData = await parseWebhookWithAI(data);
-      console.log("[Webhook] AI parsed data:", JSON.stringify(parsedData, null, 2));
-    } else {
-      console.warn("[Webhook] OPENAI_API_KEY not configured, skipping AI parsing");
     }
 
     // Store in database based on source type
@@ -232,7 +227,7 @@ export async function POST(request: NextRequest) {
       analysis: parsedData?.analysis || null,
     });
   } catch (error) {
-    console.error("[Webhook] Error processing webhook:", error);
+    logger.error("[Webhook] Error processing webhook:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

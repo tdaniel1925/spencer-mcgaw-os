@@ -62,7 +62,6 @@ export async function processWebhook(payload: WebhookPayload): Promise<any> {
     case "function.call":
       return handleFunctionCall(payload);
     default:
-      console.log(`Unhandled webhook event: ${payload.type}`);
       return { success: true };
   }
 }
@@ -96,17 +95,8 @@ async function handleCallStarted(payload: WebhookPayload) {
  * Handle call ended event
  */
 async function handleCallEnded(payload: WebhookPayload) {
-  const { call } = payload;
-
   // Update call record with final details
   // Note: In production, you'd update the existing record
-  console.log("Call ended:", {
-    callId: call.id,
-    duration: call.duration,
-    summary: call.summary,
-    recordingUrl: call.recordingUrl,
-  });
-
   return { success: true };
 }
 

@@ -9,6 +9,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import OpenAI from "openai";
+import logger from "@/lib/logger";
 
 // Types
 export interface TaskSuggestion {
@@ -274,7 +275,6 @@ function generateTitleFromPattern(
 async function getAISuggestions(context: CallContext): Promise<TaskSuggestion[]> {
   const client = getOpenAIClient();
   if (!client) {
-    console.log("[Task Suggestion] OpenAI not configured, skipping AI suggestions");
     return [];
   }
 
@@ -328,7 +328,7 @@ ${context.transcript ? `Transcript excerpt (first 2000 chars):\n${context.transc
       confidence: (s.confidence as number) || 0.5,
     }));
   } catch (error) {
-    console.error("[Task Suggestion] AI suggestion error:", error);
+    logger.error("[Task Suggestion] AI suggestion error", error);
     return [];
   }
 }
@@ -484,8 +484,8 @@ export async function storeTaskSuggestions(
 
     if (!error && data) {
       insertedIds.push(data.id);
-    } else {
-      console.error("[Task Suggestion] Failed to store suggestion:", error);
+    } else if (error) {
+      logger.error("[Task Suggestion] Failed to store suggestion", error);
     }
   }
 

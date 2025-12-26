@@ -104,7 +104,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // If no session, keep the demo user (already set as initial state)
       } catch {
         // On error, keep demo user
-        console.log("Using demo user - no Supabase connection");
       }
       setLoading(false);
     };

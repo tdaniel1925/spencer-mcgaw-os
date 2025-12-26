@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { processWebhook, WebhookPayload } from "@/lib/vapi";
 import { verifyVapiSignature, isTimestampValid } from "@/lib/shared/webhook";
+import logger from "@/lib/logger";
 
 /**
  * VAPI Webhook Endpoint
@@ -21,7 +22,7 @@ export async function POST(request: NextRequest) {
     const verification = verifyVapiSignature(rawBody, signature);
 
     if (!verification.valid) {
-      console.error("VAPI Webhook signature verification failed:", verification.error);
+      logger.error("VAPI Webhook signature verification failed", verification.error);
       return NextResponse.json(
         { error: "Invalid webhook signature" },
         { status: 401 }
@@ -33,23 +34,18 @@ export async function POST(request: NextRequest) {
 
     // Verify timestamp to prevent replay attacks (if timestamp is provided)
     if (payload.timestamp && !isTimestampValid(payload.timestamp)) {
-      console.error("VAPI Webhook timestamp expired");
+      logger.error("VAPI Webhook timestamp expired");
       return NextResponse.json(
         { error: "Webhook timestamp expired" },
         { status: 400 }
       );
     }
 
-    console.log("VAPI Webhook received:", {
-      type: payload.type,
-      callId: payload.call?.id,
-    });
-
     const result = await processWebhook(payload);
 
     return NextResponse.json(result);
   } catch (error) {
-    console.error("VAPI Webhook Error:", error);
+    logger.error("VAPI Webhook Error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

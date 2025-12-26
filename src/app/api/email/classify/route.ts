@@ -29,6 +29,7 @@ import { classifyEmail } from "@/lib/email/email-classifier";
 import type { EmailMessage } from "@/lib/email/types";
 import { db } from "@/db";
 import { tasks } from "@/db/schema";
+import logger from "@/lib/logger";
 
 // Classification response type
 interface ClassificationResponse {
@@ -143,7 +144,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<Classific
       try {
         aiResult = await classifyEmailWithAI(email);
       } catch (error) {
-        console.error("[Classify API] AI classification failed:", error);
+        logger.error("[Classify API] AI classification failed:", error);
         useAI = false;
       }
     }
@@ -281,7 +282,6 @@ export async function POST(request: NextRequest): Promise<NextResponse<Classific
         await supabase.from("email_action_items").insert(actionItemsToInsert);
 
         // Auto-create tasks from action items
-        console.log("[Email Classify] Creating tasks from action items:", aiResult.actionItems.length);
         for (const item of aiResult.actionItems) {
           try {
             await db.insert(tasks).values({
@@ -307,10 +307,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<Classific
               },
             });
           } catch (taskError) {
-            console.error("[Email Classify] Failed to create task:", item.title, taskError);
+            logger.error("[Email Classify] Failed to create task:", taskError, { title: item.title });
           }
         }
-        console.log("[Email Classify] Created", aiResult.actionItems.length, "tasks from email");
       }
     }
 
@@ -370,7 +369,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<Classific
 
     return NextResponse.json(response);
   } catch (error) {
-    console.error("[Classify API] Error:", error);
+    logger.error("[Classify API] Error:", error);
     return NextResponse.json(
       {
         success: false,
@@ -425,7 +424,7 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("[Classify API] Error recording action:", error);
+    logger.error("[Classify API] Error recording action:", error);
     return NextResponse.json(
       { error: "Failed to record action" },
       { status: 500 }

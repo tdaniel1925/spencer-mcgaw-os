@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import twilio from "twilio";
+import logger from "@/lib/logger";
 
 // Validate Twilio webhook signature
 async function validateTwilioSignature(request: NextRequest, formData: FormData): Promise<boolean> {
@@ -8,13 +9,12 @@ async function validateTwilioSignature(request: NextRequest, formData: FormData)
 
   // Skip validation in development or if auth token not set
   if (!authToken || process.env.NODE_ENV === "development") {
-    console.warn("Skipping Twilio signature validation (development mode or missing auth token)");
     return true;
   }
 
   const signature = request.headers.get("x-twilio-signature");
   if (!signature) {
-    console.error("Missing Twilio signature header");
+    logger.error("Missing Twilio signature header");
     return false;
   }
 
@@ -31,7 +31,7 @@ async function validateTwilioSignature(request: NextRequest, formData: FormData)
   const isValid = twilio.validateRequest(authToken, signature, url, params);
 
   if (!isValid) {
-    console.error("Invalid Twilio signature");
+    logger.error("Invalid Twilio signature");
   }
 
   return isValid;
@@ -64,7 +64,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log(`Inbound SMS from ${from}: ${body}`);
 
     const supabase = await createClient();
 
@@ -160,7 +159,6 @@ export async function POST(request: NextRequest) {
 
     // If no conversation exists for this number, we can't process the message
     if (!conversation) {
-      console.log(`No conversation found for phone number: ${from}`);
       return new NextResponse(
         `<?xml version="1.0" encoding="UTF-8"?>
         <Response></Response>`,
@@ -190,7 +188,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (msgError) {
-      console.error("Error saving inbound message:", msgError);
+      logger.error("Error saving inbound message:", msgError);
     }
 
     // Update conversation
@@ -300,7 +298,7 @@ export async function POST(request: NextRequest) {
       }
     );
   } catch (error) {
-    console.error("Error processing inbound SMS:", error);
+    logger.error("Error processing inbound SMS:", error);
     return new NextResponse(
       `<?xml version="1.0" encoding="UTF-8"?>
       <Response></Response>`,
@@ -353,7 +351,7 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("Error processing status callback:", error);
+    logger.error("Error processing status callback:", error);
     return NextResponse.json({ error: "Failed to process status" }, { status: 500 });
   }
 }

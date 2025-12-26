@@ -12,6 +12,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import type { NotificationType } from "@/lib/types/permissions";
+import logger from "@/lib/logger";
 
 // Resend client (lazy loaded)
 let resendClient: {
@@ -31,7 +32,6 @@ async function getResendClient() {
 
   // Check if API key is configured
   if (!process.env.RESEND_API_KEY) {
-    console.warn("[Email] RESEND_API_KEY not configured - email sending disabled");
     return null;
   }
 
@@ -40,14 +40,12 @@ async function getResendClient() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const resendModule = await import("resend" as any).catch(() => null);
     if (!resendModule) {
-      console.warn("[Email] Resend not installed. Run: npm install resend");
       return null;
     }
     const { Resend } = resendModule;
     resendClient = new Resend(process.env.RESEND_API_KEY);
     return resendClient;
   } catch {
-    console.warn("[Email] Resend not installed. Run: npm install resend");
     return null;
   }
 }
@@ -70,7 +68,6 @@ interface EmailOptions {
 async function sendEmail(options: EmailOptions): Promise<boolean> {
   const client = await getResendClient();
   if (!client) {
-    console.warn("[Email] Cannot send email - Resend not configured");
     return false;
   }
 
@@ -84,14 +81,13 @@ async function sendEmail(options: EmailOptions): Promise<boolean> {
     });
 
     if (error) {
-      console.error("[Email] Failed to send:", error);
+      logger.error("[Email] Failed to send", error);
       return false;
     }
 
-    console.log(`[Email] Sent successfully: ${data?.id}`);
     return true;
   } catch (error) {
-    console.error("[Email] Error sending email:", error);
+    logger.error("[Email] Error sending email", error);
     return false;
   }
 }

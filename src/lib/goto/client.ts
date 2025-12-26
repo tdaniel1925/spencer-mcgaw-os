@@ -9,6 +9,7 @@
 
 import { db } from "@/db";
 import { sql } from "drizzle-orm";
+import logger from "@/lib/logger";
 
 const GOTO_API_BASE = "https://api.goto.com";
 const GOTO_AUTH_BASE = "https://authentication.logmeininc.com";
@@ -102,9 +103,8 @@ async function saveTokensToDatabase(tokens: TokenData, channelId?: string, webho
         updated_at = NOW()
       WHERE provider = 'goto'
     `);
-    console.log("[GoTo Client] Tokens saved to database");
   } catch (error) {
-    console.error("[GoTo Client] Failed to save tokens to database:", error);
+    logger.error("[GoTo Client] Failed to save tokens to database", error);
     throw error;
   }
 }
@@ -142,7 +142,7 @@ async function loadTokensFromDatabase(): Promise<TokenData | null> {
       accountKey: row.account_key || "",
     };
   } catch (error) {
-    console.error("[GoTo Client] Failed to load tokens from database:", error);
+    logger.error("[GoTo Client] Failed to load tokens from database", error);
     return null;
   }
 }
@@ -246,7 +246,6 @@ export async function refreshAccessToken(): Promise<TokenData> {
 export async function getAccessToken(): Promise<string> {
   // Try to load from database if not in cache
   if (!tokenCache) {
-    console.log("[GoTo Client] Loading tokens from database...");
     tokenCache = await loadTokensFromDatabase();
   }
 
@@ -256,7 +255,6 @@ export async function getAccessToken(): Promise<string> {
 
   // Refresh if token expires in less than 5 minutes
   if (tokenCache.expiresAt - Date.now() < 5 * 60 * 1000) {
-    console.log("[GoTo Client] Token expiring soon, refreshing...");
     await refreshAccessToken();
   }
 
@@ -482,10 +480,8 @@ export async function subscribeToRecordingNotifications(channelId: string): Prom
         events: ["RECORDING_READY", "TRANSCRIPTION_READY"],
       }),
     });
-    console.log("[GoTo] Subscribed to recording notifications");
-  } catch (error) {
-    // Recording subscription may not be available for all accounts
-    console.warn("[GoTo] Could not subscribe to recording notifications:", error);
+  } catch {
+    // Recording subscription may not be available for all accounts - silently continue
   }
 }
 
@@ -660,25 +656,18 @@ export interface SetupResult {
  * Complete setup: Create channel and subscribe to events
  */
 export async function setupGoToIntegration(webhookUrl: string): Promise<SetupResult> {
-  console.log("[GoTo Setup] Creating webhook channel...");
   const channel = await createWebhookChannel(webhookUrl);
-  console.log("[GoTo Setup] Channel created:", channel.channelId);
 
-  console.log("[GoTo Setup] Subscribing to call events...");
   await subscribeToCallEvents(channel.channelId);
 
-  console.log("[GoTo Setup] Subscribing to call reports...");
   await subscribeToCallReports(channel.channelId);
 
-  console.log("[GoTo Setup] Subscribing to recording notifications...");
   await subscribeToRecordingNotifications(channel.channelId);
 
   // Update database with channel info
   if (tokenCache) {
     await saveTokensToDatabase(tokenCache, channel.channelId, webhookUrl);
   }
-
-  console.log("[GoTo Setup] Setup complete!");
 
   return {
     channelId: channel.channelId,
@@ -747,7 +736,7 @@ export async function getIntegrationStatus(): Promise<{
       errorMessage: tokenExpired ? "Token expired, please reconnect" : row.error_message,
     };
   } catch (error) {
-    console.error("[GoTo Client] Failed to get integration status:", error);
+    logger.error("[GoTo Client] Failed to get integration status", error);
     return {
       isConnected: false,
       accountKey: null,
@@ -763,8 +752,6 @@ export async function getIntegrationStatus(): Promise<{
  * Disconnect GoTo integration - clears tokens and marks as disconnected
  */
 export async function disconnectGoTo(): Promise<void> {
-  console.log("[GoTo Client] Disconnecting integration...");
-
   // Clear in-memory token cache
   tokenCache = null;
 
@@ -780,8 +767,6 @@ export async function disconnectGoTo(): Promise<void> {
       error_message = 'Disconnected by user'
     WHERE provider = 'goto'
   `);
-
-  console.log("[GoTo Client] Integration disconnected");
 }
 
 /**

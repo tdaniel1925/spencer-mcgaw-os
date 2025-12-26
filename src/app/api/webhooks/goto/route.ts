@@ -9,6 +9,7 @@ import { enrichCallerName, isTwilioLookupAvailable } from "@/lib/twilio";
 import { eq, or, sql } from "drizzle-orm";
 import crypto from "crypto";
 import { DEFAULT_ORGANIZATION_ID } from "@/lib/constants";
+import logger from "@/lib/logger";
 
 /**
  * Try to match a phone number to an existing client
@@ -36,11 +37,10 @@ async function matchPhoneToClient(phone: string | null): Promise<string | null> 
       .limit(1);
 
     if (matchedClients.length > 0) {
-      console.log(`[GoTo Webhook] Matched phone ${phone} to client ${matchedClients[0].id}`);
       return matchedClients[0].id;
     }
   } catch (error) {
-    console.error("[GoTo Webhook] Error matching phone to client:", error);
+    logger.error("[GoTo Webhook] Error matching phone to client:", error);
   }
 
   return null;
@@ -61,7 +61,6 @@ function verifySignature(
   if (!signature || !secret) {
     // In development, allow unsigned webhooks if no secret configured
     if (process.env.NODE_ENV === "development" && !secret) {
-      console.log("[GoTo Webhook] Skipping signature verification (no secret configured)");
       return true;
     }
     return false;
@@ -113,7 +112,7 @@ export async function POST(request: NextRequest) {
     // Verify signature if secret is configured
     const webhookSecret = process.env.GOTO_WEBHOOK_SECRET;
     if (webhookSecret && !verifySignature(rawBody, signature, webhookSecret)) {
-      console.error("[GoTo Webhook] Invalid signature");
+      logger.error("[GoTo Webhook] Invalid signature");
       return NextResponse.json(
         { error: "Invalid signature" },
         { status: 401 }
@@ -125,14 +124,12 @@ export async function POST(request: NextRequest) {
     try {
       data = JSON.parse(rawBody);
     } catch {
-      console.error("[GoTo Webhook] Failed to parse JSON payload");
+      logger.error("[GoTo Webhook] Failed to parse JSON payload");
       return NextResponse.json(
         { error: "Invalid JSON payload" },
         { status: 400 }
       );
     }
-
-    console.log("[GoTo Webhook] Received payload:", JSON.stringify(data, null, 2));
 
     // Extract event info from GoTo Connect notification structure
     // GoTo sends: { data: { source: "...", type: "...", timestamp: "...", content: {...} } }
@@ -147,8 +144,6 @@ export async function POST(request: NextRequest) {
       ? (stateData.type as string)
       : topLevelType;
 
-    console.log(`[GoTo Webhook] Event type: ${eventType}, Source: ${source}, TopLevelType: ${topLevelType}`);
-
     // Generate unique event ID for idempotency
     const eventId =
       (content.conversationSpaceId as string) ||
@@ -158,7 +153,6 @@ export async function POST(request: NextRequest) {
 
     // Check for duplicate processing
     if (processedWebhooks.has(eventId)) {
-      console.log("[GoTo Webhook] Duplicate webhook ignored:", eventId);
       return NextResponse.json({
         success: true,
         message: "Webhook already processed",
@@ -183,7 +177,7 @@ export async function POST(request: NextRequest) {
         .returning({ id: webhookLogs.id });
       webhookLogId = webhookLog?.id || null;
     } catch (logError) {
-      console.error("[GoTo Webhook] Failed to create webhook log:", logError);
+      logger.error("[GoTo Webhook] Failed to create webhook log:", logError);
     }
 
     // Add to processed set
@@ -258,12 +252,6 @@ export async function POST(request: NextRequest) {
         .where(eq(webhookLogs.id, webhookLogId));
     }
 
-    console.log("[GoTo Webhook] Processed successfully:", {
-      eventId,
-      eventType,
-      callRecordId: callRecord?.id,
-    });
-
     return NextResponse.json({
       success: true,
       message: "GoTo Connect webhook processed successfully",
@@ -273,7 +261,7 @@ export async function POST(request: NextRequest) {
       processingTimeMs: Date.now() - startTime,
     });
   } catch (error) {
-    console.error("[GoTo Webhook] Error processing webhook:", error);
+    logger.error("[GoTo Webhook] Error processing webhook:", error);
 
     // Update webhook log with error
     if (webhookLogId) {
@@ -321,8 +309,6 @@ async function processCallReport(
     throw new Error("Missing conversationSpaceId in call report notification");
   }
 
-  console.log("[GoTo Webhook] Processing call report:", conversationSpaceId);
-
   // Extract data directly from webhook content (more complete than API fetch)
   const callCreated = content.callCreated as string || new Date().toISOString();
   const callEnded = content.callEnded as string || new Date().toISOString();
@@ -361,8 +347,6 @@ async function processCallReport(
     direction = "inbound";
   }
 
-  console.log(`[GoTo Webhook] Direction detection - rawDirection: ${rawDirection}, callerType: ${callerType}, callerHasLineId: ${callerHasLineId}, final: ${direction}`);
-
   const rawCallerName = (caller?.name as string) || null;
   const callerPhone = (caller?.number as string) || null;
 
@@ -376,10 +360,6 @@ async function processCallReport(
     callerName = enriched.name;
     twilioCallerType = enriched.type;
     callerEnriched = enriched.enriched;
-
-    if (callerEnriched) {
-      console.log(`[GoTo Webhook] Enriched caller name via Twilio: ${rawCallerName} -> ${callerName} (${twilioCallerType})`);
-    }
   }
 
   // Extract recording IDs from caller and participants
@@ -410,7 +390,6 @@ async function processCallReport(
 
   // Remove duplicates
   const uniqueRecordingIds = [...new Set(recordingIds)];
-  console.log("[GoTo Webhook] Found recording IDs:", uniqueRecordingIds);
 
   // Try to get recording URLs
   let recordingUrl: string | null = null;
@@ -419,22 +398,18 @@ async function processCallReport(
   for (const recordingId of uniqueRecordingIds) {
     if (recordingUrl) break; // Only need one recording URL
     try {
-      console.log("[GoTo Webhook] Fetching recording URL for:", recordingId);
       recordingUrl = await getRecordingUrl(recordingId);
-      console.log("[GoTo Webhook] Got recording URL:", recordingUrl);
     } catch (error) {
-      console.error("[GoTo Webhook] Failed to get recording URL:", recordingId, error);
+      logger.error("[GoTo Webhook] Failed to get recording URL:", error, { recordingId });
     }
 
     // Try to get transcription for this recording
     if (!transcript) {
       try {
-        console.log("[GoTo Webhook] Fetching transcription for:", recordingId);
         const transcriptData = await getTranscription(recordingId);
         transcript = transcriptData.text;
-        console.log("[GoTo Webhook] Got transcript:", transcript?.substring(0, 100));
       } catch (error) {
-        console.error("[GoTo Webhook] Failed to get transcription:", recordingId, error);
+        logger.error("[GoTo Webhook] Failed to get transcription:", error, { recordingId });
       }
     }
   }
@@ -480,7 +455,6 @@ async function processCallReport(
 
   if (existingCall) {
     // Call already exists, update it with latest data
-    console.log("[GoTo Webhook] Call already exists, updating:", existingCall.id);
     recordId = existingCall.id;
 
     await db
@@ -553,7 +527,6 @@ async function processCallReport(
       .returning({ id: calls.id });
 
     recordId = insertedCall?.id || null;
-    console.log("[GoTo Webhook] Created new call:", recordId);
   }
 
   // Log activity
@@ -572,8 +545,6 @@ async function processCallReport(
   // Auto-create tasks from AI suggested actions using Supabase
   const suggestedActions = parsedData?.analysis?.suggestedActions || [];
   if (suggestedActions.length > 0 && recordId) {
-    console.log("[GoTo Webhook] Creating tasks from suggested actions:", suggestedActions.length);
-
     const supabase = await createClient();
 
     // Check if tasks already exist for this call (prevent duplicates on webhook retries)
@@ -583,13 +554,11 @@ async function processCallReport(
       .eq("source_call_id", recordId);
 
     const existingTaskTitles = new Set((existingTasks || []).map(t => t.title));
-    console.log("[GoTo Webhook] Existing tasks for this call:", existingTasks?.length || 0);
 
     let tasksCreated = 0;
     for (const action of suggestedActions) {
       // Skip if task with same title already exists for this call
       if (existingTaskTitles.has(action)) {
-        console.log("[GoTo Webhook] Task already exists, skipping:", action.substring(0, 50));
         continue;
       }
 
@@ -624,17 +593,14 @@ async function processCallReport(
           .single();
 
         if (taskError) {
-          console.error("[GoTo Webhook] Failed to create task:", action.substring(0, 50), taskError);
+          logger.error("[GoTo Webhook] Failed to create task:", taskError, { action: action.substring(0, 50) });
         } else {
-          console.log("[GoTo Webhook] Created task:", newTask?.id);
           tasksCreated++;
         }
       } catch (taskError) {
-        console.error("[GoTo Webhook] Exception creating task:", action.substring(0, 50), taskError);
+        logger.error("[GoTo Webhook] Exception creating task:", taskError, { action: action.substring(0, 50) });
       }
     }
-
-    console.log(`[GoTo Webhook] Finished creating ${tasksCreated} tasks from call (${suggestedActions.length - tasksCreated} skipped)`);
   }
 
   return {
@@ -670,8 +636,6 @@ async function processCallEvent(
   // For real-time events, we mainly care about ENDING events
   // STARTING and ACTIVE events can be logged but don't need full processing
   if (eventType !== "ENDING") {
-    console.log(`[GoTo Webhook] Received ${eventType} event - logging only`);
-
     // Just log the activity without creating a call record
     await db.insert(activityLogs).values({
       type: eventType === "STARTING" ? "call_received" : "webhook_received",
@@ -693,8 +657,6 @@ async function processCallEvent(
   // conversationSpaceId is in state.id for call-state events
   const conversationSpaceId = (state?.id as string) || (content.conversationSpaceId as string);
 
-  console.log(`[GoTo Webhook] Processing ENDING event - conversationSpaceId: ${conversationSpaceId}`);
-
   const direction: "inbound" | "outbound" =
     (state?.direction as string)?.toLowerCase() === "outbound" ? "outbound" : "inbound";
 
@@ -704,8 +666,6 @@ async function processCallEvent(
     (metadata?.callerNumber as string) ||
     (state?.parties as Array<Record<string, unknown>>)?.find(p => p.isOriginator || p.originator)?.phoneNumber as string ||
     null;
-
-  console.log(`[GoTo Webhook] Extracted - direction: ${direction}, callerPhone: ${callerPhone}`);
 
   // Try AI parsing
   let parsedData: ParsedWebhookData | null = null;
@@ -734,10 +694,6 @@ async function processCallEvent(
     enrichedCallerName = enriched.name;
     eventTwilioCallerType = enriched.type;
     eventCallerEnriched = enriched.enriched;
-
-    if (eventCallerEnriched) {
-      console.log(`[GoTo Webhook] Enriched caller name via Twilio: ${rawName} -> ${enrichedCallerName} (${eventTwilioCallerType})`);
-    }
   }
 
   // Store call record
@@ -814,8 +770,6 @@ async function processUnknownEvent(
   summary: string | null;
   recordingUrl: string | null;
 } | null> {
-  console.log("[GoTo Webhook] Processing unknown event type with AI");
-
   let parsedData: ParsedWebhookData | null = null;
   if (isAIParsingAvailable()) {
     parsedData = await parseWebhookWithAI({
@@ -827,7 +781,6 @@ async function processUnknownEvent(
 
   // Only create a record if it looks like a phone call
   if (parsedData?.source !== "phone_call") {
-    console.log("[GoTo Webhook] Unknown event doesn't appear to be a phone call");
     return null;
   }
 
@@ -849,10 +802,6 @@ async function processUnknownEvent(
     unknownEnrichedName = enriched.name;
     unknownTwilioCallerType = enriched.type;
     unknownCallerEnriched = enriched.enriched;
-
-    if (unknownCallerEnriched) {
-      console.log(`[GoTo Webhook] Enriched caller name via Twilio: ${unknownRawName} -> ${unknownEnrichedName} (${unknownTwilioCallerType})`);
-    }
   }
 
   const [insertedCall] = await db
@@ -909,18 +858,8 @@ async function processRecordingNotification(
   const recordingId = content.recordingId as string | undefined;
   const transcriptId = content.transcriptId as string | undefined;
   const conversationSpaceId = content.conversationSpaceId as string | undefined;
-  const callId = content.callId as string | undefined;
-
-  console.log("[GoTo Webhook] Processing recording notification:", {
-    eventType,
-    recordingId,
-    transcriptId,
-    conversationSpaceId,
-    callId,
-  });
 
   if (!recordingId && !transcriptId) {
-    console.log("[GoTo Webhook] No recording or transcript ID in notification");
     return;
   }
 
@@ -948,17 +887,13 @@ async function processRecordingNotification(
   }
 
   if (!callToUpdate) {
-    console.log("[GoTo Webhook] Could not find call record to update for recording notification");
     return;
   }
-
-  console.log("[GoTo Webhook] Found call to update:", callToUpdate.id);
 
   if (eventType === "RECORDING_READY" && recordingId) {
     // Get the recording URL and update the call
     try {
       const recordingUrl = await getRecordingUrl(recordingId);
-      console.log("[GoTo Webhook] Got recording URL:", recordingUrl);
 
       await db
         .update(calls)
@@ -967,10 +902,8 @@ async function processRecordingNotification(
           metadata: sql`${calls.metadata}::jsonb || jsonb_build_object('recordingReady', true, 'recordingReadyAt', ${new Date().toISOString()})`,
         })
         .where(eq(calls.id, callToUpdate.id));
-
-      console.log("[GoTo Webhook] Updated call with recording URL");
     } catch (error) {
-      console.error("[GoTo Webhook] Failed to get recording URL:", error);
+      logger.error("[GoTo Webhook] Failed to get recording URL:", error);
     }
   }
 
@@ -979,7 +912,6 @@ async function processRecordingNotification(
     const idToUse = transcriptId || recordingId;
     if (idToUse) {
       try {
-        console.log("[GoTo Webhook] Fetching transcription for:", idToUse);
         const transcriptData = await getTranscription(idToUse);
 
         if (transcriptData.text) {
@@ -990,11 +922,9 @@ async function processRecordingNotification(
               metadata: sql`${calls.metadata}::jsonb || jsonb_build_object('transcriptionReady', true, 'transcriptionReadyAt', ${new Date().toISOString()})`,
             })
             .where(eq(calls.id, callToUpdate.id));
-
-          console.log("[GoTo Webhook] Updated call with transcription");
         }
       } catch (error) {
-        console.error("[GoTo Webhook] Failed to get transcription:", error);
+        logger.error("[GoTo Webhook] Failed to get transcription:", error);
       }
     }
   }

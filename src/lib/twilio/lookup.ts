@@ -9,6 +9,7 @@
  */
 
 import Twilio from "twilio";
+import logger from "@/lib/logger";
 
 // Simple in-memory cache to avoid repeated lookups
 // Key: normalized phone number, Value: { name, type, timestamp }
@@ -81,7 +82,6 @@ function getCachedLookup(phone: string): CallerLookupResult | null {
   const cached = lookupCache.get(normalized);
 
   if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-    console.log(`[Twilio Lookup] Cache hit for ${normalized}`);
     return {
       callerName: cached.callerName,
       callerType: cached.callerType,
@@ -140,7 +140,6 @@ export async function lookupCallerName(
 
   // Check if Twilio is configured
   if (!isTwilioLookupAvailable()) {
-    console.log("[Twilio Lookup] Not configured - skipping lookup");
     return {
       callerName: null,
       callerType: null,
@@ -153,15 +152,9 @@ export async function lookupCallerName(
     };
   }
 
-  // Warn if non-US number (Caller Name won't work)
-  if (!isUSPhoneNumber(phoneNumber)) {
-    console.log(`[Twilio Lookup] Non-US number ${normalized} - Caller Name not available`);
-    // Still do the lookup for line type info, but don't expect caller name
-  }
+  // Non-US numbers won't have caller name data but we still do the lookup for line type info
 
   try {
-    console.log(`[Twilio Lookup] Looking up ${normalized}`);
-
     const client = Twilio(
       process.env.TWILIO_ACCOUNT_SID!,
       process.env.TWILIO_AUTH_TOKEN!
@@ -191,13 +184,6 @@ export async function lookupCallerName(
     const carrier = lineTypeData?.carrier_name || null;
     const lineType = lineTypeData?.type || null;
 
-    console.log(`[Twilio Lookup] Result for ${normalized}:`, {
-      callerName,
-      callerType,
-      carrier,
-      lineType,
-    });
-
     // Cache the result
     cacheLookup(normalized, callerName, callerType);
 
@@ -211,7 +197,7 @@ export async function lookupCallerName(
       fromCache: false,
     };
   } catch (error) {
-    console.error(`[Twilio Lookup] Error looking up ${normalized}:`, error);
+    logger.error(`[Twilio Lookup] Error looking up ${normalized}`, error);
 
     // Cache null result to avoid repeated failed lookups
     cacheLookup(normalized, null, null);

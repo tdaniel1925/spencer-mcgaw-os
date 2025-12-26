@@ -318,11 +318,6 @@ export function AuditProvider({ children }: { children: React.ReactNode }) {
         auditLogs.pop();
       }
 
-      // In production, would also send to server/database
-      if (process.env.NODE_ENV === "development") {
-        console.log("[Audit]", entry.action, entry.description, entry);
-      }
-
       return entry;
     },
     [user]

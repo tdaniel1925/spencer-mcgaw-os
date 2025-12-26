@@ -12,6 +12,7 @@
  */
 
 import { createClient } from "@/lib/supabase/server";
+import logger from "@/lib/logger";
 
 export type AIFeedbackAction =
   | "assigned"
@@ -94,13 +95,12 @@ export async function logAITaskFeedback(feedback: AITaskFeedback): Promise<void>
       .single();
 
     if (taskError || !task) {
-      console.error("[AI Learning] Task not found:", feedback.taskId);
+      logger.error("[AI Learning] Task not found", taskError, { taskId: feedback.taskId });
       return;
     }
 
     // Only log feedback for AI-generated tasks
     if (!isAIGeneratedTask(task)) {
-      console.log("[AI Learning] Not an AI task, skipping feedback:", feedback.taskId);
       return;
     }
 
@@ -145,21 +145,16 @@ export async function logAITaskFeedback(feedback: AITaskFeedback): Promise<void>
       });
 
     if (feedbackError) {
-      console.error("[AI Learning] Failed to log feedback:", feedbackError);
+      logger.error("[AI Learning] Failed to log feedback", feedbackError);
       return;
     }
-
-    console.log(
-      `[AI Learning] Logged ${feedback.action} feedback for task ${feedback.taskId} ` +
-      `(AI task, ${timeToActionMinutes}min to action, useful: ${wasUseful})`
-    );
 
     // If this was an assignment, also log the routing pattern
     if (feedback.action === "assigned" && feedback.details?.assignedTo) {
       await logAssignmentPattern(supabase, task, feedback.details.assignedTo, feedback.userId);
     }
   } catch (error) {
-    console.error("[AI Learning] Error logging feedback:", error);
+    logger.error("[AI Learning] Error logging feedback", error);
   }
 }
 
@@ -199,8 +194,6 @@ async function logAssignmentPattern(
     details: pattern,
     performed_by: assignedBy,
   });
-
-  console.log(`[AI Learning] Recorded assignment pattern: ${task.source_type}/${aiData.category} -> ${assignedTo}`);
 }
 
 /**
@@ -265,14 +258,9 @@ export async function getSuggestedAssignee(
     // Calculate confidence based on how dominant this user is
     const confidence = Math.min(0.95, topCount / totalMatches);
 
-    console.log(
-      `[AI Learning] Suggested assignee for ${sourceType}/${category}: ${topUserId} ` +
-      `(${topCount}/${totalMatches} assignments, ${Math.round(confidence * 100)}% confidence)`
-    );
-
     return { userId: topUserId, confidence };
   } catch (error) {
-    console.error("[AI Learning] Error getting suggested assignee:", error);
+    logger.error("[AI Learning] Error getting suggested assignee", error);
     return null;
   }
 }
@@ -379,7 +367,7 @@ export async function getAITaskStats(): Promise<{
       recentFeedback: feedback || [],
     };
   } catch (error) {
-    console.error("[AI Learning] Error getting stats:", error);
+    logger.error("[AI Learning] Error getting stats", error);
     return {
       totalAITasks: 0,
       completedTasks: 0,

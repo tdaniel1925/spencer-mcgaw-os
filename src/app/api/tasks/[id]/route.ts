@@ -1,83 +1,93 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import {
+  successResponse,
+  errorResponse,
+  handleApiError,
+  parseBody,
+  ErrorCodes,
+} from "@/lib/api-utils";
+import logger from "@/lib/logger";
+
+// Validation schemas
+const taskUpdateSchema = z.object({
+  title: z.string().min(1).max(500).optional(),
+  description: z.string().max(5000).nullable().optional(),
+  status: z.enum(["pending", "in_progress", "completed", "cancelled"]).optional(),
+  priority: z.enum(["low", "medium", "high", "urgent"]).optional(),
+  due_date: z.string().datetime().nullable().optional(),
+  client_id: z.string().uuid().nullable().optional(),
+  assignee_id: z.string().uuid().nullable().optional(),
+  assigned_to: z.string().uuid().nullable().optional(),
+}).strict();
+
+const paramsSchema = z.object({
+  id: z.string().uuid(),
+});
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await params;
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  try {
+    const { id } = paramsSchema.parse(await params);
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
 
-  if (!user) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    if (!user) {
+      return errorResponse("Authentication required", ErrorCodes.UNAUTHORIZED, 401);
+    }
+
+    const { data: task, error } = await supabase
+      .from("tasks")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (error || !task) {
+      return errorResponse("Task not found", ErrorCodes.NOT_FOUND, 404);
+    }
+
+    return successResponse({ task });
+  } catch (error) {
+    return handleApiError(error);
   }
-
-  const { data: task, error } = await supabase
-    .from("tasks")
-    .select("*")
-    .eq("id", id)
-    .single();
-
-  if (error) {
-    console.error("Error fetching task:", error);
-    return NextResponse.json({ error: "Task not found" }, { status: 404 });
-  }
-
-  return NextResponse.json({ task });
 }
 
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await params;
-  console.log("[Tasks API] PUT request for task:", id);
-
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    console.log("[Tasks API] Not authenticated");
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-  }
-
   try {
-    const body = await request.json();
-    console.log("[Tasks API] Request body:", JSON.stringify(body));
+    const { id } = paramsSchema.parse(await params);
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
 
-    const {
-      title,
-      description,
-      status,
-      priority,
-      due_date,
-      client_id,
-      // Support both old names and new database column names
-      assignee_id,
-      assigned_to,
-      assignee_name,
-    } = body;
+    if (!user) {
+      return errorResponse("Authentication required", ErrorCodes.UNAUTHORIZED, 401);
+    }
+
+    const body = await parseBody(request, taskUpdateSchema);
 
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
-    if (title !== undefined) updates.title = title;
-    if (description !== undefined) updates.description = description;
-    if (status !== undefined) {
-      updates.status = status;
-      if (status === "completed") {
+    if (body.title !== undefined) updates.title = body.title;
+    if (body.description !== undefined) updates.description = body.description;
+    if (body.status !== undefined) {
+      updates.status = body.status;
+      if (body.status === "completed") {
         updates.completed_at = new Date().toISOString();
       }
     }
-    if (priority !== undefined) updates.priority = priority;
-    if (due_date !== undefined) updates.due_date = due_date;
-    if (client_id !== undefined) updates.client_id = client_id;
+    if (body.priority !== undefined) updates.priority = body.priority;
+    if (body.due_date !== undefined) updates.due_date = body.due_date;
+    if (body.client_id !== undefined) updates.client_id = body.client_id;
 
     // Map assignee_id to assigned_to (database column name)
-    const assigneeValue = assigned_to !== undefined ? assigned_to : assignee_id;
+    const assigneeValue = body.assigned_to ?? body.assignee_id;
     if (assigneeValue !== undefined) {
       updates.assigned_to = assigneeValue;
-      // If assigning, also set assigned_at and assigned_by
       if (assigneeValue) {
         updates.assigned_at = new Date().toISOString();
         updates.assigned_by = user.id;
@@ -87,8 +97,6 @@ export async function PUT(
       }
     }
 
-    console.log("[Tasks API] Updates to apply:", JSON.stringify(updates));
-
     const { data: task, error } = await supabase
       .from("tasks")
       .update(updates)
@@ -97,27 +105,24 @@ export async function PUT(
       .single();
 
     if (error) {
-      console.error("[Tasks API] Error updating task:", error);
-      return NextResponse.json({ error: "Failed to update task", details: error.message }, { status: 500 });
+      logger.error("Failed to update task", error, { taskId: id });
+      return errorResponse("Failed to update task", ErrorCodes.DATABASE_ERROR, 500);
     }
-
-    console.log("[Tasks API] Task updated successfully:", task?.id, "assigned_to:", task?.assigned_to);
 
     // Log activity
     await supabase.from("activity_log").insert({
       user_id: user.id,
       user_email: user.email,
-      action: status === "completed" ? "completed" : "updated",
+      action: body.status === "completed" ? "completed" : "updated",
       resource_type: "task",
       resource_id: id,
       resource_name: task.title,
       details: { changes: Object.keys(updates).filter(k => k !== "updated_at") },
     });
 
-    return NextResponse.json({ task, success: true });
+    return successResponse({ task, success: true });
   } catch (error) {
-    console.error("[Tasks API] Error updating task:", error);
-    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    return handleApiError(error);
   }
 }
 
@@ -133,40 +138,44 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await params;
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  try {
+    const { id } = paramsSchema.parse(await params);
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
 
-  if (!user) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    if (!user) {
+      return errorResponse("Authentication required", ErrorCodes.UNAUTHORIZED, 401);
+    }
+
+    // Get task details for logging
+    const { data: task } = await supabase
+      .from("tasks")
+      .select("title")
+      .eq("id", id)
+      .single();
+
+    const { error } = await supabase
+      .from("tasks")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      logger.error("Failed to delete task", error, { taskId: id });
+      return errorResponse("Failed to delete task", ErrorCodes.DATABASE_ERROR, 500);
+    }
+
+    // Log activity
+    await supabase.from("activity_log").insert({
+      user_id: user.id,
+      user_email: user.email,
+      action: "deleted",
+      resource_type: "task",
+      resource_id: id,
+      resource_name: task?.title || "Unknown task",
+    });
+
+    return successResponse({ success: true });
+  } catch (error) {
+    return handleApiError(error);
   }
-
-  // Get task details for logging
-  const { data: task } = await supabase
-    .from("tasks")
-    .select("title")
-    .eq("id", id)
-    .single();
-
-  const { error } = await supabase
-    .from("tasks")
-    .delete()
-    .eq("id", id);
-
-  if (error) {
-    console.error("Error deleting task:", error);
-    return NextResponse.json({ error: "Failed to delete task" }, { status: 500 });
-  }
-
-  // Log activity
-  await supabase.from("activity_log").insert({
-    user_id: user.id,
-    user_email: user.email,
-    action: "deleted",
-    resource_type: "task",
-    resource_id: id,
-    resource_name: task?.title || "Unknown task",
-  });
-
-  return NextResponse.json({ success: true });
 }

@@ -13,6 +13,7 @@ import {
   emailTaskDueSoon,
   emailTaskOverdue,
 } from "@/lib/email/email-service";
+import logger from "@/lib/logger";
 
 interface NotificationRecipient {
   userId: string;
@@ -45,7 +46,6 @@ export async function createNotification(
     const prefKey = getPreferenceKey(notification.type);
     if (prefs && prefKey && !prefs[prefKey]) {
       // User has disabled this notification type
-      console.log(`[Notifications] User ${notification.user_id} has disabled ${notification.type}`);
       return;
     }
 
@@ -63,13 +63,11 @@ export async function createNotification(
     });
 
     if (error) {
-      console.error("[Notifications] Failed to create notification:", error);
+      logger.error("[Notifications] Failed to create notification", error);
       return;
     }
-
-    console.log(`[Notifications] Created ${notification.type} notification for ${notification.user_id}`);
   } catch (error) {
-    console.error("[Notifications] Error creating notification:", error);
+    logger.error("[Notifications] Error creating notification", error);
   }
 }
 
@@ -101,7 +99,6 @@ export async function createNotifications(
     });
 
     if (filteredNotifications.length === 0) {
-      console.log("[Notifications] All notifications filtered by user preferences");
       return;
     }
 
@@ -121,13 +118,11 @@ export async function createNotifications(
     );
 
     if (error) {
-      console.error("[Notifications] Failed to create batch notifications:", error);
+      logger.error("[Notifications] Failed to create batch notifications", error);
       return;
     }
-
-    console.log(`[Notifications] Created ${filteredNotifications.length} notifications`);
   } catch (error) {
-    console.error("[Notifications] Error creating batch notifications:", error);
+    logger.error("[Notifications] Error creating batch notifications", error);
   }
 }
 
@@ -171,7 +166,7 @@ export async function notifyTaskAssigned(
     taskId,
     taskTitle,
     assigner?.full_name || "Someone"
-  ).catch((err) => console.error("[Email] Error sending task assigned email:", err));
+  ).catch((err) => logger.error("[Email] Error sending task assigned email", err));
 }
 
 /**

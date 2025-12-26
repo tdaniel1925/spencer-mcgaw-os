@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { calls, activityLogs, webhookLogs } from "@/db/schema";
+import logger from "@/lib/logger";
 import { parseWebhookWithAI, isAIParsingAvailable } from "@/lib/ai";
 import type { ParsedWebhookData } from "@/lib/ai";
 import { eq } from "drizzle-orm";
@@ -62,18 +63,16 @@ export async function POST(request: NextRequest) {
           userAgent,
         });
       } catch (logError) {
-        console.error("[VAPI Webhook] Failed to log webhook error:", logError);
+        logger.error("[VAPI Webhook] Failed to log webhook error:", logError);
       }
 
-      console.error("[VAPI Webhook] Failed to parse JSON payload");
+      logger.error("[VAPI Webhook] Failed to parse JSON payload");
       return NextResponse.json(
         { error: "Invalid JSON payload" },
         { status: 400 }
       );
     }
 
-    // Log incoming webhook for debugging
-    console.log("[VAPI Webhook] Received payload:", JSON.stringify(data, null, 2));
 
     // Extract VAPI-specific fields
     const message = data.message as Record<string, unknown> | undefined;
@@ -89,7 +88,6 @@ export async function POST(request: NextRequest) {
 
     // Check for duplicate processing BEFORE creating log entry
     if (processedWebhooks.has(callId)) {
-      console.log("[VAPI Webhook] Duplicate webhook ignored (not logged):", callId);
       // Don't create a log entry for duplicates - just return success
       return NextResponse.json({
         success: true,
@@ -112,7 +110,7 @@ export async function POST(request: NextRequest) {
       }).returning({ id: webhookLogs.id });
       webhookLogId = webhookLog?.id || null;
     } catch (logError) {
-      console.error("[VAPI Webhook] Failed to create webhook log:", logError);
+      logger.error("[VAPI Webhook] Failed to create webhook log:", logError);
       // Continue processing even if logging fails
     }
 
@@ -137,9 +135,7 @@ export async function POST(request: NextRequest) {
     const aiParsingAvailable = isAIParsingAvailable();
 
     if (aiParsingAvailable) {
-      console.log("[VAPI Webhook] AI parsing available, processing...");
       parsedData = await parseWebhookWithAI(data);
-      console.log("[VAPI Webhook] AI parsed result:", JSON.stringify(parsedData, null, 2));
     }
 
     // Update status to parsed with AI summary for quick visibility
@@ -281,18 +277,6 @@ export async function POST(request: NextRequest) {
     const direction: "inbound" | "outbound" =
       rawDirection === "outbound" || rawDirection === "outboundPhoneCall" ? "outbound" : "inbound";
 
-    // Debug log extracted data
-    console.log("[VAPI Webhook] Extracted data:", {
-      callerPhone,
-      callerName,
-      hasTranscript: !!transcript,
-      transcriptLength: transcript?.length,
-      duration,
-      recordingUrl,
-      direction,
-      summary: summary?.substring(0, 100),
-    });
-
     // Store call record
     const [insertedCall] = await db.insert(calls).values({
       vapiCallId: callId,
@@ -343,8 +327,6 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    console.log("[VAPI Webhook] Call stored with ID:", recordId);
-
     // Generate AI task suggestions from the call
     let suggestionIds: string[] = [];
     try {
@@ -362,11 +344,9 @@ export async function POST(request: NextRequest) {
         duration: duration || undefined,
       };
 
-      console.log("[VAPI Webhook] Generating task suggestions for call:", recordId);
       const suggestions = await generateTaskSuggestionsFromCall(callContext);
 
       if (suggestions.length > 0) {
-        console.log(`[VAPI Webhook] Generated ${suggestions.length} task suggestions`);
         suggestionIds = await storeTaskSuggestions(
           suggestions,
           "phone_call",
@@ -379,13 +359,10 @@ export async function POST(request: NextRequest) {
             webhookLogId,
           }
         );
-        console.log("[VAPI Webhook] Stored suggestion IDs:", suggestionIds);
-      } else {
-        console.log("[VAPI Webhook] No task suggestions generated for this call");
       }
     } catch (suggestionError) {
       // Don't fail the webhook if suggestion generation fails
-      console.error("[VAPI Webhook] Error generating task suggestions:", suggestionError);
+      logger.error("[VAPI Webhook] Error generating task suggestions:", suggestionError);
     }
 
     return NextResponse.json({
@@ -401,7 +378,7 @@ export async function POST(request: NextRequest) {
       processingTimeMs: Date.now() - startTime,
     });
   } catch (error) {
-    console.error("[VAPI Webhook] Error processing webhook:", error);
+    logger.error("[VAPI Webhook] Error processing webhook:", error);
 
     // Update webhook log with error
     if (webhookLogId) {

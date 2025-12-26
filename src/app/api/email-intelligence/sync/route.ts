@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { classifyEmailWithAI } from "@/lib/email/ai-classifier";
 import { DEFAULT_ORGANIZATION_ID } from "@/lib/constants";
+import logger from "@/lib/logger";
 
 const MICROSOFT_GRAPH_URL = "https://graph.microsoft.com/v1.0";
 
@@ -85,7 +86,7 @@ export async function POST(request: NextRequest) {
       if (new Date(connection.expires_at) <= new Date()) {
         const newTokens = await refreshAccessToken(connection.refresh_token);
         if (!newTokens) {
-          console.error("Failed to refresh token for connection:", connection.id);
+          logger.error("Failed to refresh token for connection", undefined, { connectionId: connection.id });
           continue;
         }
 
@@ -114,7 +115,7 @@ export async function POST(request: NextRequest) {
       );
 
       if (!response.ok) {
-        console.error("Failed to fetch emails:", await response.text());
+        logger.error("Failed to fetch emails", new Error(await response.text()));
         continue;
       }
 
@@ -254,8 +255,6 @@ export async function POST(request: NextRequest) {
             const taskPoolActionCode = ACTION_TYPE_MAP[actionItem.type] || "PROCESS";
             const taskPoolActionTypeId = actionTypeByCode[taskPoolActionCode] || null;
 
-            console.log(`[Email Sync] Creating task for action item: ${actionItem.title}, type: ${actionItem.type}`);
-
             const { data: newTask, error: taskError } = await supabase
               .from("tasks")
               .insert({
@@ -288,9 +287,8 @@ export async function POST(request: NextRequest) {
               .single();
 
             if (taskError) {
-              console.error("[Email Sync] Failed to create task:", taskError);
+              logger.error("[Email Sync] Failed to create task:", taskError);
             } else if (newTask) {
-              console.log(`[Email Sync] Created task ${newTask.id}`);
               // Log activity for the new task
               try {
                 await supabase.from("task_activity_log").insert({
@@ -304,9 +302,8 @@ export async function POST(request: NextRequest) {
                   },
                   performed_by: user.id,
                 });
-              } catch (logError) {
+              } catch {
                 // Activity log is optional, don't fail the task creation
-                console.warn("[Email Sync] Failed to log activity:", logError);
               }
               totalTasksCreated++;
             }
@@ -314,7 +311,7 @@ export async function POST(request: NextRequest) {
 
           totalProcessed++;
         } catch (error) {
-          console.error("Error processing email:", email.id, error);
+          logger.error("Error processing email:", error, { emailId: email.id });
           totalFailed++;
         }
       }
@@ -327,7 +324,7 @@ export async function POST(request: NextRequest) {
       tasksCreated: totalTasksCreated,
     });
   } catch (error) {
-    console.error("Error in sync:", error);
+    logger.error("Error in sync:", error);
     return NextResponse.json({ error: "Sync failed" }, { status: 500 });
   }
 }

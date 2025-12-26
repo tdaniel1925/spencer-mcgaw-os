@@ -1,36 +1,160 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Spencer McGaw CPA Hub
+
+Business Operating System for Spencer McGaw CPA - a comprehensive platform for managing clients, tasks, communications, and documents.
+
+## Features
+
+- **Client Management (CRM)** - Full client lifecycle management with contacts, services, tax filings, and deadlines
+- **Task Management** - Kanban boards, task assignment, AI-powered task suggestions
+- **Communication Hub** - Integrated phone calls (GoTo Connect), emails (Microsoft 365), and SMS (Twilio)
+- **Document Intake** - AI-powered document classification and processing
+- **Team Chat** - Real-time messaging with presence indicators
+- **Analytics & Reports** - Business intelligence and exportable reports
+- **AI Features** - Smart task extraction, email classification, caller ID enrichment
+
+## Tech Stack
+
+- **Framework**: Next.js 16 (App Router)
+- **Language**: TypeScript (strict mode)
+- **Database**: PostgreSQL via Supabase
+- **ORM**: Drizzle ORM
+- **Auth**: Supabase Auth
+- **UI**: shadcn/ui + Tailwind CSS
+- **Testing**: Vitest (unit) + Playwright (E2E)
+- **Deployment**: Vercel
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+
+- Node.js 20+
+- npm or pnpm
+- Supabase project
+
+### Environment Setup
+
+1. Copy the example environment file:
+   ```bash
+   cp .env.example .env.local
+   ```
+
+2. Fill in the required environment variables:
+   ```env
+   # Required
+   NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
+   SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+   DATABASE_URL=your_database_url
+
+   # Optional integrations
+   OPENAI_API_KEY=your_openai_key
+   GOTO_CLIENT_ID=your_goto_client_id
+   GOTO_CLIENT_SECRET=your_goto_secret
+   TWILIO_ACCOUNT_SID=your_twilio_sid
+   TWILIO_AUTH_TOKEN=your_twilio_token
+
+   # Error tracking (optional)
+   NEXT_PUBLIC_SENTRY_DSN=your_sentry_dsn
+   ```
+
+### Installation
 
 ```bash
+# Install dependencies
+npm install
+
+# Run database migrations
+npx drizzle-kit push
+
+# Start development server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) to view the application.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Scripts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start development server |
+| `npm run build` | Build for production |
+| `npm run start` | Start production server |
+| `npm run lint` | Run ESLint |
+| `npm run test` | Run all tests |
+| `npm run test:unit` | Run unit tests only |
+| `npm run test:e2e` | Run E2E tests |
+| `npm run test:coverage` | Run tests with coverage |
 
-## Learn More
+## Project Structure
 
-To learn more about Next.js, take a look at the following resources:
+```
+src/
+├── app/                    # Next.js App Router pages
+│   ├── (auth)/            # Authentication pages
+│   ├── (dashboard)/       # Main application pages
+│   ├── (fullpage)/        # Full-page layouts (kanban boards)
+│   ├── (public)/          # Public pages (terms, privacy)
+│   └── api/               # API routes
+├── components/            # React components
+│   ├── ui/               # shadcn/ui components
+│   ├── layout/           # Layout components
+│   └── dashboard/        # Dashboard-specific components
+├── lib/                   # Utilities and services
+│   ├── ai/               # AI integrations
+│   ├── supabase/         # Supabase clients
+│   ├── goto/             # GoTo Connect integration
+│   ├── twilio/           # Twilio integration
+│   └── email/            # Email services
+├── db/                    # Database schema (Drizzle)
+└── hooks/                 # Custom React hooks
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## API Routes
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Key API endpoints:
 
-## Deploy on Vercel
+- `/api/health` - Health check endpoint
+- `/api/tasks/*` - Task CRUD operations
+- `/api/clients/*` - Client management
+- `/api/projects/*` - Project management
+- `/api/sms/*` - SMS functionality
+- `/api/chat/*` - Team chat
+- `/api/webhooks/*` - Webhook handlers (GoTo, Twilio)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Security
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- TypeScript strict mode enabled
+- Zod validation on API routes
+- Rate limiting on all endpoints
+- CSP headers configured
+- Row-level security (RLS) via Supabase
+- Error tracking via Sentry
+
+## Contributing
+
+1. Create a feature branch from `develop`
+2. Make your changes
+3. Ensure tests pass: `npm run test`
+4. Ensure TypeScript passes: `npx tsc --noEmit`
+5. Create a pull request
+
+## Deployment
+
+The application is deployed to Vercel with automatic deployments:
+
+- `main` branch → Production
+- Pull requests → Preview deployments
+
+### Required Secrets
+
+For CI/CD to work, add these secrets to GitHub:
+
+- `VERCEL_TOKEN`
+- `VERCEL_ORG_ID`
+- `VERCEL_PROJECT_ID`
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+
+## License
+
+Private - All rights reserved.

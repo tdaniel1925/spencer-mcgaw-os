@@ -5,6 +5,13 @@ import nextTs from "eslint-config-next/typescript";
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
+  // Custom rules
+  {
+    rules: {
+      // Warn on console statements (use logger instead)
+      "no-console": ["warn", { allow: ["warn", "error", "debug", "info"] }],
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:
@@ -12,6 +19,12 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Test files can use console
+    "tests/**",
+    // Scripts use console.log for CLI output
+    "scripts/**",
+    // Sentry config files
+    "sentry.*.config.ts",
   ]),
 ]);
 

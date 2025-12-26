@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import logger from "@/lib/logger";
 
 /**
  * DELETE /api/email/accounts/[id]
@@ -44,8 +45,6 @@ export async function DELETE(
       );
     }
 
-    console.log(`[Email Cleanup] Starting cleanup for connection ${id} (${connection.email})`);
-
     // Count what will be deleted for reporting
     const { count: classificationCount } = await supabase
       .from("email_classifications")
@@ -57,8 +56,6 @@ export async function DELETE(
       .select("*", { count: "exact", head: true })
       .eq("account_id", id);
 
-    console.log(`[Email Cleanup] Found ${classificationCount || 0} classifications and ${actionItemCount || 0} action items to delete`);
-
     // 1. Delete tasks from TaskPool that came from this account's emails
     const { error: tasksError, count: tasksDeleted } = await supabase
       .from("tasks")
@@ -67,9 +64,7 @@ export async function DELETE(
       .eq("created_by", user.id);
 
     if (tasksError) {
-      console.error("[Email Cleanup] Error deleting tasks:", tasksError);
-    } else {
-      console.log(`[Email Cleanup] Deleted ${tasksDeleted || 0} tasks from TaskPool`);
+      logger.error("[Email Cleanup] Error deleting tasks:", tasksError);
     }
 
     // 2. Delete sender_rules associated with user
@@ -79,7 +74,7 @@ export async function DELETE(
       .eq("user_id", user.id);
 
     if (senderRulesError) {
-      console.error("[Email Cleanup] Error deleting sender rules:", senderRulesError);
+      logger.error("[Email Cleanup] Error deleting sender rules:", senderRulesError);
     }
 
     // 3. Delete email_training_samples
@@ -89,7 +84,7 @@ export async function DELETE(
       .eq("user_id", user.id);
 
     if (trainingError) {
-      console.error("[Email Cleanup] Error deleting training samples:", trainingError);
+      logger.error("[Email Cleanup] Error deleting training samples:", trainingError);
     }
 
     // 4. Delete email_classifications and email_action_items for this account
@@ -100,7 +95,7 @@ export async function DELETE(
       .eq("account_id", id);
 
     if (classError) {
-      console.error("[Email Cleanup] Error deleting classifications:", classError);
+      logger.error("[Email Cleanup] Error deleting classifications:", classError);
     }
 
     const { error: actionError } = await supabase
@@ -109,7 +104,7 @@ export async function DELETE(
       .eq("account_id", id);
 
     if (actionError) {
-      console.error("[Email Cleanup] Error deleting action items:", actionError);
+      logger.error("[Email Cleanup] Error deleting action items:", actionError);
     }
 
     // 5. Finally, delete the email_connections record
@@ -119,14 +114,12 @@ export async function DELETE(
       .eq("id", id);
 
     if (deleteError) {
-      console.error("[Email Cleanup] Error deleting connection:", deleteError);
+      logger.error("[Email Cleanup] Error deleting connection:", deleteError);
       return NextResponse.json(
         { error: "Failed to delete email connection" },
         { status: 500 }
       );
     }
-
-    console.log(`[Email Cleanup] Successfully cleaned up all data for connection ${id}`);
 
     return NextResponse.json({
       success: true,
@@ -139,7 +132,7 @@ export async function DELETE(
       },
     });
   } catch (error) {
-    console.error("[Email Cleanup] Error:", error);
+    logger.error("[Email Cleanup] Error:", error);
     return NextResponse.json(
       { error: "Failed to disconnect email account" },
       { status: 500 }
@@ -289,7 +282,7 @@ export async function PUT(
       .single();
 
     if (updateError) {
-      console.error("[Email Account Update] Error:", updateError);
+      logger.error("[Email Account Update] Error:", updateError);
       return NextResponse.json(
         { error: "Failed to update email account" },
         { status: 500 }
@@ -308,7 +301,7 @@ export async function PUT(
       },
     });
   } catch (error) {
-    console.error("[Email Account Update] Error:", error);
+    logger.error("[Email Account Update] Error:", error);
     return NextResponse.json(
       { error: "Invalid request body" },
       { status: 400 }

@@ -116,17 +116,11 @@ export function useRealtimeTasks({
       )
       .subscribe((status) => {
         isConnectedRef.current = status === "SUBSCRIBED";
-        if (status === "SUBSCRIBED") {
-          console.log("[Realtime] Connected to tasks channel");
-        } else if (status === "CHANNEL_ERROR") {
-          console.error("[Realtime] Error connecting to tasks channel");
-        }
       });
 
     channelRef.current = channel;
 
     return () => {
-      console.log("[Realtime] Unsubscribing from tasks channel");
       channel.unsubscribe();
       channelRef.current = null;
       isConnectedRef.current = false;
@@ -191,11 +185,7 @@ export function useRealtimeNotifications({
           }
         }
       )
-      .subscribe((status) => {
-        if (status === "SUBSCRIBED") {
-          console.log("[Realtime] Connected to notifications channel");
-        }
-      });
+      .subscribe();
 
     channelRef.current = channel;
 
@@ -213,11 +203,10 @@ export function useRealtimeNotifications({
  * Call this from server actions/API routes after task mutations
  */
 export async function broadcastTaskEvent(
-  event: "created" | "updated" | "deleted" | "assigned",
-  task: Partial<Task>,
-  triggeredBy: string
+  _event: "created" | "updated" | "deleted" | "assigned",
+  _task: Partial<Task>,
+  _triggeredBy: string
 ) {
   // This is handled automatically by Supabase Realtime when
   // the database changes - no manual broadcast needed
-  console.log(`[Realtime] Task ${event}:`, task.id, "by", triggeredBy);
 }

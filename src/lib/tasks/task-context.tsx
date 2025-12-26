@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/lib/supabase/auth-context";
+import logger from "@/lib/logger";
 
 export interface Task {
   id: string;
@@ -115,7 +116,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         setTasks(data.tasks || []);
       }
     } catch (error) {
-      console.error("[TaskContext] Error fetching tasks:", error);
+      logger.error("[TaskContext] Error fetching tasks", error);
     } finally {
       setLoading(false);
     }
@@ -148,8 +149,6 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
           table: "tasks"
         },
         async (payload) => {
-          console.log("[TaskContext] Real-time update:", payload.eventType);
-
           if (payload.eventType === "INSERT") {
             const newTask = payload.new as Task;
             setTasks(prev => [newTask, ...prev]);
@@ -196,7 +195,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       }
       return false;
     } catch (error) {
-      console.error("[TaskContext] Error updating task status:", error);
+      logger.error("[TaskContext] Error updating task status", error);
       return false;
     }
   }, []);
@@ -214,7 +213,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       }
       return false;
     } catch (error) {
-      console.error("[TaskContext] Error claiming task:", error);
+      logger.error("[TaskContext] Error claiming task", error);
       return false;
     }
   }, [refreshTasks]);
@@ -232,7 +231,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       }
       return false;
     } catch (error) {
-      console.error("[TaskContext] Error releasing task:", error);
+      logger.error("[TaskContext] Error releasing task", error);
       return false;
     }
   }, [refreshTasks]);
@@ -252,7 +251,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       }
       return false;
     } catch (error) {
-      console.error("[TaskContext] Error assigning task:", error);
+      logger.error("[TaskContext] Error assigning task", error);
       return false;
     }
   }, [refreshTasks]);

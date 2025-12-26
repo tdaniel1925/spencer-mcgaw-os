@@ -13,6 +13,7 @@ import {
   SuggestedCallAction,
   RawWebhookData,
 } from "./types";
+import logger from "@/lib/logger";
 
 // Generate unique IDs
 function generateId(): string {
@@ -437,7 +438,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
           setInitialLoadDone(true);
         }
       } catch (error) {
-        console.error("Failed to fetch initial calls:", error);
+        logger.error("Failed to fetch initial calls", error);
         setInitialLoadDone(true);
       }
     }
@@ -455,7 +456,6 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
           table: "calls",
         },
         (payload) => {
-          console.log("[Realtime] New call received:", payload);
           const newCall = transformDbCall(payload.new);
 
           // Only create notification if we haven't seen this call
@@ -474,7 +474,6 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
           table: "calls",
         },
         (payload) => {
-          console.log("[Realtime] Call updated:", payload);
           const updatedCall = transformDbCall(payload.new);
           setCalls(prev => prev.map(c => c.id === updatedCall.id ? updatedCall : c));
         }
@@ -487,15 +486,12 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
           table: "calls",
         },
         (payload) => {
-          console.log("[Realtime] Call deleted:", payload);
           const deletedId = (payload.old as { id: string }).id;
           setCalls(prev => prev.filter(c => c.id !== deletedId));
           seenCallIdsRef.current.delete(deletedId);
         }
       )
-      .subscribe((status) => {
-        console.log("[Realtime] Subscription status:", status);
-      });
+      .subscribe();
 
     // Cleanup on unmount
     return () => {

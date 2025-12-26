@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import logger from "@/lib/logger";
 
 /**
  * POST /api/email/cleanup
@@ -17,7 +18,6 @@ export async function POST() {
   }
 
   try {
-    console.log(`[Email Cleanup] Starting cleanup for user ${user.id}`);
 
     // Get count of orphaned classifications (no account_id or account doesn't exist)
     const { count: classificationCount } = await supabase
@@ -30,8 +30,6 @@ export async function POST() {
       .select("*", { count: "exact", head: true })
       .is("account_id", null);
 
-    console.log(`[Email Cleanup] Found ${classificationCount || 0} orphaned classifications and ${actionItemCount || 0} orphaned action items`);
-
     // 1. Delete orphaned email_action_items (no account_id)
     const { error: actionItemsError } = await supabase
       .from("email_action_items")
@@ -39,9 +37,7 @@ export async function POST() {
       .is("account_id", null);
 
     if (actionItemsError) {
-      console.error("[Email Cleanup] Error deleting action items:", actionItemsError);
-    } else {
-      console.log("[Email Cleanup] Deleted orphaned email action items");
+      logger.error("[Email Cleanup] Error deleting action items:", actionItemsError);
     }
 
     // 2. Delete orphaned email_classifications (no account_id)
@@ -51,9 +47,7 @@ export async function POST() {
       .is("account_id", null);
 
     if (classError) {
-      console.error("[Email Cleanup] Error deleting classifications:", classError);
-    } else {
-      console.log("[Email Cleanup] Deleted orphaned email classifications");
+      logger.error("[Email Cleanup] Error deleting classifications:", classError);
     }
 
     // 3. Delete tasks from TaskPool that came from email (source_type = 'email')
@@ -64,9 +58,7 @@ export async function POST() {
       .eq("created_by", user.id);
 
     if (tasksError) {
-      console.error("[Email Cleanup] Error deleting tasks:", tasksError);
-    } else {
-      console.log(`[Email Cleanup] Deleted ${tasksDeleted || 0} tasks from TaskPool`);
+      logger.error("[Email Cleanup] Error deleting tasks:", tasksError);
     }
 
     // 4. Delete sender_rules associated with user
@@ -76,7 +68,7 @@ export async function POST() {
       .eq("user_id", user.id);
 
     if (senderRulesError) {
-      console.error("[Email Cleanup] Error deleting sender rules:", senderRulesError);
+      logger.error("[Email Cleanup] Error deleting sender rules:", senderRulesError);
     }
 
     // 5. Delete email_training_samples
@@ -86,10 +78,8 @@ export async function POST() {
       .eq("user_id", user.id);
 
     if (trainingError) {
-      console.error("[Email Cleanup] Error deleting training samples:", trainingError);
+      logger.error("[Email Cleanup] Error deleting training samples:", trainingError);
     }
-
-    console.log(`[Email Cleanup] Successfully cleaned up all orphaned data for user ${user.id}`);
 
     return NextResponse.json({
       success: true,
@@ -101,7 +91,7 @@ export async function POST() {
       },
     });
   } catch (error) {
-    console.error("[Email Cleanup] Error:", error);
+    logger.error("[Email Cleanup] Error:", error);
     return NextResponse.json(
       { error: "Failed to cleanup email data" },
       { status: 500 }

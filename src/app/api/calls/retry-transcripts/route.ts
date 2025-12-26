@@ -4,6 +4,7 @@ import { calls } from "@/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { getTranscription } from "@/lib/goto";
 import { eq, isNull, isNotNull, sql, desc, and } from "drizzle-orm";
+import logger from "@/lib/logger";
 
 /**
  * GET - Get calls missing transcripts (for diagnosis)
@@ -68,7 +69,7 @@ export async function GET() {
       })),
     });
   } catch (error) {
-    console.error("Error fetching calls missing transcripts:", error);
+    logger.error("Error fetching calls missing transcripts:", error);
     return NextResponse.json(
       { error: "Failed to fetch calls" },
       { status: 500 }
@@ -149,7 +150,6 @@ export async function POST(request: Request) {
       let transcriptFound = false;
       for (const recordingId of recordingIds) {
         try {
-          console.log(`[Retry Transcripts] Trying recording ID ${recordingId} for call ${call.id}`);
           const transcriptData = await getTranscription(recordingId);
 
           if (transcriptData.text && transcriptData.text.length > 0) {
@@ -171,7 +171,7 @@ export async function POST(request: Request) {
             break;
           }
         } catch (error) {
-          console.error(`[Retry Transcripts] Error for recording ${recordingId}:`, error);
+          logger.error("[Retry Transcripts] Error for recording:", error, { recordingId });
         }
       }
 
@@ -201,7 +201,7 @@ export async function POST(request: Request) {
       results,
     });
   } catch (error) {
-    console.error("Error retrying transcripts:", error);
+    logger.error("Error retrying transcripts:", error);
     return NextResponse.json(
       { error: "Failed to retry transcripts" },
       { status: 500 }
