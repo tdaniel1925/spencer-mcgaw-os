@@ -9,6 +9,7 @@ import {
   ErrorCodes,
 } from "@/lib/api-utils";
 import logger from "@/lib/logger";
+import { emailTaskAssigned, emailTaskCompleted } from "@/lib/email/email-service";
 
 // Validation schemas
 const taskUpdateSchema = z.object({
@@ -119,6 +120,25 @@ export async function PUT(
       resource_name: task.title,
       details: { changes: Object.keys(updates).filter(k => k !== "updated_at") },
     });
+
+    // Send email notifications (non-blocking)
+    const assigneeId = task.assigned_to;
+    const assignerName = user.user_metadata?.full_name || user.email || "Someone";
+
+    // Notify assignee when task is assigned to them
+    if (assigneeValue && assigneeValue !== user.id) {
+      emailTaskAssigned(assigneeValue, id, task.title, assignerName).catch((err) =>
+        logger.error("Failed to send task assigned email", err)
+      );
+    }
+
+    // Notify task creator/assigner when task is completed
+    if (body.status === "completed" && task.created_by && task.created_by !== user.id) {
+      const completerName = user.user_metadata?.full_name || user.email || "Someone";
+      emailTaskCompleted(task.created_by, id, task.title, completerName).catch((err) =>
+        logger.error("Failed to send task completed email", err)
+      );
+    }
 
     return successResponse({ task, success: true });
   } catch (error) {

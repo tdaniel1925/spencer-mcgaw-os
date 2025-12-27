@@ -101,29 +101,36 @@ async function shouldSendEmail(
 ): Promise<{ shouldSend: boolean; email: string | null }> {
   const supabase = await createClient();
 
-  // Get user email and preferences
+  // Get user email and notification preferences from users table
   const { data: user } = await supabase
-    .from("user_profiles")
-    .select("email")
+    .from("users")
+    .select("email, notification_preferences")
     .eq("id", userId)
     .single();
 
   if (!user?.email) {
-    return { shouldSend: false, email: null };
+    // Fallback: try to get email from auth.users via user_profiles view
+    const { data: profile } = await supabase
+      .from("user_profiles")
+      .select("email")
+      .eq("id", userId)
+      .single();
+
+    if (!profile?.email) {
+      return { shouldSend: false, email: null };
+    }
+    // No preferences found, default to sending
+    return { shouldSend: true, email: profile.email };
   }
 
-  // Get notification preferences
-  const { data: prefs } = await supabase
-    .from("notification_preferences")
-    .select("*")
-    .eq("user_id", userId)
-    .single();
+  // Check notification preferences (JSONB field)
+  const prefs = user.notification_preferences as Record<string, boolean> | null;
 
-  // Map notification type to email preference field
-  const prefKey = getEmailPreferenceKey(notificationType);
-  const shouldSend = !prefs || !prefKey || prefs[prefKey] !== false;
+  // Default: send emails unless explicitly disabled
+  // prefs.email controls all email notifications
+  const emailEnabled = !prefs || prefs.email !== false;
 
-  return { shouldSend, email: user.email };
+  return { shouldSend: emailEnabled, email: user.email };
 }
 
 /**

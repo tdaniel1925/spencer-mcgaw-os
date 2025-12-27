@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getApiUser, canViewAll } from "@/lib/auth/api-rbac";
+import { emailTaskAssigned } from "@/lib/email/email-service";
+import logger from "@/lib/logger";
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -131,6 +133,13 @@ export async function POST(request: NextRequest) {
       resource_name: title,
       details: { source, priority },
     });
+
+    // Send email notification if task is assigned to someone else
+    if (assignee_id && assignee_id !== apiUser.id) {
+      emailTaskAssigned(assignee_id, task.id, title, apiUser.email).catch((err) =>
+        logger.error("Failed to send task assigned email", err)
+      );
+    }
 
     return NextResponse.json({ task }, { status: 201 });
   } catch (error) {
