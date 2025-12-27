@@ -75,6 +75,8 @@ import {
   RefreshCw,
   AlertTriangle,
   Lock,
+  Send,
+  KeyRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow } from "date-fns";
@@ -147,8 +149,10 @@ export default function UserManagementPage() {
   const [deleteUserOpen, setDeleteUserOpen] = useState(false);
   const [permissionsOpen, setPermissionsOpen] = useState(false);
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
+  const [emailPreviewOpen, setEmailPreviewOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<TeamMember | null>(null);
   const [saving, setSaving] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState<string | null>(null);
 
   // New user form state
   const [newUser, setNewUser] = useState({
@@ -480,6 +484,77 @@ export default function UserManagementPage() {
     }
   };
 
+  const handleResendInvite = async (userId: string) => {
+    setSendingEmail(userId);
+    try {
+      const response = await fetch(`/api/admin/users/${userId}/email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "invite" }),
+      });
+
+      if (response.ok) {
+        toast.success("Invite email sent successfully");
+      } else {
+        const data = await response.json();
+        toast.error(data.error || "Failed to send invite email");
+      }
+    } catch (error) {
+      console.error("Error sending invite email:", error);
+      toast.error("Failed to send invite email");
+    } finally {
+      setSendingEmail(null);
+    }
+  };
+
+  const handleSendPasswordReset = async (userId: string) => {
+    setSendingEmail(userId);
+    try {
+      const response = await fetch(`/api/admin/users/${userId}/email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "password_reset" }),
+      });
+
+      if (response.ok) {
+        toast.success("Password reset email sent successfully");
+      } else {
+        const data = await response.json();
+        toast.error(data.error || "Failed to send password reset email");
+      }
+    } catch (error) {
+      console.error("Error sending password reset email:", error);
+      toast.error("Failed to send password reset email");
+    } finally {
+      setSendingEmail(null);
+    }
+  };
+
+  const getWelcomeEmailHtml = () => {
+    const loginUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const appName = "Spencer McGaw Hub";
+    return `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; background: white;">
+        <div style="background: #1a1a2e; padding: 20px; text-align: center;">
+          <h1 style="color: white; margin: 0; font-size: 24px;">${appName}</h1>
+        </div>
+        <div style="padding: 30px;">
+          <h2>Welcome to ${appName}!</h2>
+          <p>Hi <strong>${newUser.full_name || "[Full Name]"}</strong>,</p>
+          <p>Your account has been created. You can now log in and start using the system.</p>
+          <p style="margin: 30px 0;">
+            <a href="${loginUrl}/login" style="display: inline-block; background: #3b82f6; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 500;">Log In Now</a>
+          </p>
+          <p style="margin-top: 20px; color: #666;">
+            If you have any questions, please contact your administrator.
+          </p>
+        </div>
+        <div style="background: #f5f5f5; padding: 20px; text-align: center; font-size: 12px; color: #666;">
+          <p>You're receiving this because of your notification settings.</p>
+        </div>
+      </div>
+    `;
+  };
 
   const getUserInitials = (name: string) => {
     return name
@@ -699,6 +774,21 @@ export default function UserManagementPage() {
                         >
                           <Eye className="h-4 w-4 mr-2" />
                           View Details
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onClick={() => handleResendInvite(member.id)}
+                          disabled={sendingEmail === member.id}
+                        >
+                          <Send className="h-4 w-4 mr-2" />
+                          {sendingEmail === member.id ? "Sending..." : "Resend Invite"}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => handleSendPasswordReset(member.id)}
+                          disabled={sendingEmail === member.id}
+                        >
+                          <KeyRound className="h-4 w-4 mr-2" />
+                          {sendingEmail === member.id ? "Sending..." : "Send Password Reset"}
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
@@ -957,16 +1047,53 @@ export default function UserManagementPage() {
               </Label>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAddUserOpen(false)}>
-              Cancel
-            </Button>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
             <Button
-              onClick={handleAddUser}
-              disabled={!newUser.email || !newUser.full_name || !newUser.password || passwordErrors.length > 0 || saving}
+              variant="outline"
+              onClick={() => setEmailPreviewOpen(true)}
+              disabled={!newUser.full_name || !newUser.email}
+              className="sm:mr-auto"
             >
-              <UserPlus className="h-4 w-4 mr-2" />
-              {saving ? "Creating..." : "Add User"}
+              <Eye className="h-4 w-4 mr-2" />
+              Preview Email
+            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setAddUserOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleAddUser}
+                disabled={!newUser.email || !newUser.full_name || !newUser.password || passwordErrors.length > 0 || saving}
+              >
+                <UserPlus className="h-4 w-4 mr-2" />
+                {saving ? "Creating..." : "Add User"}
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Email Preview Dialog */}
+      <Dialog open={emailPreviewOpen} onOpenChange={setEmailPreviewOpen}>
+        <DialogContent className="sm:max-w-2xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Mail className="h-5 w-5" />
+              Welcome Email Preview
+            </DialogTitle>
+            <DialogDescription>
+              This is the email that will be sent to {newUser.email || "the new user"} when their account is created.
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="max-h-[50vh] border rounded-lg">
+            <div
+              className="p-4 bg-white"
+              dangerouslySetInnerHTML={{ __html: getWelcomeEmailHtml() }}
+            />
+          </ScrollArea>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEmailPreviewOpen(false)}>
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>

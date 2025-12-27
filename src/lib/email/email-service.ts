@@ -366,6 +366,112 @@ export async function emailMention(
 }
 
 /**
+ * Send welcome/invite email to new user
+ */
+export async function emailWelcome(
+  email: string,
+  fullName: string,
+  tempPassword?: string
+): Promise<boolean> {
+  const loginUrl = `${APP_URL}/login`;
+
+  const passwordSection = tempPassword
+    ? `
+      <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0;">
+        <strong>Your temporary password:</strong>
+        <div style="font-family: monospace; font-size: 16px; margin-top: 8px; padding: 8px; background: white; border-radius: 4px;">
+          ${tempPassword}
+        </div>
+        <small style="color: #92400e;">Please change your password after logging in.</small>
+      </div>
+    `
+    : '';
+
+  return sendEmail({
+    to: email,
+    subject: `Welcome to ${APP_NAME}`,
+    html: baseTemplate(`
+      <h2>Welcome to ${APP_NAME}!</h2>
+      <p>Hi <strong>${fullName}</strong>,</p>
+      <p>Your account has been created. You can now log in and start using the system.</p>
+      ${passwordSection}
+      <p>
+        <a href="${loginUrl}" class="button">Log In Now</a>
+      </p>
+      <p style="margin-top: 20px; color: #666;">
+        If you have any questions, please contact your administrator.
+      </p>
+    `),
+    text: `Welcome to ${APP_NAME}!\n\nHi ${fullName},\n\nYour account has been created.${tempPassword ? `\n\nYour temporary password: ${tempPassword}` : ''}\n\nLog in: ${loginUrl}`,
+  });
+}
+
+/**
+ * Generate welcome email HTML for preview (without sending)
+ */
+export function getWelcomeEmailPreview(
+  fullName: string,
+  email: string,
+  tempPassword?: string
+): { subject: string; html: string } {
+  const loginUrl = `${APP_URL}/login`;
+
+  const passwordSection = tempPassword
+    ? `
+      <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0;">
+        <strong>Your temporary password:</strong>
+        <div style="font-family: monospace; font-size: 16px; margin-top: 8px; padding: 8px; background: white; border-radius: 4px;">
+          ${tempPassword}
+        </div>
+        <small style="color: #92400e;">Please change your password after logging in.</small>
+      </div>
+    `
+    : '';
+
+  return {
+    subject: `Welcome to ${APP_NAME}`,
+    html: baseTemplate(`
+      <h2>Welcome to ${APP_NAME}!</h2>
+      <p>Hi <strong>${fullName}</strong>,</p>
+      <p>Your account has been created. You can now log in and start using the system.</p>
+      ${passwordSection}
+      <p>
+        <a href="${loginUrl}" class="button">Log In Now</a>
+      </p>
+      <p style="margin-top: 20px; color: #666;">
+        If you have any questions, please contact your administrator.
+      </p>
+    `),
+  };
+}
+
+/**
+ * Send password reset email
+ */
+export async function emailPasswordReset(
+  email: string,
+  fullName: string,
+  resetLink: string
+): Promise<boolean> {
+  return sendEmail({
+    to: email,
+    subject: `Reset Your Password - ${APP_NAME}`,
+    html: baseTemplate(`
+      <h2>Password Reset Request</h2>
+      <p>Hi <strong>${fullName}</strong>,</p>
+      <p>We received a request to reset your password. Click the button below to create a new password:</p>
+      <p style="margin: 30px 0;">
+        <a href="${resetLink}" class="button">Reset Password</a>
+      </p>
+      <p style="color: #666; font-size: 14px;">
+        This link will expire in 1 hour. If you didn't request a password reset, you can safely ignore this email.
+      </p>
+    `),
+    text: `Password Reset Request\n\nHi ${fullName},\n\nWe received a request to reset your password.\n\nReset your password: ${resetLink}\n\nThis link will expire in 1 hour.`,
+  });
+}
+
+/**
  * Send weekly summary email
  */
 export async function emailWeeklySummary(
