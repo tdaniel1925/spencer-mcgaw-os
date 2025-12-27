@@ -100,14 +100,17 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   const supabase = createClient();
   const subscriptionRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
-  // Fetch all tasks
+  // Fetch tasks - optimized to load active tasks first for faster initial load
   const refreshTasks = useCallback(async () => {
     if (!user) return;
 
     try {
-      // Fetch from the unified tasks API
+      // Fetch from the unified tasks API - limit to 100 for faster loading
+      // Real-time subscription will add new tasks as they come in
       const params = new URLSearchParams();
-      params.set("limit", "500");
+      params.set("limit", "100");
+      // Exclude old completed tasks from initial load for speed
+      params.set("exclude_completed_before", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString());
       if (searchQuery) params.set("search", searchQuery);
 
       const response = await fetch(`/api/tasks?${params}`);

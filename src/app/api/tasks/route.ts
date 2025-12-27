@@ -15,6 +15,7 @@ export async function GET(request: NextRequest) {
   const unassigned = searchParams.get("unassigned");
   const includeAssignee = searchParams.get("include_assignee") === "true";
   const includeClient = searchParams.get("include_client") === "true";
+  const excludeCompletedBefore = searchParams.get("exclude_completed_before");
 
   // Get authenticated user with role
   const apiUser = await getApiUser();
@@ -30,11 +31,11 @@ export async function GET(request: NextRequest) {
     selectQuery += ", client:clients(id, first_name, last_name, email, phone)";
   }
 
-  // Fetch tasks
+  // Fetch tasks - order by updated_at for better relevance
   let query = supabase
     .from("tasks")
     .select(selectQuery, { count: "exact" })
-    .order("created_at", { ascending: false })
+    .order("updated_at", { ascending: false })
     .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
 
   // RBAC: Staff can only see their assigned, created, or claimed tasks
@@ -61,6 +62,13 @@ export async function GET(request: NextRequest) {
   // Filter for unassigned tasks (for Org Tasks Kanban)
   if (unassigned === "true") {
     query = query.is("assigned_to", null);
+  }
+
+  // Performance optimization: exclude old completed tasks from initial load
+  // This speeds up dashboard loading significantly
+  if (excludeCompletedBefore) {
+    // Include all non-completed tasks, plus completed tasks after the cutoff date
+    query = query.or(`status.neq.completed,completed_at.gte.${excludeCompletedBefore}`);
   }
 
   const { data: tasks, error, count } = await query;

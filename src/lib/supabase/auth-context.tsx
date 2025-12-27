@@ -113,19 +113,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    // Get initial session
+    // Get initial session - OPTIMIZED: parallel queries for faster loading
     const getSession = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         setSession(session);
 
         if (session?.user) {
-          // First, verify user exists in database (handles stale sessions after DB reset)
-          const { data: profile, error: profileError } = await supabase
-            .from("user_profiles")
-            .select("role, full_name, avatar_url, department, job_title, phone, is_active")
-            .eq("id", session.user.id)
-            .single();
+          // Fetch profile and permissions in PARALLEL for faster loading
+          const [profileResult, overridesResult] = await Promise.all([
+            supabase
+              .from("user_profiles")
+              .select("role, full_name, avatar_url, department, job_title, phone, is_active")
+              .eq("id", session.user.id)
+              .single(),
+            supabase
+              .from("user_permission_overrides")
+              .select("*")
+              .eq("user_id", session.user.id)
+          ]);
+
+          const { data: profile, error: profileError } = profileResult;
 
           // If user doesn't exist in database, sign them out immediately
           if (profileError && profileError.code === "PGRST116") {
@@ -138,22 +146,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             return;
           }
 
-          // User exists - set user data
+          // User exists - set user data and permissions together
           setUser(buildUser(session.user, profile));
-          setLoading(false);
 
-          // Load permission overrides in background
-          const { data: overrides } = await supabase
-            .from("user_permission_overrides")
-            .select("*")
-            .eq("user_id", session.user.id);
-
-          if (overrides) {
-            const activeOverrides = overrides.filter(
+          if (overridesResult.data) {
+            const activeOverrides = overridesResult.data.filter(
               (o: PermissionOverride) => !o.expires_at || new Date(o.expires_at) > new Date()
             );
             setPermissionOverrides(activeOverrides);
           }
+
+          setLoading(false);
         } else {
           setUser(null);
           setLoading(false);
@@ -167,18 +170,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     getSession();
 
-    // Listen for auth changes
+    // Listen for auth changes - OPTIMIZED: parallel queries
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         setSession(session);
 
         if (session?.user) {
-          // Verify user exists in database
-          const { data: profile, error: profileError } = await supabase
-            .from("user_profiles")
-            .select("role, full_name, avatar_url, department, job_title, phone, is_active")
-            .eq("id", session.user.id)
-            .single();
+          // Fetch profile and permissions in PARALLEL
+          const [profileResult, overridesResult] = await Promise.all([
+            supabase
+              .from("user_profiles")
+              .select("role, full_name, avatar_url, department, job_title, phone, is_active")
+              .eq("id", session.user.id)
+              .single(),
+            supabase
+              .from("user_permission_overrides")
+              .select("*")
+              .eq("user_id", session.user.id)
+          ]);
+
+          const { data: profile, error: profileError } = profileResult;
 
           // If user doesn't exist in database, sign them out
           if (profileError && profileError.code === "PGRST116") {
@@ -191,12 +202,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             return;
           }
 
-          // User exists - set user data
+          // User exists - set user data and permissions together
           setUser(buildUser(session.user, profile));
-          setLoading(false);
 
-          // Load permission overrides in background
-          loadPermissionOverrides(session.user.id);
+          if (overridesResult.data) {
+            const activeOverrides = overridesResult.data.filter(
+              (o: PermissionOverride) => !o.expires_at || new Date(o.expires_at) > new Date()
+            );
+            setPermissionOverrides(activeOverrides);
+          }
+
+          setLoading(false);
         } else {
           setUser(null);
           setPermissionOverrides([]);

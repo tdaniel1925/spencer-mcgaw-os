@@ -21,7 +21,7 @@ export async function GET() {
   const endOfWeek = new Date(startOfWeek);
   endOfWeek.setDate(endOfWeek.getDate() + 7);
 
-  // Fetch all stats in parallel
+  // Fetch ALL stats in parallel (including urgent tasks) for faster loading
   const [
     totalResult,
     pendingResult,
@@ -31,6 +31,7 @@ export async function GET() {
     completedThisWeekResult,
     dueTodayResult,
     overdueResult,
+    urgentTasksResult,
   ] = await Promise.all([
     supabase.from("tasks").select("id", { count: "exact", head: true }),
     supabase.from("tasks").select("id", { count: "exact", head: true }).eq("status", "pending"),
@@ -46,29 +47,23 @@ export async function GET() {
       .lt("completed_at", endOfWeek.toISOString()),
     supabase.from("tasks").select("id", { count: "exact", head: true })
       .neq("status", "completed")
+      .neq("status", "cancelled")
       .gte("due_date", today.toISOString())
       .lt("due_date", tomorrow.toISOString()),
     supabase.from("tasks").select("id", { count: "exact", head: true })
       .neq("status", "completed")
+      .neq("status", "cancelled")
       .lt("due_date", today.toISOString()),
+    // Urgent tasks - included in parallel
+    supabase
+      .from("tasks")
+      .select("id, title, due_date, priority")
+      .or("priority.eq.urgent,priority.eq.high")
+      .neq("status", "completed")
+      .neq("status", "cancelled")
+      .order("due_date", { ascending: true, nullsFirst: false })
+      .limit(5),
   ]);
-
-  // Get urgent tasks (high priority, not completed)
-  const { data: urgentTasks } = await supabase
-    .from("tasks")
-    .select("id, title, due_date, priority, client_name")
-    .eq("priority", "high")
-    .neq("status", "completed")
-    .order("due_date", { ascending: true, nullsFirst: false })
-    .limit(5);
-
-  // Get recent activity
-  const { data: recentActivity } = await supabase
-    .from("activity_log")
-    .select("*")
-    .eq("resource_type", "task")
-    .order("created_at", { ascending: false })
-    .limit(10);
 
   return NextResponse.json({
     total: totalResult.count || 0,
@@ -79,7 +74,6 @@ export async function GET() {
     completedThisWeek: completedThisWeekResult.count || 0,
     dueToday: dueTodayResult.count || 0,
     overdue: overdueResult.count || 0,
-    urgentTasks: urgentTasks || [],
-    recentActivity: recentActivity || [],
+    urgentTasks: urgentTasksResult.data || [],
   });
 }
