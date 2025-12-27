@@ -10,6 +10,7 @@ import { ChatProvider } from "@/lib/chat";
 import { TaskProvider } from "@/lib/tasks/task-context";
 import { ClientProvider } from "@/lib/clients/client-context";
 import { AIAssistant } from "@/components/ai-assistant/ai-assistant";
+import { OnboardingProvider } from "@/lib/onboarding/onboarding-provider";
 
 export default function DashboardLayout({
   children,
@@ -42,12 +43,14 @@ export default function DashboardLayout({
                   <ChatProvider>
                     <TaskProvider>
                       <ClientProvider>
-                        <div className="min-h-screen bg-background">
-                          <Sidebar />
-                          {/* Responsive padding: no padding on mobile, pl-64 on desktop (lg+) */}
-                          <div className="lg:pl-64 pt-14 lg:pt-0">{children}</div>
-                          <AIAssistant />
-                        </div>
+                        <OnboardingProvider>
+                          <div className="min-h-screen bg-background">
+                            <Sidebar />
+                            {/* Responsive padding: no padding on mobile, pl-64 on desktop (lg+) */}
+                            <div className="lg:pl-64 pt-14 lg:pt-0">{children}</div>
+                            <AIAssistant />
+                          </div>
+                        </OnboardingProvider>
                       </ClientProvider>
                     </TaskProvider>
                   </ChatProvider>

@@ -54,6 +54,7 @@ import {
 import { useAuth } from "@/lib/supabase/auth-context";
 import { Permission, roleInfo } from "@/lib/permissions";
 import { useNotifications, getProgressPercentage } from "@/lib/notifications";
+import { useOnboarding } from "@/lib/onboarding/onboarding-provider";
 
 interface NavItem {
   title: string;
@@ -232,6 +233,7 @@ export function Sidebar() {
   const { user, signOut, can, isAdmin } = useAuth();
   const { taskProgress } = useNotifications();
   const progressPercentage = getProgressPercentage(taskProgress);
+  const { triggerOnboarding } = useOnboarding();
 
   useEffect(() => {
     setMounted(true);
@@ -524,6 +526,16 @@ export function Sidebar() {
                   <HelpCircle className="mr-2 h-4 w-4" />
                   Help & Support
                 </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault();
+                  triggerOnboarding();
+                }}
+                className="cursor-pointer"
+              >
+                <Sparkles className="mr-2 h-4 w-4" />
+                Getting Started
               </DropdownMenuItem>
               {/* Admin Section */}
               {filteredAdminNav.length > 0 && (

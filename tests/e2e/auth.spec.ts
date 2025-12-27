@@ -57,12 +57,18 @@ test.describe("Authentication Pages", () => {
   });
 
   test.describe("Reset Password Page", () => {
-    test("should display reset password form or redirect", async ({ page }) => {
+    test("should display reset password form or invalid link message", async ({ page }) => {
       await page.goto("/reset-password");
-      // This page may require a token, so check for password field OR redirect/message
+      await page.waitForTimeout(1000);
+
+      // This page requires a valid recovery session
+      // Without one, it shows "Invalid or expired link" message
+      // With one, it shows the password reset form
       const hasPasswordField = await page.locator('input[type="password"]').count() > 0;
-      const hasMessage = await page.locator('text=/password|reset|token|link/i').count() > 0;
-      expect(hasPasswordField || hasMessage).toBe(true);
+      const hasInvalidMessage = await page.locator("text=/Invalid|expired|Verifying/i").count() > 0;
+      const hasResetHeading = await page.getByRole("heading", { name: /reset|password/i }).count() > 0;
+
+      expect(hasPasswordField || hasInvalidMessage || hasResetHeading).toBe(true);
     });
   });
 });
