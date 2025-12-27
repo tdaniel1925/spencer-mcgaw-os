@@ -7,6 +7,8 @@ export interface ConnectedEmailAccount {
   displayName: string;
   provider: "microsoft" | "google" | "other";
   isConnected: boolean;
+  isGlobal: boolean; // true = organization account, false = personal account
+  isOwner: boolean; // true if the current user owns this account
   lastSyncAt: Date | null;
   syncStatus: "idle" | "syncing" | "error";
   syncError?: string;

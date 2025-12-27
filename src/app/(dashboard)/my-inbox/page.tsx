@@ -74,6 +74,7 @@ import { cn, safeFormatDistanceToNow } from "@/lib/utils";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import Link from "next/link";
+import { useEmail } from "@/lib/email/email-context";
 
 interface InboxItem {
   id: string;
@@ -148,6 +149,7 @@ const categoryConfig: Record<string, { label: string; className: string }> = {
 };
 
 export default function MyInboxPage() {
+  const { accounts: contextAccounts, refreshAccounts } = useEmail();
   const [items, setItems] = useState<InboxItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<"all" | "pending" | "approved" | "dismissed">("all");
@@ -168,30 +170,33 @@ export default function MyInboxPage() {
 
   // Email account management state
   const [accountsSheetOpen, setAccountsSheetOpen] = useState(false);
-  const [emailAccounts, setEmailAccounts] = useState<EmailAccount[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(false);
   const [disconnectConfirm, setDisconnectConfirm] = useState<EmailAccount | null>(null);
   const [disconnecting, setDisconnecting] = useState(false);
 
-  // Fetch email accounts
+  // Derive email accounts from shared context - filter for accounts the user owns
+  const emailAccounts: EmailAccount[] = contextAccounts.map((a) => ({
+    id: a.id,
+    email: a.email,
+    displayName: a.displayName || a.email,
+    provider: a.provider,
+    isConnected: a.syncStatus !== "error",
+    lastSyncAt: a.lastSyncAt ? new Date(a.lastSyncAt).toISOString() : null,
+    isGlobal: a.isGlobal || false,
+    isOwner: a.isOwner ?? true, // Default to true if not specified
+  }));
+
+  // Fetch email accounts using shared context
   const fetchAccounts = useCallback(async () => {
     setLoadingAccounts(true);
     try {
-      const response = await fetch("/api/email/accounts");
-      if (response.ok) {
-        const data = await response.json();
-        // Show all accounts owned by the user (both personal and organization)
-        const ownedAccounts = (data.accounts || []).filter(
-          (a: EmailAccount) => a.isOwner
-        );
-        setEmailAccounts(ownedAccounts);
-      }
+      await refreshAccounts();
     } catch (error) {
       console.error("Error fetching email accounts:", error);
     } finally {
       setLoadingAccounts(false);
     }
-  }, []);
+  }, [refreshAccounts]);
 
   // Update account type (Personal/Organization)
   const handleAccountTypeChange = async (account: EmailAccount, isGlobal: boolean) => {
@@ -203,10 +208,8 @@ export default function MyInboxPage() {
       });
       if (response.ok) {
         toast.success(isGlobal ? "Account set to Organization" : "Account set to Personal");
-        // Update local state
-        setEmailAccounts((prev) =>
-          prev.map((a) => (a.id === account.id ? { ...a, isGlobal } : a))
-        );
+        // Refresh accounts using shared context
+        await refreshAccounts();
         // Refresh inbox since emails may have moved
         fetchInbox();
       } else {
@@ -229,8 +232,9 @@ export default function MyInboxPage() {
       if (response.ok) {
         toast.success(`Disconnected ${account.email}`);
         setDisconnectConfirm(null);
-        // Refresh accounts and inbox
-        fetchAccounts();
+        // Refresh accounts using shared context
+        await refreshAccounts();
+        // Refresh inbox
         fetchInbox();
       } else {
         toast.error("Failed to disconnect account");

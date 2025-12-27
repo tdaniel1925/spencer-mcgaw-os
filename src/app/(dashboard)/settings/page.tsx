@@ -42,6 +42,7 @@ import {
   Check,
 } from "lucide-react";
 import { useAuth } from "@/lib/supabase/auth-context";
+import { useEmail } from "@/lib/email/email-context";
 import { toast } from "sonner";
 
 interface EmailAccount {
@@ -127,8 +128,8 @@ const DEFAULT_NOTIFICATIONS: NotificationPreferences = {
 
 export default function SettingsPage() {
   const { user, isAdmin } = useAuth();
-  const [emailAccounts, setEmailAccounts] = useState<EmailAccount[]>([]);
-  const [loadingAccounts, setLoadingAccounts] = useState(true);
+  const { accounts: contextAccounts, refreshAccounts } = useEmail();
+  const [loadingAccounts, setLoadingAccounts] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [orphanedDataCount, setOrphanedDataCount] = useState(0);
   const [clearingData, setClearingData] = useState(false);
@@ -352,34 +353,45 @@ export default function SettingsPage() {
     }
   };
 
-  const loadEmailAccounts = useCallback(async () => {
-    try {
-      const response = await fetch("/api/email/accounts");
-      if (response.ok) {
-        const data = await response.json();
-        setEmailAccounts(data.accounts || []);
+  // Derive email accounts from context
+  const emailAccounts: EmailAccount[] = contextAccounts.map((a) => ({
+    id: a.id,
+    email: a.email,
+    displayName: a.displayName || a.email,
+    provider: a.provider,
+    isConnected: a.syncStatus !== "error",
+    lastSyncAt: a.lastSyncAt ? new Date(a.lastSyncAt).toISOString() : null,
+  }));
 
-        // Check for orphaned data if no accounts connected
-        if (!data.accounts || data.accounts.length === 0) {
+  // Load email accounts from context on mount
+  useEffect(() => {
+    const loadAccounts = async () => {
+      setLoadingAccounts(true);
+      await refreshAccounts();
+      setLoadingAccounts(false);
+    };
+    loadAccounts();
+  }, [refreshAccounts]);
+
+  // Check for orphaned data when accounts change
+  useEffect(() => {
+    const checkOrphanedData = async () => {
+      if (emailAccounts.length === 0) {
+        try {
           const emailDataResponse = await fetch("/api/email-intelligence?limit=1");
           if (emailDataResponse.ok) {
             const emailData = await emailDataResponse.json();
             setOrphanedDataCount(emailData.total || 0);
           }
-        } else {
-          setOrphanedDataCount(0);
+        } catch (error) {
+          console.error("Error checking orphaned data:", error);
         }
+      } else {
+        setOrphanedDataCount(0);
       }
-    } catch (error) {
-      console.error("Error loading email accounts:", error);
-    } finally {
-      setLoadingAccounts(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadEmailAccounts();
-  }, [loadEmailAccounts]);
+    };
+    checkOrphanedData();
+  }, [emailAccounts.length]);
 
   const handleConnectMicrosoft = () => {
     setConnecting(true);
@@ -406,7 +418,8 @@ export default function SettingsPage() {
       if (response.ok) {
         const data = await response.json();
         toast.success(`Email account disconnected. Cleaned up ${data.cleaned?.classifications || 0} email records.`);
-        loadEmailAccounts();
+        // Refresh accounts using shared context
+        await refreshAccounts();
       } else {
         toast.error("Failed to disconnect account");
       }
