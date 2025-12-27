@@ -203,27 +203,35 @@ export async function DELETE(
       }, { status: 403 });
     }
 
-    // Delete from user_profiles first
+    const adminClient = createAdminClient();
+
+    // Delete from Supabase Auth FIRST (safer order - prevents orphaned auth users)
+    // If this fails, the profile remains intact and consistent
+    try {
+      const { error: authError } = await adminClient.auth.admin.deleteUser(id);
+      if (authError) {
+        console.error("Error deleting auth user:", authError);
+        return NextResponse.json({ error: "Failed to delete user from authentication system" }, { status: 500 });
+      }
+    } catch (authError) {
+      console.error("Error deleting auth user:", authError);
+      return NextResponse.json({ error: "Failed to delete user from authentication system" }, { status: 500 });
+    }
+
+    // Now delete from user_profiles
+    // Even if this fails, the user can't log in (auth is deleted)
+    // The profile will be cleaned up by cascade or manually
     const { error: profileError } = await supabase
       .from("user_profiles")
       .delete()
       .eq("id", id);
 
     if (profileError) {
-      console.error("Error deleting user profile:", profileError);
-      return NextResponse.json({ error: "Failed to delete user profile" }, { status: 500 });
+      console.error("Error deleting user profile (auth already deleted):", profileError);
+      // Log but don't fail - auth user is deleted, which is the important part
     }
 
-    // Also delete from Supabase Auth
-    try {
-      const adminClient = createAdminClient();
-      await adminClient.auth.admin.deleteUser(id);
-    } catch (authError) {
-      console.error("Error deleting auth user (profile was deleted):", authError);
-      // Don't fail if auth deletion fails - profile is already gone
-    }
-
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, message: "User deleted successfully" });
   } catch (error) {
     console.error("Error deleting user:", error);
     return NextResponse.json({ error: "Failed to delete user" }, { status: 500 });

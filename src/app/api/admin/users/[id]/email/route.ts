@@ -36,7 +36,7 @@ export async function POST(
 
     // Check if requester has admin permissions
     const { data: requester } = await supabase
-      .from("users")
+      .from("user_profiles")
       .select("role")
       .eq("id", authUser.id)
       .single();
@@ -48,9 +48,9 @@ export async function POST(
       );
     }
 
-    // Get target user
+    // Get target user from user_profiles
     const { data: targetUser } = await supabase
-      .from("users")
+      .from("user_profiles")
       .select("id, email, full_name")
       .eq("id", id)
       .single();

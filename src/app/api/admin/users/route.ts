@@ -127,19 +127,37 @@ export async function POST(request: NextRequest) {
       }, { status: 403 });
     }
 
-    // Check if email already exists
-    const { data: existingUser } = await supabase
+    // Create admin client for auth operations
+    const adminClient = createAdminClient();
+
+    // Check if email already exists in user_profiles
+    const { data: existingProfile } = await supabase
       .from("user_profiles")
       .select("id")
       .eq("email", email.toLowerCase())
       .single();
 
-    if (existingUser) {
+    if (existingProfile) {
       return NextResponse.json({ error: "A user with this email already exists" }, { status: 400 });
     }
 
-    // Create user in Supabase Auth using admin client
-    const adminClient = createAdminClient();
+    // Also check if email exists in auth.users (might be orphaned from failed deletion)
+    const { data: authUsers } = await adminClient.auth.admin.listUsers();
+    const existingAuthUser = authUsers?.users.find(u => u.email?.toLowerCase() === email.toLowerCase());
+
+    if (existingAuthUser) {
+      // Auth user exists but no profile - clean up the orphaned auth user first
+      console.log(`Found orphaned auth user for ${email}, cleaning up...`);
+      try {
+        await adminClient.auth.admin.deleteUser(existingAuthUser.id);
+        console.log(`Cleaned up orphaned auth user ${existingAuthUser.id}`);
+      } catch (cleanupError) {
+        console.error("Failed to clean up orphaned auth user:", cleanupError);
+        return NextResponse.json({
+          error: "A user with this email exists in an inconsistent state. Please try again or contact support."
+        }, { status: 400 });
+      }
+    }
 
     const { data: authData, error: authError } = await adminClient.auth.admin.createUser({
       email: email.toLowerCase(),
