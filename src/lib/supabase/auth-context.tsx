@@ -82,58 +82,82 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user?.id, loadPermissionOverrides]);
 
+  // Helper to build user from session and profile
+  const buildUser = useCallback((sessionUser: User, profile: Record<string, unknown> | null): AuthUser => {
+    const adminEmails = ["tdaniel@botmakers.ai"];
+
+    if (profile) {
+      const userRole = adminEmails.includes(sessionUser.email || "")
+        ? "admin"
+        : (profile.role as UserRole) || "staff";
+
+      return {
+        ...sessionUser,
+        role: userRole,
+        full_name: profile.full_name as string | undefined,
+        avatar_url: profile.avatar_url as string | undefined,
+        department: profile.department as string | undefined,
+        job_title: profile.job_title as string | undefined,
+        phone: profile.phone as string | undefined,
+        is_active: (profile.is_active as boolean) ?? true,
+      };
+    }
+
+    // No profile - use basic info
+    return {
+      ...sessionUser,
+      role: adminEmails.includes(sessionUser.email || "") ? "admin" : "staff",
+      full_name: sessionUser.user_metadata?.full_name || sessionUser.email?.split("@")[0],
+      is_active: true,
+    };
+  }, []);
+
   useEffect(() => {
     // Get initial session
     const getSession = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         setSession(session);
+
         if (session?.user) {
-          // Fetch user profile with role and additional info
-          const { data: profile, error } = await supabase
-            .from("user_profiles")
-            .select("role, full_name, avatar_url, department, job_title, phone, is_active")
-            .eq("id", session.user.id)
-            .single();
+          // Set basic user immediately to unblock UI
+          setUser(buildUser(session.user, null));
+          setLoading(false);
 
-          if (profile && !error) {
-            // Override role for specific admin emails
-            const adminEmails = ["tdaniel@botmakers.ai"];
-            const userRole = adminEmails.includes(session.user.email || "")
-              ? "admin"
-              : (profile.role as UserRole) || "staff";
+          // Then fetch profile and permissions in parallel (non-blocking)
+          const [profileResult, overridesResult] = await Promise.all([
+            supabase
+              .from("user_profiles")
+              .select("role, full_name, avatar_url, department, job_title, phone, is_active")
+              .eq("id", session.user.id)
+              .single(),
+            supabase
+              .from("user_permission_overrides")
+              .select("*")
+              .eq("user_id", session.user.id)
+          ]);
 
-            setUser({
-              ...session.user,
-              role: userRole,
-              full_name: profile.full_name,
-              avatar_url: profile.avatar_url,
-              department: profile.department,
-              job_title: profile.job_title,
-              phone: profile.phone,
-              is_active: profile.is_active ?? true,
-            });
-            // Load permission overrides for this user
-            await loadPermissionOverrides(session.user.id);
-          } else {
-            // Session exists but no profile - still set basic user info
-            // Profile will be created by database trigger on sign-up
-            setUser({
-              ...session.user,
-              role: "staff", // Default role
-              full_name: session.user.user_metadata?.full_name || session.user.email?.split("@")[0],
-              is_active: true,
-            });
+          // Update with full profile if available
+          if (profileResult.data && !profileResult.error) {
+            setUser(buildUser(session.user, profileResult.data));
+          }
+
+          // Set permission overrides
+          if (overridesResult.data && !overridesResult.error) {
+            const activeOverrides = overridesResult.data.filter(
+              (o: PermissionOverride) => !o.expires_at || new Date(o.expires_at) > new Date()
+            );
+            setPermissionOverrides(activeOverrides);
           }
         } else {
-          // No session - user is not authenticated
           setUser(null);
+          setLoading(false);
         }
       } catch (err) {
         console.error("Error getting session:", err);
         setUser(null);
+        setLoading(false);
       }
-      setLoading(false);
     };
 
     getSession();
@@ -142,7 +166,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         setSession(session);
+
         if (session?.user) {
+          // Set basic user immediately
+          setUser(buildUser(session.user, null));
+          setLoading(false);
+
+          // Fetch profile in background
           const { data: profile, error } = await supabase
             .from("user_profiles")
             .select("role, full_name, avatar_url, department, job_title, phone, is_active")
@@ -150,46 +180,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             .single();
 
           if (profile && !error) {
-            // Override role for specific admin emails
-            const adminEmails = ["tdaniel@botmakers.ai"];
-            const userRole = adminEmails.includes(session.user.email || "")
-              ? "admin"
-              : (profile.role as UserRole) || "staff";
-
-            setUser({
-              ...session.user,
-              role: userRole,
-              full_name: profile.full_name,
-              avatar_url: profile.avatar_url,
-              department: profile.department,
-              job_title: profile.job_title,
-              phone: profile.phone,
-              is_active: profile.is_active ?? true,
-            });
-            // Load permission overrides for this user
-            await loadPermissionOverrides(session.user.id);
-          } else {
-            // Session exists but no profile - still set basic user info
-            setUser({
-              ...session.user,
-              role: "staff",
-              full_name: session.user.user_metadata?.full_name || session.user.email?.split("@")[0],
-              is_active: true,
-            });
+            setUser(buildUser(session.user, profile));
           }
+
+          // Load permission overrides in background
+          loadPermissionOverrides(session.user.id);
         } else {
-          // No session - user is not authenticated
           setUser(null);
           setPermissionOverrides([]);
+          setLoading(false);
         }
-        setLoading(false);
       }
     );
 
     return () => {
       subscription.unsubscribe();
     };
-  }, [supabase, loadPermissionOverrides]);
+  }, [supabase, loadPermissionOverrides, buildUser]);
 
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({
