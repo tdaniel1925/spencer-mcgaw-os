@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
 
       // Get user details for the suggested assignee
       const { data: userDetails } = await supabase
-        .from("users")
+        .from("user_profiles")
         .select("id, full_name, email")
         .eq("id", suggestion.userId)
         .single();

@@ -101,26 +101,15 @@ async function shouldSendEmail(
 ): Promise<{ shouldSend: boolean; email: string | null }> {
   const supabase = await createClient();
 
-  // Get user email and notification preferences from users table
+  // Get user email and notification preferences from user_profiles table
   const { data: user } = await supabase
-    .from("users")
+    .from("user_profiles")
     .select("email, notification_preferences")
     .eq("id", userId)
     .single();
 
   if (!user?.email) {
-    // Fallback: try to get email from auth.users via user_profiles view
-    const { data: profile } = await supabase
-      .from("user_profiles")
-      .select("email")
-      .eq("id", userId)
-      .single();
-
-    if (!profile?.email) {
-      return { shouldSend: false, email: null };
-    }
-    // No preferences found, default to sending
-    return { shouldSend: true, email: profile.email };
+    return { shouldSend: false, email: null };
   }
 
   // Check notification preferences (JSONB field)

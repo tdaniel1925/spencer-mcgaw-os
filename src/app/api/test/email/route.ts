@@ -15,14 +15,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  // Check if user is admin
+  // Check if user is admin or owner
   const { data: userData } = await supabase
-    .from("users")
+    .from("user_profiles")
     .select("role")
     .eq("id", user.id)
     .single();
 
-  if (userData?.role !== "admin") {
+  if (userData?.role !== "admin" && userData?.role !== "owner") {
     return NextResponse.json({ error: "Admin access required" }, { status: 403 });
   }
 

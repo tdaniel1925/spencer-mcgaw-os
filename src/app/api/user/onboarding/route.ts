@@ -13,9 +13,9 @@ export async function GET() {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  // Get user's onboarding status from user metadata or users table
+  // Get user's onboarding status from user_profiles table
   const { data: userData } = await supabase
-    .from("users")
+    .from("user_profiles")
     .select("onboarding_completed, created_at")
     .eq("id", user.id)
     .single();
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
 
   // Update user's onboarding status
   const { error } = await supabase
-    .from("users")
+    .from("user_profiles")
     .update({
       onboarding_completed: true,
       onboarding_completed_at: new Date().toISOString(),
@@ -78,7 +78,7 @@ export async function DELETE() {
 
   // Reset onboarding status
   const { error } = await supabase
-    .from("users")
+    .from("user_profiles")
     .update({
       onboarding_completed: false,
       onboarding_completed_at: null,

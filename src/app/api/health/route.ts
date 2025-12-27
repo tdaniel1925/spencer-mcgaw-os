@@ -53,7 +53,7 @@ export async function GET() {
 
     // Simple query to check connectivity
     const { error } = await supabase
-      .from("users")
+      .from("user_profiles")
       .select("id")
       .limit(1);
 
