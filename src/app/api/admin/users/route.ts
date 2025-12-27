@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient, validatePassword } from "@/lib/supabase/admin";
 import { hasPermission, UserRole } from "@/lib/permissions";
+import { emailWelcome } from "@/lib/email/email-service";
 
 // GET - List all users for admin
 export async function GET(request: NextRequest) {
@@ -186,9 +187,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Failed to create user profile" }, { status: 500 });
     }
 
+    // Send welcome email with the password
+    try {
+      const emailSent = await emailWelcome(email.toLowerCase(), full_name, password);
+      if (!emailSent) {
+        console.warn("Welcome email could not be sent (Resend may not be configured)");
+      }
+    } catch (emailError) {
+      // Log but don't fail user creation if email fails
+      console.error("Error sending welcome email:", emailError);
+    }
+
     return NextResponse.json({
       user: newProfile,
-      message: "User created successfully. They can now log in with their email and password."
+      message: "User created successfully. They can now log in with their email and password.",
+      emailSent: true
     });
   } catch (error) {
     console.error("Error creating user:", error);

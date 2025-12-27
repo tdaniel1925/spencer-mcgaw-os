@@ -49,21 +49,21 @@ export function Header({ title, breadcrumbItems, currentPageLabel }: HeaderProps
   const unreadNotifications = notifications.filter(n => !n.read && !n.dismissed);
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b bg-background px-6">
+    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-sidebar-border bg-sidebar px-6">
       {/* Left: Page Title & Breadcrumb */}
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <div className="w-6 h-6 rounded bg-muted flex items-center justify-center">
+          <div className="flex items-center gap-2 text-sidebar-foreground/70">
+            <div className="w-6 h-6 rounded bg-sidebar-accent flex items-center justify-center">
               <div className="grid grid-cols-2 gap-0.5">
-                <div className="w-1.5 h-1.5 rounded-sm bg-muted-foreground" />
-                <div className="w-1.5 h-1.5 rounded-sm bg-muted-foreground" />
-                <div className="w-1.5 h-1.5 rounded-sm bg-muted-foreground" />
-                <div className="w-1.5 h-1.5 rounded-sm bg-muted-foreground" />
+                <div className="w-1.5 h-1.5 rounded-sm bg-sidebar-primary" />
+                <div className="w-1.5 h-1.5 rounded-sm bg-sidebar-primary" />
+                <div className="w-1.5 h-1.5 rounded-sm bg-sidebar-primary" />
+                <div className="w-1.5 h-1.5 rounded-sm bg-sidebar-primary" />
               </div>
             </div>
           </div>
-          <h1 className="text-xl font-semibold text-foreground">{title}</h1>
+          <h1 className="text-xl font-semibold text-sidebar-primary">{title}</h1>
         </div>
         <PageBreadcrumb customItems={breadcrumbItems} currentPageLabel={currentPageLabel} />
       </div>
@@ -71,12 +71,12 @@ export function Header({ title, breadcrumbItems, currentPageLabel }: HeaderProps
       {/* Center: Search */}
       <div className="flex-1 max-w-md mx-8">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-sidebar-foreground/50" />
           <Input
             type="search"
             placeholder="Search here"
             aria-label="Search across application"
-            className="pl-10 bg-muted/50 border-0 focus-visible:ring-1"
+            className="pl-10 bg-sidebar-accent border-0 text-sidebar-foreground placeholder:text-sidebar-foreground/50 focus-visible:ring-1 focus-visible:ring-sidebar-primary"
           />
         </div>
       </div>
@@ -89,7 +89,7 @@ export function Header({ title, breadcrumbItems, currentPageLabel }: HeaderProps
             <Button
               variant="ghost"
               size="icon"
-              className="relative"
+              className="relative text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-primary"
               aria-label={unreadNotificationCount > 0 ? `${unreadNotificationCount} new call notifications` : "Call notifications"}
             >
               <Phone className="h-5 w-5" />
@@ -215,7 +215,7 @@ export function Header({ title, breadcrumbItems, currentPageLabel }: HeaderProps
             <Button
               variant="ghost"
               size="icon"
-              className="relative"
+              className="relative text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-primary"
               aria-label={counts.general > 0 ? `${counts.general} notifications` : "No notifications"}
             >
               <Bell className="h-5 w-5" />
@@ -252,7 +252,7 @@ export function Header({ title, breadcrumbItems, currentPageLabel }: HeaderProps
             <Button
               variant="ghost"
               size="icon"
-              className="relative"
+              className="relative text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-primary"
               aria-label={counts.messages > 0 ? `${counts.messages} messages` : "No messages"}
             >
               <Mail className="h-5 w-5" />
@@ -289,7 +289,7 @@ export function Header({ title, breadcrumbItems, currentPageLabel }: HeaderProps
             <Button
               variant="ghost"
               size="icon"
-              className="relative"
+              className="relative text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-primary"
               aria-label={counts.chat > 0 ? `${counts.chat} chat messages` : "No chat messages"}
             >
               <MessageSquare className="h-5 w-5" />
@@ -318,13 +318,13 @@ export function Header({ title, breadcrumbItems, currentPageLabel }: HeaderProps
         {/* User Profile Badge (no dropdown) */}
         <div className="flex items-center gap-2 ml-2 px-2">
           <div className="text-right hidden sm:block">
-            <p className="text-sm font-medium">{user?.full_name || "User"}</p>
-            <p className="text-xs text-muted-foreground">{userRoleInfo?.name || "Staff"}</p>
+            <p className="text-sm font-medium text-sidebar-foreground">{user?.full_name || "User"}</p>
+            <p className="text-xs text-sidebar-foreground/70">{userRoleInfo?.name || "Staff"}</p>
           </div>
           <div className="relative">
-            <Avatar className="h-9 w-9 border-2 border-accent">
+            <Avatar className="h-9 w-9 border-2 border-sidebar-primary">
               <AvatarImage src={user?.avatar_url || ""} alt={user?.full_name || "User"} />
-              <AvatarFallback className="bg-primary text-primary-foreground">
+              <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground">
                 {getUserInitials()}
               </AvatarFallback>
             </Avatar>

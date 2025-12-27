@@ -89,10 +89,10 @@ export function PageBreadcrumb({ customItems, currentPageLabel }: PageBreadcrumb
 
   return (
     <Breadcrumb>
-      <BreadcrumbList>
+      <BreadcrumbList className="text-sidebar-foreground/70">
         <BreadcrumbItem>
           <BreadcrumbLink asChild>
-            <Link href="/dashboard" className="flex items-center gap-1">
+            <Link href="/dashboard" className="flex items-center gap-1 text-sidebar-foreground/70 hover:text-sidebar-primary">
               <Home className="h-3.5 w-3.5" />
               <span className="sr-only">Home</span>
             </Link>
@@ -101,16 +101,16 @@ export function PageBreadcrumb({ customItems, currentPageLabel }: PageBreadcrumb
 
         {breadcrumbs.map((item, index) => (
           <Fragment key={index}>
-            <BreadcrumbSeparator>
+            <BreadcrumbSeparator className="text-sidebar-foreground/50">
               <ChevronRight className="h-3.5 w-3.5" />
             </BreadcrumbSeparator>
             <BreadcrumbItem>
               {item.href ? (
                 <BreadcrumbLink asChild>
-                  <Link href={item.href}>{item.label}</Link>
+                  <Link href={item.href} className="text-sidebar-foreground/70 hover:text-sidebar-primary">{item.label}</Link>
                 </BreadcrumbLink>
               ) : (
-                <BreadcrumbPage>{item.label}</BreadcrumbPage>
+                <BreadcrumbPage className="text-sidebar-foreground">{item.label}</BreadcrumbPage>
               )}
             </BreadcrumbItem>
           </Fragment>
