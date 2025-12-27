@@ -94,6 +94,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow } from "date-fns";
+import { toast } from "sonner";
 import { useFiles } from "@/lib/files";
 import { Folder as FolderType, FileRecord, formatFileSize, getFileCategory, DEFAULT_STORAGE_QUOTA_BYTES } from "@/lib/files/types";
 import { FilePreview } from "@/components/files/file-preview";
@@ -263,9 +264,14 @@ export default function FilesPage() {
   // Handle folder creation
   const handleCreateFolder = useCallback(async () => {
     if (newFolderName.trim()) {
-      await createFolder(newFolderName.trim());
-      setNewFolderName("");
-      setShowNewFolderDialog(false);
+      const result = await createFolder(newFolderName.trim());
+      if (result) {
+        toast.success(`Folder "${newFolderName.trim()}" created`);
+        setNewFolderName("");
+        setShowNewFolderDialog(false);
+      } else {
+        toast.error("Failed to create folder. The folders table may not exist in the database yet.");
+      }
     }
   }, [newFolderName, createFolder]);
 

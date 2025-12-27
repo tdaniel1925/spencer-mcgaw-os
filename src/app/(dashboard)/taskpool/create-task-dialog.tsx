@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface ActionType {
@@ -39,6 +39,16 @@ interface Client {
   company: string | null;
 }
 
+interface TeamMember {
+  id: string;
+  full_name: string;
+  email: string;
+  role: string;
+  department: string;
+  job_title: string;
+  avatar_url: string | null;
+}
+
 interface CreateTaskDialogProps {
   open: boolean;
   onClose: () => void;
@@ -54,7 +64,9 @@ export function CreateTaskDialog({
 }: CreateTaskDialogProps) {
   const [loading, setLoading] = useState(false);
   const [clients, setClients] = useState<Client[]>([]);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [loadingClients, setLoadingClients] = useState(false);
+  const [loadingTeam, setLoadingTeam] = useState(false);
   const [clientSearch, setClientSearch] = useState("");
   const [showClientDropdown, setShowClientDropdown] = useState(false);
 
@@ -63,6 +75,7 @@ export function CreateTaskDialog({
     description: "",
     action_type_id: "",
     client_id: "",
+    assigned_to: "",
     priority: "medium",
     due_date: "",
     alert_threshold_hours: 24,
@@ -70,7 +83,7 @@ export function CreateTaskDialog({
 
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
 
-  // Load clients for dropdown
+  // Load clients and team members for dropdowns
   useEffect(() => {
     const loadClients = async () => {
       setLoadingClients(true);
@@ -87,8 +100,24 @@ export function CreateTaskDialog({
       }
     };
 
+    const loadTeamMembers = async () => {
+      setLoadingTeam(true);
+      try {
+        const response = await fetch("/api/users/team");
+        if (response.ok) {
+          const data = await response.json();
+          setTeamMembers(data.users || []);
+        }
+      } catch (error) {
+        console.error("Error loading team members:", error);
+      } finally {
+        setLoadingTeam(false);
+      }
+    };
+
     if (open) {
       loadClients();
+      loadTeamMembers();
     }
   }, [open]);
 
@@ -135,18 +164,25 @@ export function CreateTaskDialog({
         body: JSON.stringify({
           ...form,
           client_id: form.client_id || null,
+          assigned_to: form.assigned_to || null,
           due_date: form.due_date || null,
           alert_threshold_hours: form.due_date ? form.alert_threshold_hours : null,
         }),
       });
 
       if (response.ok) {
-        toast.success("Task created successfully");
+        const assignedUser = teamMembers.find(m => m.id === form.assigned_to);
+        toast.success(
+          form.assigned_to
+            ? `Task created and assigned to ${assignedUser?.full_name || "team member"}`
+            : "Task created successfully"
+        );
         setForm({
           title: "",
           description: "",
           action_type_id: "",
           client_id: "",
+          assigned_to: "",
           priority: "medium",
           due_date: "",
           alert_threshold_hours: 24,
@@ -172,6 +208,7 @@ export function CreateTaskDialog({
       description: "",
       action_type_id: "",
       client_id: "",
+      assigned_to: "",
       priority: "medium",
       due_date: "",
       alert_threshold_hours: 24,
@@ -305,6 +342,44 @@ export function CreateTaskDialog({
                 </button>
               </div>
             )}
+          </div>
+
+          {/* Assign To */}
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2">
+              <User className="h-4 w-4" />
+              Assign To (Optional)
+            </Label>
+            <Select
+              value={form.assigned_to}
+              onValueChange={(value) => setForm({ ...form, assigned_to: value === "unassigned" ? "" : value })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Leave unassigned (goes to Task Pool)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="unassigned">
+                  <span className="text-muted-foreground">Unassigned (Task Pool)</span>
+                </SelectItem>
+                {loadingTeam ? (
+                  <SelectItem value="loading" disabled>Loading team...</SelectItem>
+                ) : (
+                  teamMembers.map((member) => (
+                    <SelectItem key={member.id} value={member.id}>
+                      <div className="flex items-center gap-2">
+                        <span>{member.full_name}</span>
+                        {member.department && (
+                          <span className="text-xs text-muted-foreground">({member.department})</span>
+                        )}
+                      </div>
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Unassigned tasks go to the Task Pool where anyone can claim them
+            </p>
           </div>
 
           {/* Priority and Due Date */}

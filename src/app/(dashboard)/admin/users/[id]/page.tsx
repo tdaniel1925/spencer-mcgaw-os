@@ -136,6 +136,7 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [activeTab, setActiveTab] = useState("details");
 
   // Edit form state
   const [editForm, setEditForm] = useState({
@@ -468,7 +469,10 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
                 </div>
                 <div className="flex items-center gap-2">
                   {canEdit && !editMode && (
-                    <Button variant="outline" onClick={() => setEditMode(true)}>
+                    <Button variant="outline" onClick={() => {
+                      setEditMode(true);
+                      setActiveTab("details");
+                    }}>
                       <Edit className="h-4 w-4 mr-2" />
                       Edit
                     </Button>
@@ -485,7 +489,7 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
           </Card>
 
           {/* Tabs for different sections */}
-          <Tabs defaultValue="details">
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList>
               <TabsTrigger value="details">Details</TabsTrigger>
               <TabsTrigger value="permissions">Permissions</TabsTrigger>
