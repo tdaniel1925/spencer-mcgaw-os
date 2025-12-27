@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/select";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { TaskDetailPanel } from "@/components/tasks/task-detail-panel";
-import { Task } from "@/lib/tasks/task-context";
+import { Task, useTaskContext } from "@/lib/tasks/task-context";
 import {
   LayoutDashboard,
   AlertTriangle,
@@ -106,12 +106,34 @@ const activityIcons: Record<string, React.ReactNode> = {
 export default function DashboardPage() {
   const router = useRouter();
   const { user } = useAuth();
+  const { tasks: contextTasks, loading: tasksLoading, refreshTasks } = useTaskContext();
   const [mounted, setMounted] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [tasks, setTasks] = useState<DashboardTask[]>([]);
   const [stats, setStats] = useState<TaskStats | null>(null);
   const [activities, setActivities] = useState<ActivityItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [statsLoading, setStatsLoading] = useState(true);
+
+  // Derive dashboard tasks from shared context
+  const tasks: DashboardTask[] = contextTasks.map(t => ({
+    id: t.id,
+    title: t.title,
+    description: t.description,
+    priority: t.priority,
+    due_date: t.due_date,
+    status: t.status,
+    client_id: t.client_id,
+    source_type: t.source_type,
+    assigned_to: t.assigned_to,
+    client: t.client ? {
+      id: t.client.id,
+      first_name: t.client.first_name,
+      last_name: t.client.last_name,
+      email: t.client.email || null,
+      phone: t.client.phone || null,
+    } : null,
+  }));
+
+  const loading = tasksLoading || statsLoading;
 
   // Task detail panel state
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -133,19 +155,13 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Fetch tasks, stats, and activity
-  const fetchData = useCallback(async () => {
+  // Fetch stats and activity (tasks come from shared context)
+  const fetchStatsAndActivity = useCallback(async () => {
     try {
-      const [tasksRes, statsRes, activityRes] = await Promise.all([
-        fetch("/api/tasks?limit=50"),
+      const [statsRes, activityRes] = await Promise.all([
         fetch("/api/tasks/stats"),
         fetch("/api/activity?limit=10"),
       ]);
-
-      if (tasksRes.ok) {
-        const data = await tasksRes.json();
-        setTasks(data.tasks || []);
-      }
 
       if (statsRes.ok) {
         const data = await statsRes.json();
@@ -159,15 +175,15 @@ export default function DashboardPage() {
     } catch (error) {
       console.error("Failed to fetch dashboard data:", error);
     } finally {
-      setLoading(false);
+      setStatsLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 60000); // Refresh every minute
+    fetchStatsAndActivity();
+    const interval = setInterval(fetchStatsAndActivity, 60000); // Refresh every minute
     return () => clearInterval(interval);
-  }, [fetchData]);
+  }, [fetchStatsAndActivity]);
 
   // Get greeting based on time
   const getGreeting = () => {
@@ -243,7 +259,8 @@ export default function DashboardPage() {
       toast.success("Task created");
       setCreateDialogOpen(false);
       setNewTask({ title: "", description: "", priority: "medium", due_date: "" });
-      fetchData();
+      // Refresh both tasks (via context) and stats
+      await Promise.all([refreshTasks(), fetchStatsAndActivity()]);
     } catch (error) {
       toast.error("Failed to create task");
     } finally {
@@ -676,7 +693,10 @@ export default function DashboardPage() {
         task={selectedTask}
         open={detailPanelOpen}
         onOpenChange={setDetailPanelOpen}
-        onTaskUpdate={fetchData}
+        onTaskUpdate={async () => {
+          // Refresh both tasks (via context) and stats
+          await Promise.all([refreshTasks(), fetchStatsAndActivity()]);
+        }}
       />
 
       {/* Quick Create Task Dialog */}

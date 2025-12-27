@@ -55,8 +55,8 @@ import { toast } from "sonner";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { TaskDetailPanel } from "@/components/tasks/task-detail-panel";
 
-// Import Task type from task context
-import { Task } from "@/lib/tasks/task-context";
+// Import Task type and context
+import { Task, useTaskContext } from "@/lib/tasks/task-context";
 
 interface TeamMember {
   id: string;
@@ -107,10 +107,13 @@ const KANBAN_STATUSES: Array<keyof typeof statusConfig> = ["pending", "in_progre
 
 export default function OrgTasksPage() {
   const { user } = useAuth();
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { tasks: contextTasks, loading: tasksLoading, refreshTasks } = useTaskContext();
   const [searchQuery, setSearchQuery] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("all");
+
+  // Filter for unassigned tasks from shared context
+  const tasks = contextTasks.filter(t => !t.assigned_to && !t.claimed_by);
+  const loading = tasksLoading;
 
   // Team members for assignment
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
@@ -124,24 +127,15 @@ export default function OrgTasksPage() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
 
-  // Fetch unassigned tasks
+  // Refresh tasks using shared context
   const fetchTasks = useCallback(async () => {
-    setLoading(true);
     try {
-      const response = await fetch("/api/tasks?unassigned=true&limit=200");
-      if (response.ok) {
-        const data = await response.json();
-        setTasks(data.tasks || []);
-      } else {
-        toast.error("Failed to load tasks");
-      }
+      await refreshTasks();
     } catch (error) {
       console.error("Error fetching tasks:", error);
       toast.error("Failed to load tasks");
-    } finally {
-      setLoading(false);
     }
-  }, []);
+  }, [refreshTasks]);
 
   // Fetch team members for assignment
   const fetchTeamMembers = useCallback(async () => {
@@ -220,11 +214,7 @@ export default function OrgTasksPage() {
       });
 
       if (response.ok) {
-        setTasks((prev) =>
-          prev.map((t) =>
-            t.id === draggedTask.id ? { ...t, status: newStatus as Task["status"] } : t
-          )
-        );
+        await refreshTasks();
         toast.success(`Moved to ${statusConfig[newStatus as keyof typeof statusConfig]?.label}`);
       } else {
         toast.error("Failed to update task");
@@ -252,8 +242,8 @@ export default function OrgTasksPage() {
       });
 
       if (response.ok) {
-        // Remove from org tasks (it's now assigned)
-        setTasks((prev) => prev.filter((t) => t.id !== task.id));
+        // Refresh tasks - real-time subscription will also update
+        await refreshTasks();
         toast.success("Task claimed! It's now in your My Tasks.");
       } else {
         toast.error("Failed to claim task");
@@ -276,8 +266,8 @@ export default function OrgTasksPage() {
       });
 
       if (response.ok) {
-        // Remove from org tasks (it's now assigned)
-        setTasks((prev) => prev.filter((t) => t.id !== selectedTask.id));
+        // Refresh tasks - real-time subscription will also update
+        await refreshTasks();
         toast.success(`Task assigned to ${memberName}`);
         setAssignDialogOpen(false);
         setSelectedTask(null);
@@ -300,11 +290,7 @@ export default function OrgTasksPage() {
       });
 
       if (response.ok) {
-        setTasks((prev) =>
-          prev.map((t) =>
-            t.id === task.id ? { ...t, status: newStatus as Task["status"] } : t
-          )
-        );
+        await refreshTasks();
         toast.success("Status updated");
       } else {
         toast.error("Failed to update task");
@@ -320,7 +306,7 @@ export default function OrgTasksPage() {
     try {
       const response = await fetch(`/api/tasks/${task.id}`, { method: "DELETE" });
       if (response.ok) {
-        setTasks((prev) => prev.filter((t) => t.id !== task.id));
+        await refreshTasks();
         toast.success("Task deleted");
       } else {
         toast.error("Failed to delete task");
