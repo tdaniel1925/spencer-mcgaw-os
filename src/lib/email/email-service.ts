@@ -367,31 +367,58 @@ export async function emailWelcome(
   const passwordSection = tempPassword
     ? `
       <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0;">
-        <strong>Your temporary password:</strong>
-        <div style="font-family: monospace; font-size: 16px; margin-top: 8px; padding: 8px; background: white; border-radius: 4px;">
-          ${tempPassword}
+        <strong>Your Login Credentials:</strong>
+        <div style="margin-top: 10px;">
+          <div style="margin-bottom: 8px;"><strong>Email:</strong> ${email}</div>
+          <div><strong>Password:</strong> <span style="font-family: monospace; font-size: 16px; padding: 4px 8px; background: white; border-radius: 4px;">${tempPassword}</span></div>
         </div>
-        <small style="color: #92400e;">Please change your password after logging in.</small>
+        <small style="color: #92400e; display: block; margin-top: 10px;">For security, please change your password after logging in.</small>
       </div>
     `
     : '';
 
   return sendEmail({
     to: email,
-    subject: `Welcome to ${APP_NAME}`,
+    subject: `Welcome to ${APP_NAME} - Your Account is Ready!`,
     html: baseTemplate(`
       <h2>Welcome to ${APP_NAME}!</h2>
       <p>Hi <strong>${fullName}</strong>,</p>
-      <p>Your account has been created. You can now log in and start using the system.</p>
+
+      <p>Thank you for joining us! <strong>BotMakers</strong> is pleased to have you on board.</p>
+
+      <p>Your account has been created and you now have access to a powerful suite of tools designed to streamline your workflow:</p>
+
+      <div style="background: #f0f9ff; border-radius: 8px; padding: 20px; margin: 20px 0;">
+        <h3 style="margin-top: 0; color: #0369a1;">What You Can Do:</h3>
+        <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
+          <li><strong>Task Management</strong> - Organize, assign, and track tasks with our intelligent taskpool system</li>
+          <li><strong>Email Integration</strong> - Manage all your emails with AI-powered classification and sorting</li>
+          <li><strong>Client Management</strong> - Keep all your client information organized in one place</li>
+          <li><strong>Team Chat</strong> - Collaborate seamlessly with your team in real-time</li>
+          <li><strong>File Storage</strong> - Securely store and share documents</li>
+          <li><strong>Calendar & Calls</strong> - Schedule meetings and track all communications</li>
+        </ul>
+      </div>
+
       ${passwordSection}
-      <p>
-        <a href="${loginUrl}" class="button">Log In Now</a>
+
+      <p style="text-align: center; margin: 30px 0;">
+        <a href="${loginUrl}" class="button" style="font-size: 16px; padding: 14px 32px;">Get Started Now</a>
       </p>
-      <p style="margin-top: 20px; color: #666;">
-        If you have any questions, please contact your administrator.
+
+      <div style="background: #f8fafc; border-radius: 8px; padding: 15px; margin-top: 30px;">
+        <p style="margin: 0; color: #475569; font-size: 14px;">
+          <strong>Need help getting started?</strong><br>
+          Check out the Help section in the app for guides and FAQs, or reach out to your administrator.
+        </p>
+      </div>
+
+      <p style="margin-top: 30px; color: #666; text-align: center;">
+        We're excited to have you with us!<br>
+        <strong>— The BotMakers Team</strong>
       </p>
     `),
-    text: `Welcome to ${APP_NAME}!\n\nHi ${fullName},\n\nYour account has been created.${tempPassword ? `\n\nYour temporary password: ${tempPassword}` : ''}\n\nLog in: ${loginUrl}`,
+    text: `Welcome to ${APP_NAME}!\n\nHi ${fullName},\n\nThank you for joining us! BotMakers is pleased to have you on board.\n\nYour account has been created and you now have access to:\n- Task Management - Organize, assign, and track tasks\n- Email Integration - AI-powered email classification\n- Client Management - Keep client info organized\n- Team Chat - Real-time collaboration\n- File Storage - Secure document storage\n- Calendar & Calls - Schedule and track communications\n\n${tempPassword ? `Your Login Credentials:\nEmail: ${email}\nPassword: ${tempPassword}\n\nPlease change your password after logging in.\n\n` : ''}Log in now: ${loginUrl}\n\nWe're excited to have you with us!\n— The BotMakers Team`,
   });
 }
 
@@ -408,27 +435,54 @@ export function getWelcomeEmailPreview(
   const passwordSection = tempPassword
     ? `
       <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0;">
-        <strong>Your temporary password:</strong>
-        <div style="font-family: monospace; font-size: 16px; margin-top: 8px; padding: 8px; background: white; border-radius: 4px;">
-          ${tempPassword}
+        <strong>Your Login Credentials:</strong>
+        <div style="margin-top: 10px;">
+          <div style="margin-bottom: 8px;"><strong>Email:</strong> ${email}</div>
+          <div><strong>Password:</strong> <span style="font-family: monospace; font-size: 16px; padding: 4px 8px; background: white; border-radius: 4px;">${tempPassword}</span></div>
         </div>
-        <small style="color: #92400e;">Please change your password after logging in.</small>
+        <small style="color: #92400e; display: block; margin-top: 10px;">For security, please change your password after logging in.</small>
       </div>
     `
     : '';
 
   return {
-    subject: `Welcome to ${APP_NAME}`,
+    subject: `Welcome to ${APP_NAME} - Your Account is Ready!`,
     html: baseTemplate(`
       <h2>Welcome to ${APP_NAME}!</h2>
       <p>Hi <strong>${fullName}</strong>,</p>
-      <p>Your account has been created. You can now log in and start using the system.</p>
+
+      <p>Thank you for joining us! <strong>BotMakers</strong> is pleased to have you on board.</p>
+
+      <p>Your account has been created and you now have access to a powerful suite of tools designed to streamline your workflow:</p>
+
+      <div style="background: #f0f9ff; border-radius: 8px; padding: 20px; margin: 20px 0;">
+        <h3 style="margin-top: 0; color: #0369a1;">What You Can Do:</h3>
+        <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
+          <li><strong>Task Management</strong> - Organize, assign, and track tasks with our intelligent taskpool system</li>
+          <li><strong>Email Integration</strong> - Manage all your emails with AI-powered classification and sorting</li>
+          <li><strong>Client Management</strong> - Keep all your client information organized in one place</li>
+          <li><strong>Team Chat</strong> - Collaborate seamlessly with your team in real-time</li>
+          <li><strong>File Storage</strong> - Securely store and share documents</li>
+          <li><strong>Calendar & Calls</strong> - Schedule meetings and track all communications</li>
+        </ul>
+      </div>
+
       ${passwordSection}
-      <p>
-        <a href="${loginUrl}" class="button">Log In Now</a>
+
+      <p style="text-align: center; margin: 30px 0;">
+        <a href="${loginUrl}" class="button" style="font-size: 16px; padding: 14px 32px;">Get Started Now</a>
       </p>
-      <p style="margin-top: 20px; color: #666;">
-        If you have any questions, please contact your administrator.
+
+      <div style="background: #f8fafc; border-radius: 8px; padding: 15px; margin-top: 30px;">
+        <p style="margin: 0; color: #475569; font-size: 14px;">
+          <strong>Need help getting started?</strong><br>
+          Check out the Help section in the app for guides and FAQs, or reach out to your administrator.
+        </p>
+      </div>
+
+      <p style="margin-top: 30px; color: #666; text-align: center;">
+        We're excited to have you with us!<br>
+        <strong>— The BotMakers Team</strong>
       </p>
     `),
   };
