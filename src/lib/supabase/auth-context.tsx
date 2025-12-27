@@ -11,7 +11,7 @@ import {
   PermissionOverride,
 } from "@/lib/permissions";
 
-interface AuthUser extends User {
+export interface AuthUser extends User {
   role?: UserRole;
   full_name?: string;
   avatar_url?: string;
@@ -41,28 +41,15 @@ interface AuthContextType {
   isAdmin: boolean;
   isManager: boolean;
   isOwner: boolean;
+  // Authentication state
+  isAuthenticated: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Demo user for development/preview (shows all features)
-const DEMO_USER: AuthUser = {
-  id: "demo-user-id",
-  email: "tdaniel@botmakers.ai",
-  role: "admin",
-  full_name: "Tyler Daniel",
-  department: "Technology",
-  job_title: "Administrator",
-  is_active: true,
-  aud: "authenticated",
-  created_at: new Date().toISOString(),
-  app_metadata: {},
-  user_metadata: {},
-};
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  // Start with demo user for development preview
-  const [user, setUser] = useState<AuthUser | null>(DEMO_USER);
+  // Start with null - no user until authenticated
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [permissionOverrides, setPermissionOverrides] = useState<PermissionOverride[]>([]);
@@ -90,7 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Refresh permissions (can be called after admin changes)
   const refreshPermissions = useCallback(async () => {
-    if (user?.id && user.id !== "demo-user-id") {
+    if (user?.id) {
       await loadPermissionOverrides(user.id);
     }
   }, [user?.id, loadPermissionOverrides]);
@@ -109,7 +96,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             .eq("id", session.user.id)
             .single();
 
-          // Only update user if we got valid profile data
           if (profile && !error) {
             // Override role for specific admin emails
             const adminEmails = ["tdaniel@botmakers.ai"];
@@ -129,12 +115,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             });
             // Load permission overrides for this user
             await loadPermissionOverrides(session.user.id);
+          } else {
+            // Session exists but no profile - still set basic user info
+            // Profile will be created by database trigger on sign-up
+            setUser({
+              ...session.user,
+              role: "staff", // Default role
+              full_name: session.user.user_metadata?.full_name || session.user.email?.split("@")[0],
+              is_active: true,
+            });
           }
-          // If no profile, keep demo user
+        } else {
+          // No session - user is not authenticated
+          setUser(null);
         }
-        // If no session, keep the demo user (already set as initial state)
-      } catch {
-        // On error, keep demo user
+      } catch (err) {
+        console.error("Error getting session:", err);
+        setUser(null);
       }
       setLoading(false);
     };
@@ -152,7 +149,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             .eq("id", session.user.id)
             .single();
 
-          // Only update user if we got valid profile data
           if (profile && !error) {
             // Override role for specific admin emails
             const adminEmails = ["tdaniel@botmakers.ai"];
@@ -172,11 +168,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             });
             // Load permission overrides for this user
             await loadPermissionOverrides(session.user.id);
+          } else {
+            // Session exists but no profile - still set basic user info
+            setUser({
+              ...session.user,
+              role: "staff",
+              full_name: session.user.user_metadata?.full_name || session.user.email?.split("@")[0],
+              is_active: true,
+            });
           }
-          // If no profile, keep current user (demo user)
         } else {
-          // Fall back to demo user when no authenticated session
-          setUser(DEMO_USER);
+          // No session - user is not authenticated
+          setUser(null);
           setPermissionOverrides([]);
         }
         setLoading(false);
@@ -223,8 +226,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     await supabase.auth.signOut();
-    // Fall back to demo user after sign out
-    setUser(DEMO_USER);
+    setUser(null);
     setSession(null);
     setPermissionOverrides([]);
   };
@@ -251,6 +253,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const isOwner = user?.role === "owner";
   const isAdmin = user?.role === "admin" || user?.role === "owner";
   const isManager = user?.role === "manager" || user?.role === "admin" || user?.role === "owner";
+  const isAuthenticated = !!user && !!session;
 
   return (
     <AuthContext.Provider
@@ -271,6 +274,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAdmin,
         isManager,
         isOwner,
+        isAuthenticated,
       }}
     >
       {children}
