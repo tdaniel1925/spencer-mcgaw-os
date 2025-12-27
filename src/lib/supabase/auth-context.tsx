@@ -1,15 +1,14 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { createClient } from "./client";
 import {
   UserRole,
   Permission,
-  hasPermission,
-  hasAnyPermission,
-  hasAllPermissions,
+  hasPermissionWithOverrides,
   canAccessRoute,
+  PermissionOverride,
 } from "@/lib/permissions";
 
 interface AuthUser extends User {
@@ -26,9 +25,11 @@ interface AuthContextType {
   user: AuthUser | null;
   session: Session | null;
   loading: boolean;
+  permissionOverrides: PermissionOverride[];
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
+  refreshPermissions: () => Promise<void>;
   // Role-based helpers (legacy)
   hasRole: (roles: UserRole[]) => boolean;
   // Permission-based helpers
@@ -64,7 +65,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(DEMO_USER);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [permissionOverrides, setPermissionOverrides] = useState<PermissionOverride[]>([]);
   const supabase = createClient();
+
+  // Function to load permission overrides for a user
+  const loadPermissionOverrides = useCallback(async (userId: string) => {
+    try {
+      const { data: overrides, error } = await supabase
+        .from("user_permission_overrides")
+        .select("*")
+        .eq("user_id", userId);
+
+      if (!error && overrides) {
+        // Filter out expired overrides
+        const activeOverrides = overrides.filter(
+          o => !o.expires_at || new Date(o.expires_at) > new Date()
+        );
+        setPermissionOverrides(activeOverrides);
+      }
+    } catch (err) {
+      console.error("Error loading permission overrides:", err);
+    }
+  }, [supabase]);
+
+  // Refresh permissions (can be called after admin changes)
+  const refreshPermissions = useCallback(async () => {
+    if (user?.id && user.id !== "demo-user-id") {
+      await loadPermissionOverrides(user.id);
+    }
+  }, [user?.id, loadPermissionOverrides]);
 
   useEffect(() => {
     // Get initial session
@@ -98,6 +127,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               phone: profile.phone,
               is_active: profile.is_active ?? true,
             });
+            // Load permission overrides for this user
+            await loadPermissionOverrides(session.user.id);
           }
           // If no profile, keep demo user
         }
@@ -139,11 +170,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               phone: profile.phone,
               is_active: profile.is_active ?? true,
             });
+            // Load permission overrides for this user
+            await loadPermissionOverrides(session.user.id);
           }
           // If no profile, keep current user (demo user)
         } else {
           // Fall back to demo user when no authenticated session
           setUser(DEMO_USER);
+          setPermissionOverrides([]);
         }
         setLoading(false);
       }
@@ -152,7 +186,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       subscription.unsubscribe();
     };
-  }, [supabase]);
+  }, [supabase, loadPermissionOverrides]);
 
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({
@@ -192,6 +226,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Fall back to demo user after sign out
     setUser(DEMO_USER);
     setSession(null);
+    setPermissionOverrides([]);
   };
 
   // Legacy role check
@@ -200,10 +235,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return roles.includes(user.role);
   };
 
-  // Permission-based checks
-  const can = (permission: Permission) => hasPermission(user?.role, permission);
-  const canAny = (permissions: Permission[]) => hasAnyPermission(user?.role, permissions);
-  const canAll = (permissions: Permission[]) => hasAllPermissions(user?.role, permissions);
+  // Permission-based checks with overrides
+  const can = (permission: Permission) =>
+    hasPermissionWithOverrides(user?.role, permission, permissionOverrides);
+
+  const canAny = (permissions: Permission[]) =>
+    permissions.some(p => hasPermissionWithOverrides(user?.role, p, permissionOverrides));
+
+  const canAll = (permissions: Permission[]) =>
+    permissions.every(p => hasPermissionWithOverrides(user?.role, p, permissionOverrides));
+
   const checkCanAccessRoute = (href: string) => canAccessRoute(user?.role, href);
 
   // Role shortcuts
@@ -217,9 +258,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         user,
         session,
         loading,
+        permissionOverrides,
         signIn,
         signUp,
         signOut,
+        refreshPermissions,
         hasRole: checkHasRole,
         can,
         canAny,

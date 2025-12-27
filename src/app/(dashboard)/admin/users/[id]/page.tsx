@@ -155,6 +155,7 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
   // Permission overrides
   const [permissionOverrides, setPermissionOverrides] = useState<PermissionOverride[]>([]);
   const [loadingOverrides, setLoadingOverrides] = useState(false);
+  const [savingPermission, setSavingPermission] = useState<string | null>(null);
 
   // Load user details
   useEffect(() => {
@@ -282,6 +283,92 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
     } finally {
       setDeleting(false);
       setDeleteOpen(false);
+    }
+  };
+
+  // Handle permission toggle
+  const handlePermissionToggle = async (permission: Permission, currentlyGranted: boolean, hasOverride: boolean) => {
+    setSavingPermission(permission);
+    try {
+      // Determine the base role permission
+      const roleHasPermission = rolePermissions[user!.role]?.includes(permission) ?? false;
+
+      if (hasOverride && currentlyGranted === roleHasPermission) {
+        // If there's an override but the new state matches role default, remove the override
+        const response = await fetch(`/api/users/${id}/permissions?permission=${permission}`, {
+          method: "DELETE",
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.error || "Failed to update permission");
+        }
+
+        // Remove from local state
+        setPermissionOverrides(prev => prev.filter(o => o.permission !== permission));
+        toast.success(`Permission reverted to role default`);
+      } else {
+        // Create or update override
+        const newGranted = !currentlyGranted;
+        const response = await fetch(`/api/users/${id}/permissions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            permission,
+            granted: newGranted,
+            reason: `${newGranted ? "Granted" : "Denied"} by admin`,
+          }),
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.error || "Failed to update permission");
+        }
+
+        const data = await response.json();
+
+        // Update local state
+        setPermissionOverrides(prev => {
+          const existing = prev.findIndex(o => o.permission === permission);
+          if (existing >= 0) {
+            const updated = [...prev];
+            updated[existing] = data.override;
+            return updated;
+          }
+          return [...prev, data.override];
+        });
+
+        toast.success(`Permission ${newGranted ? "granted" : "denied"}`);
+      }
+    } catch (error) {
+      console.error("Error updating permission:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to update permission");
+    } finally {
+      setSavingPermission(null);
+    }
+  };
+
+  // Handle resetting permission to role default
+  const handleResetPermission = async (permission: Permission) => {
+    setSavingPermission(permission);
+    try {
+      const response = await fetch(`/api/users/${id}/permissions?permission=${permission}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to reset permission");
+      }
+
+      // Remove from local state
+      setPermissionOverrides(prev => prev.filter(o => o.permission !== permission));
+      toast.success("Permission reset to role default");
+    } catch (error) {
+      console.error("Error resetting permission:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to reset permission");
+    } finally {
+      setSavingPermission(null);
     }
   };
 
@@ -604,8 +691,12 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
                 <CardHeader>
                   <CardTitle>User Permissions</CardTitle>
                   <CardDescription>
-                    Permissions are based on role ({roleInfo[user.role]?.name}).
-                    Overrides can be applied to grant or deny specific permissions.
+                    Base permissions from role: <strong>{roleInfo[user.role]?.name}</strong>.
+                    {(isOwner || isAdmin) && (
+                      <span className="block mt-1 text-sm">
+                        Toggle switches to grant or deny individual permissions. Overrides are shown with a badge.
+                      </span>
+                    )}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -624,28 +715,63 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
                           </h4>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                             {categoryData.permissions.map((permission: Permission) => {
-                              const hasPermission = effectivePermissions.includes(permission);
+                              const permissionGranted = effectivePermissions.includes(permission);
                               const override = permissionOverrides.find(o => o.permission === permission);
+                              const roleHasPermission = rolePermissions[user.role]?.includes(permission) ?? false;
+                              const isSaving = savingPermission === permission;
+                              const canManagePermissions = (isOwner || isAdmin) && user.role !== "owner";
 
                               return (
                                 <div
                                   key={permission}
-                                  className={`flex items-center justify-between p-3 rounded-lg border ${
-                                    hasPermission ? "bg-green-50 border-green-200" : "bg-gray-50 border-gray-200"
+                                  className={`flex items-center justify-between p-3 rounded-lg border transition-colors ${
+                                    permissionGranted
+                                      ? override
+                                        ? "bg-blue-50 border-blue-200"
+                                        : "bg-green-50 border-green-200"
+                                      : override
+                                        ? "bg-red-50 border-red-200"
+                                        : "bg-gray-50 border-gray-200"
                                   }`}
                                 >
-                                  <div className="flex items-center gap-2">
-                                    {hasPermission ? (
-                                      <CheckCircle className="h-4 w-4 text-green-600" />
+                                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                                    {permissionGranted ? (
+                                      <CheckCircle className={`h-4 w-4 flex-shrink-0 ${override ? "text-blue-600" : "text-green-600"}`} />
                                     ) : (
-                                      <XCircle className="h-4 w-4 text-gray-400" />
+                                      <XCircle className={`h-4 w-4 flex-shrink-0 ${override ? "text-red-500" : "text-gray-400"}`} />
                                     )}
-                                    <span className="text-sm">{permissionNames[permission] || permission}</span>
+                                    <span className="text-sm truncate">{permissionNames[permission] || permission}</span>
+                                    {override && (
+                                      <Badge
+                                        variant="outline"
+                                        className={`text-xs ml-1 flex-shrink-0 ${
+                                          override.granted ? "bg-blue-100 text-blue-700 border-blue-300" : "bg-red-100 text-red-700 border-red-300"
+                                        }`}
+                                      >
+                                        {override.granted ? "Override: Granted" : "Override: Denied"}
+                                      </Badge>
+                                    )}
                                   </div>
-                                  {override && (
-                                    <Badge variant="outline" className="text-xs">
-                                      {override.granted ? "Granted" : "Denied"}
-                                    </Badge>
+                                  {canManagePermissions && (
+                                    <div className="flex items-center gap-2 ml-2 flex-shrink-0">
+                                      {override && (
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                                          onClick={() => handleResetPermission(permission)}
+                                          disabled={isSaving}
+                                        >
+                                          Reset
+                                        </Button>
+                                      )}
+                                      <Switch
+                                        checked={permissionGranted}
+                                        onCheckedChange={() => handlePermissionToggle(permission, permissionGranted, !!override)}
+                                        disabled={isSaving}
+                                        className="data-[state=checked]:bg-green-600"
+                                      />
+                                    </div>
                                   )}
                                 </div>
                               );
