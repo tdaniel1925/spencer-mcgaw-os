@@ -287,8 +287,10 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
 
   const handleResetPassword = async () => {
     try {
-      const response = await fetch(`/api/admin/users/${id}/reset-password`, {
+      const response = await fetch(`/api/admin/users/${id}/email`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "password_reset" }),
       });
 
       if (!response.ok) {

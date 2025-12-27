@@ -141,6 +141,12 @@ export default function SmsSettingsPage() {
     category: "general",
   });
 
+  // Delete confirmation states
+  const [deleteAutoResponderId, setDeleteAutoResponderId] = useState<string | null>(null);
+  const [deleteTemplateId, setDeleteTemplateId] = useState<string | null>(null);
+  const [deleteCannedResponseId, setDeleteCannedResponseId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
   // Load all data
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -235,8 +241,7 @@ export default function SmsSettingsPage() {
 
   // Delete auto responder
   const handleDeleteAutoResponder = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this auto-responder?")) return;
-
+    setDeleting(true);
     try {
       const res = await fetch(`/api/sms/auto-responders/${id}`, {
         method: "DELETE",
@@ -250,6 +255,9 @@ export default function SmsSettingsPage() {
       }
     } catch (error) {
       toast.error("Failed to delete auto-responder");
+    } finally {
+      setDeleting(false);
+      setDeleteAutoResponderId(null);
     }
   };
 
@@ -277,8 +285,7 @@ export default function SmsSettingsPage() {
 
   // Delete template
   const handleDeleteTemplate = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this template?")) return;
-
+    setDeleting(true);
     try {
       const res = await fetch(`/api/sms/templates/${id}`, {
         method: "DELETE",
@@ -292,6 +299,9 @@ export default function SmsSettingsPage() {
       }
     } catch (error) {
       toast.error("Failed to delete template");
+    } finally {
+      setDeleting(false);
+      setDeleteTemplateId(null);
     }
   };
 
@@ -319,8 +329,7 @@ export default function SmsSettingsPage() {
 
   // Delete canned response
   const handleDeleteCannedResponse = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this canned response?")) return;
-
+    setDeleting(true);
     try {
       const res = await fetch(`/api/sms/canned-responses/${id}`, {
         method: "DELETE",
@@ -334,6 +343,9 @@ export default function SmsSettingsPage() {
       }
     } catch (error) {
       toast.error("Failed to delete canned response");
+    } finally {
+      setDeleting(false);
+      setDeleteCannedResponseId(null);
     }
   };
 
@@ -661,7 +673,7 @@ export default function SmsSettingsPage() {
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                onClick={() => handleDeleteAutoResponder(ar.id)}
+                                onClick={() => setDeleteAutoResponderId(ar.id)}
                               >
                                 <Trash2 className="h-4 w-4 text-destructive" />
                               </Button>
@@ -722,7 +734,7 @@ export default function SmsSettingsPage() {
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                onClick={() => handleDeleteTemplate(template.id)}
+                                onClick={() => setDeleteTemplateId(template.id)}
                               >
                                 <Trash2 className="h-4 w-4 text-destructive" />
                               </Button>
@@ -787,7 +799,7 @@ export default function SmsSettingsPage() {
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                onClick={() => handleDeleteCannedResponse(response.id)}
+                                onClick={() => setDeleteCannedResponseId(response.id)}
                               >
                                 <Trash2 className="h-4 w-4 text-destructive" />
                               </Button>
@@ -988,6 +1000,78 @@ export default function SmsSettingsPage() {
               Cancel
             </Button>
             <Button onClick={handleAddCannedResponse}>Add Response</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Auto-Responder Confirmation */}
+      <Dialog open={!!deleteAutoResponderId} onOpenChange={() => setDeleteAutoResponderId(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Auto-Responder</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this auto-responder? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteAutoResponderId(null)} disabled={deleting}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => deleteAutoResponderId && handleDeleteAutoResponder(deleteAutoResponderId)}
+              disabled={deleting}
+            >
+              {deleting ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Template Confirmation */}
+      <Dialog open={!!deleteTemplateId} onOpenChange={() => setDeleteTemplateId(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Template</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this template? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTemplateId(null)} disabled={deleting}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => deleteTemplateId && handleDeleteTemplate(deleteTemplateId)}
+              disabled={deleting}
+            >
+              {deleting ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Canned Response Confirmation */}
+      <Dialog open={!!deleteCannedResponseId} onOpenChange={() => setDeleteCannedResponseId(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Canned Response</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this canned response? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteCannedResponseId(null)} disabled={deleting}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => deleteCannedResponseId && handleDeleteCannedResponse(deleteCannedResponseId)}
+              disabled={deleting}
+            >
+              {deleting ? "Deleting..." : "Delete"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

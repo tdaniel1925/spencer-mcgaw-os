@@ -76,6 +76,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
+import { toast } from "sonner";
 
 // Types
 interface ConnectedAccount {
@@ -156,9 +157,13 @@ export default function SystemSettingsPage() {
   const [showAddApiKey, setShowAddApiKey] = useState(false);
   const [showAddWebhook, setShowAddWebhook] = useState(false);
   const [showApiKeyValue, setShowApiKeyValue] = useState<string | null>(null);
+  const [showClearDataConfirm, setShowClearDataConfirm] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isCleaningOrphanedData, setIsCleaningOrphanedData] = useState(false);
   const [cleanupResult, setCleanupResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [savingGeneral, setSavingGeneral] = useState(false);
+  const [savingNotifications, setSavingNotifications] = useState(false);
+  const [savingSecurity, setSavingSecurity] = useState(false);
 
   // Handle hydration mismatch
   useEffect(() => {
@@ -235,6 +240,101 @@ export default function SystemSettingsPage() {
     auditLogging: true,
     dataEncryption: true,
   });
+
+  // Fetch company settings on mount
+  useEffect(() => {
+    async function fetchCompanySettings() {
+      try {
+        const response = await fetch("/api/settings/company");
+        if (response.ok) {
+          const data = await response.json();
+          setGeneralSettings(prev => ({
+            ...prev,
+            companyName: data.companyName || prev.companyName,
+            timezone: data.timezone === "cst" ? "America/Chicago" : data.timezone || prev.timezone,
+          }));
+        }
+      } catch (error) {
+        console.error("Failed to fetch company settings:", error);
+      }
+    }
+    fetchCompanySettings();
+  }, []);
+
+  // Save general settings
+  const handleSaveGeneralSettings = async () => {
+    setSavingGeneral(true);
+    try {
+      const response = await fetch("/api/settings/company", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          companyName: generalSettings.companyName,
+          timezone: generalSettings.timezone,
+        }),
+      });
+
+      if (response.ok) {
+        toast.success("Company settings saved successfully");
+      } else {
+        const data = await response.json();
+        toast.error(data.error || "Failed to save settings");
+      }
+    } catch (error) {
+      console.error("Failed to save company settings:", error);
+      toast.error("Failed to save settings");
+    } finally {
+      setSavingGeneral(false);
+    }
+  };
+
+  // Save notification settings
+  const handleSaveNotificationSettings = async () => {
+    setSavingNotifications(true);
+    try {
+      const response = await fetch("/api/settings/notifications", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          emailNewTask: notificationSettings.emailNotifications,
+          emailTaskAssigned: notificationSettings.emailNotifications,
+          emailTaskDueSoon: notificationSettings.urgentAlerts,
+          emailTaskOverdue: notificationSettings.urgentAlerts,
+          emailTaskCompleted: notificationSettings.emailNotifications,
+          emailClientActivity: notificationSettings.clientUpdates,
+          emailWeeklySummary: notificationSettings.dailyDigest,
+          smsEnabled: notificationSettings.smsNotifications,
+          smsUrgentOnly: true,
+          smsTaskOverdue: notificationSettings.urgentAlerts,
+          inappNewTask: true,
+          inappTaskAssigned: true,
+          inappTaskDueSoon: true,
+          inappTaskOverdue: true,
+          inappTaskCompleted: true,
+          inappMentions: true,
+          inappClientActivity: notificationSettings.clientUpdates,
+          aiEmailProcessed: true,
+          aiHighPriorityDetected: notificationSettings.urgentAlerts,
+          aiActionItemsExtracted: true,
+          quietHoursEnabled: false,
+          quietHoursStart: "22:00",
+          quietHoursEnd: "07:00",
+        }),
+      });
+
+      if (response.ok) {
+        toast.success("Notification settings saved successfully");
+      } else {
+        const data = await response.json();
+        toast.error(data.error || "Failed to save notification settings");
+      }
+    } catch (error) {
+      console.error("Failed to save notification settings:", error);
+      toast.error("Failed to save notification settings");
+    } finally {
+      setSavingNotifications(false);
+    }
+  };
 
   // Handle Microsoft OAuth connection - redirects to real OAuth flow
   const handleConnectMicrosoft = async () => {
@@ -1166,7 +1266,16 @@ export default function SystemSettingsPage() {
                     </div>
                   </div>
                   <div className="flex justify-end">
-                    <Button>Save Changes</Button>
+                    <Button onClick={handleSaveGeneralSettings} disabled={savingGeneral}>
+                      {savingGeneral ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        "Save Changes"
+                      )}
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
@@ -1508,6 +1617,18 @@ export default function SystemSettingsPage() {
                       />
                     </div>
                   </div>
+                  <div className="flex justify-end pt-4">
+                    <Button onClick={handleSaveNotificationSettings} disabled={savingNotifications}>
+                      {savingNotifications ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        "Save Notification Settings"
+                      )}
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>
@@ -1619,7 +1740,9 @@ export default function SystemSettingsPage() {
                         Permanently delete all data from the system
                       </p>
                     </div>
-                    <Button variant="destructive">Clear Data</Button>
+                    <Button variant="destructive" onClick={() => setShowClearDataConfirm(true)}>
+                      Clear Data
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
@@ -1804,6 +1927,52 @@ export default function SystemSettingsPage() {
             </Button>
             <Button onClick={handleAddApiKey} disabled={!newApiKey.name || !newApiKey.apiKey}>
               Add Key
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Clear Data Confirmation Dialog */}
+      <Dialog open={showClearDataConfirm} onOpenChange={setShowClearDataConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertTriangle className="h-5 w-5" />
+              Confirm Data Deletion
+            </DialogTitle>
+            <DialogDescription>
+              This action is irreversible and will permanently delete all system data.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Warning</AlertTitle>
+              <AlertDescription>
+                You are about to delete ALL data from the system including:
+                <ul className="list-disc list-inside mt-2 space-y-1">
+                  <li>All client records</li>
+                  <li>All tasks and task history</li>
+                  <li>All documents and files</li>
+                  <li>All email and SMS history</li>
+                  <li>All audit logs</li>
+                </ul>
+                <p className="mt-2 font-semibold">This cannot be undone!</p>
+              </AlertDescription>
+            </Alert>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowClearDataConfirm(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                toast.error("Data clearing is disabled for safety. Contact support if needed.");
+                setShowClearDataConfirm(false);
+              }}
+            >
+              I Understand, Delete Everything
             </Button>
           </DialogFooter>
         </DialogContent>
