@@ -510,7 +510,11 @@ export default function SettingsPage() {
                     </AvatarFallback>
                   </Avatar>
                   <div>
-                    <Button variant="outline" size="sm">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => toast.info("Avatar upload coming soon", { description: "This feature is under development" })}
+                    >
                       <Upload className="h-4 w-4 mr-2" />
                       Upload Photo
                     </Button>

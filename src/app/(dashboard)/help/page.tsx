@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Header } from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
+import { toast } from "sonner";
 import {
   Accordion,
   AccordionContent,
@@ -1122,7 +1123,70 @@ export default function HelpPage() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
   const [activeTab, setActiveTab] = useState("knowledge-base");
+  const [bookmarkedArticles, setBookmarkedArticles] = useState<string[]>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("help-bookmarks");
+      return saved ? JSON.parse(saved) : [];
+    }
+    return [];
+  });
   const { triggerOnboarding } = useOnboarding();
+
+  // Bookmark handler
+  const handleBookmark = useCallback((articleId: string) => {
+    setBookmarkedArticles(prev => {
+      const isBookmarked = prev.includes(articleId);
+      const updated = isBookmarked
+        ? prev.filter(id => id !== articleId)
+        : [...prev, articleId];
+      localStorage.setItem("help-bookmarks", JSON.stringify(updated));
+      toast.success(
+        isBookmarked ? "Bookmark removed" : "Article bookmarked",
+        {
+          description: isBookmarked
+            ? "Article removed from your bookmarks"
+            : "You can find this article in your bookmarks",
+        }
+      );
+      return updated;
+    });
+  }, []);
+
+  // Print handler
+  const handlePrint = useCallback(() => {
+    window.print();
+  }, []);
+
+  // Feedback handler
+  const handleFeedback = useCallback((helpful: boolean) => {
+    toast.success("Thank you for your feedback!", {
+      description: helpful
+        ? "Glad this article was helpful."
+        : "We'll work on improving this article.",
+    });
+  }, []);
+
+  // Support request handler
+  const handleSupportRequest = useCallback((e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const subject = formData.get("subject") as string;
+    const category = formData.get("category") as string;
+    const description = formData.get("description") as string;
+
+    if (!subject || !description) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+
+    // In a real app, this would send to an API
+    toast.success("Support request submitted!", {
+      description: "We'll get back to you within 24 hours.",
+    });
+
+    // Reset form
+    e.currentTarget.reset();
+  }, []);
 
   // Filter articles based on search and category
   const filteredArticles = useMemo(() => {
@@ -1282,10 +1346,20 @@ export default function HelpPage() {
                             Back to articles
                           </Button>
                           <div className="flex items-center gap-2">
-                            <Button variant="ghost" size="icon">
-                              <Bookmark className="h-4 w-4" />
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleBookmark(selectedArticle.id)}
+                              title={bookmarkedArticles.includes(selectedArticle.id) ? "Remove bookmark" : "Bookmark article"}
+                            >
+                              <Bookmark className={`h-4 w-4 ${bookmarkedArticles.includes(selectedArticle.id) ? "fill-current text-primary" : ""}`} />
                             </Button>
-                            <Button variant="ghost" size="icon">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={handlePrint}
+                              title="Print article"
+                            >
                               <Printer className="h-4 w-4" />
                             </Button>
                           </div>
@@ -1318,11 +1392,11 @@ export default function HelpPage() {
                             </p>
                           </div>
                           <div className="flex items-center gap-2">
-                            <Button variant="outline" size="sm">
+                            <Button variant="outline" size="sm" onClick={() => handleFeedback(true)}>
                               <ThumbsUp className="h-4 w-4 mr-1" />
                               Yes
                             </Button>
-                            <Button variant="outline" size="sm">
+                            <Button variant="outline" size="sm" onClick={() => handleFeedback(false)}>
                               <ThumbsDown className="h-4 w-4 mr-1" />
                               No
                             </Button>
@@ -1611,15 +1685,15 @@ export default function HelpPage() {
                         </CardDescription>
                       </CardHeader>
                       <CardContent>
-                        <form className="space-y-4">
+                        <form className="space-y-4" onSubmit={handleSupportRequest}>
                           <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
                               <label className="text-sm font-medium">Subject</label>
-                              <Input placeholder="Brief description of your issue" />
+                              <Input name="subject" placeholder="Brief description of your issue" required />
                             </div>
                             <div className="space-y-2">
                               <label className="text-sm font-medium">Category</label>
-                              <select className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm">
+                              <select name="category" className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm">
                                 <option>General Question</option>
                                 <option>Technical Issue</option>
                                 <option>Account Access</option>
@@ -1631,12 +1705,14 @@ export default function HelpPage() {
                           <div className="space-y-2">
                             <label className="text-sm font-medium">Description</label>
                             <textarea
+                              name="description"
                               className="w-full min-h-[120px] rounded-md border border-input bg-background px-3 py-2 text-sm"
                               placeholder="Please describe your issue in detail. Include any error messages, steps to reproduce, and what you expected to happen."
+                              required
                             />
                           </div>
                           <div className="flex justify-end">
-                            <Button>
+                            <Button type="submit">
                               Submit Request
                               <ArrowRight className="h-4 w-4 ml-2" />
                             </Button>
