@@ -85,7 +85,30 @@ const navSections: NavSection[] = [
     ],
   },
   {
-    label: "Inbox",
+    label: "My Work",
+    items: [
+      {
+        title: "My Inbox",
+        href: "/my-inbox",
+        icon: Mail,
+        permission: "email:view",
+      },
+      {
+        title: "My Tasks",
+        href: "/tasks",
+        icon: ClipboardList,
+        permission: "tasks:view",
+      },
+      {
+        title: "My Calendar",
+        href: "/calendar",
+        icon: Calendar,
+        permission: "calendar:view",
+      },
+    ],
+  },
+  {
+    label: "Organization",
     items: [
       {
         title: "Org Feed",
@@ -94,39 +117,18 @@ const navSections: NavSection[] = [
         permission: "dashboard:view",
       },
       {
-        title: "My Inbox",
-        href: "/my-inbox",
-        icon: Mail,
-        permission: "email:view",
-      },
-    ],
-  },
-  {
-    label: "Work",
-    items: [
-      {
-        title: "My Tasks",
-        href: "/tasks",
-        icon: ClipboardList,
-        permission: "tasks:view",
-      },
-      {
-        title: "Org Tasks",
+        title: "Task Pool",
         href: "/org-tasks",
         icon: Kanban,
         permission: "tasks:view",
       },
       {
-        title: "Calendar",
-        href: "/calendar",
-        icon: Calendar,
-        permission: "calendar:view",
+        title: "Team Tasks",
+        href: "/team-tasks",
+        icon: Users,
+        permission: "tasks:view_all",
+        adminOnly: false, // Will check permission instead
       },
-    ],
-  },
-  {
-    label: "Team",
-    items: [
       {
         title: "Chat",
         href: "/chat",

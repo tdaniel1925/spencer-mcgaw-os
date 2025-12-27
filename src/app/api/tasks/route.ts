@@ -13,6 +13,8 @@ export async function GET(request: NextRequest) {
   const limit = searchParams.get("limit") || "50";
   const offset = searchParams.get("offset") || "0";
   const unassigned = searchParams.get("unassigned");
+  const includeAssignee = searchParams.get("include_assignee") === "true";
+  const includeClient = searchParams.get("include_client") === "true";
 
   // Get authenticated user with role
   const apiUser = await getApiUser();
@@ -22,10 +24,16 @@ export async function GET(request: NextRequest) {
 
   const supabase = await createClient();
 
-  // Fetch tasks without FK join hint (client data fetched separately if needed)
+  // Build select query with optional relations
+  let selectQuery = "*";
+  if (includeClient) {
+    selectQuery += ", client:clients(id, first_name, last_name, email, phone)";
+  }
+
+  // Fetch tasks
   let query = supabase
     .from("tasks")
-    .select("*", { count: "exact" })
+    .select(selectQuery, { count: "exact" })
     .order("created_at", { ascending: false })
     .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
 
@@ -62,8 +70,43 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Failed to fetch tasks" }, { status: 500 });
   }
 
-  // Tasks now include client as a nested object via the join alias
-  return NextResponse.json({ tasks: tasks || [], count });
+  // If include_assignee is requested, fetch assignee info separately
+  interface TaskRecord {
+    id: string;
+    assigned_to?: string | null;
+    claimed_by?: string | null;
+    [key: string]: unknown;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let tasksWithAssignees: any[] = (tasks as unknown as TaskRecord[]) || [];
+  if (includeAssignee && tasks && tasks.length > 0) {
+    const taskRecords = tasks as unknown as TaskRecord[];
+    // Get unique assignee IDs
+    const assigneeIds = [...new Set(
+      taskRecords
+        .map(t => t.assigned_to || t.claimed_by)
+        .filter(Boolean)
+    )] as string[];
+
+    if (assigneeIds.length > 0) {
+      const { data: assignees } = await supabase
+        .from("user_profiles")
+        .select("id, full_name, email, avatar_url")
+        .in("id", assigneeIds);
+
+      const assigneeMap = new Map(
+        (assignees || []).map(a => [a.id, a])
+      );
+
+      tasksWithAssignees = taskRecords.map(task => ({
+        ...task,
+        assignee: assigneeMap.get(task.assigned_to || task.claimed_by || "") || null,
+      }));
+    }
+  }
+
+  return NextResponse.json({ tasks: tasksWithAssignees, count });
 }
 
 export async function POST(request: NextRequest) {
