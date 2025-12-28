@@ -68,6 +68,7 @@ interface EmailOptions {
 async function sendEmail(options: EmailOptions): Promise<boolean> {
   const client = await getResendClient();
   if (!client) {
+    logger.warn("[Email] Resend client not available - RESEND_API_KEY may not be configured");
     return false;
   }
 
@@ -81,13 +82,20 @@ async function sendEmail(options: EmailOptions): Promise<boolean> {
     });
 
     if (error) {
-      logger.error("[Email] Failed to send", error);
+      logger.error("[Email] Failed to send", { to: options.to, subject: options.subject, error });
       return false;
     }
 
+    // Log successful email send with Resend message ID
+    logger.info("[Email] Successfully sent", {
+      to: options.to,
+      subject: options.subject,
+      messageId: data?.id,
+    });
+
     return true;
   } catch (error) {
-    logger.error("[Email] Error sending email", error);
+    logger.error("[Email] Error sending email", { to: options.to, subject: options.subject, error });
     return false;
   }
 }

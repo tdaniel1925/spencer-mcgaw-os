@@ -68,6 +68,18 @@ export async function POST(
 
       if (success) {
         logger.info(`[Admin] Resent invite email to ${targetUser.email}`);
+
+        // Log to activity feed
+        await supabase.from("activity_log").insert({
+          user_id: authUser.id,
+          user_email: authUser.email,
+          action: "sent welcome email",
+          resource_type: "email",
+          resource_id: targetUser.id,
+          resource_name: targetUser.email,
+          details: { email_type: "invite", recipient: targetUser.full_name },
+        });
+
         return NextResponse.json({
           success: true,
           message: "Invite email sent successfully",
@@ -108,6 +120,18 @@ export async function POST(
 
         if (success) {
           logger.info(`[Admin] Sent password reset email to ${targetUser.email}`);
+
+          // Log to activity feed
+          await supabase.from("activity_log").insert({
+            user_id: authUser.id,
+            user_email: authUser.email,
+            action: "sent password reset email",
+            resource_type: "email",
+            resource_id: targetUser.id,
+            resource_name: targetUser.email,
+            details: { email_type: "password_reset", recipient: targetUser.full_name },
+          });
+
           return NextResponse.json({
             success: true,
             message: "Password reset email sent successfully",
@@ -117,6 +141,18 @@ export async function POST(
 
       // Fallback: Supabase already sent the email via generateLink
       logger.info(`[Admin] Password reset link generated for ${targetUser.email}`);
+
+      // Log to activity feed even for fallback
+      await supabase.from("activity_log").insert({
+        user_id: authUser.id,
+        user_email: authUser.email,
+        action: "sent password reset email",
+        resource_type: "email",
+        resource_id: targetUser.id,
+        resource_name: targetUser.email,
+        details: { email_type: "password_reset", recipient: targetUser.full_name },
+      });
+
       return NextResponse.json({
         success: true,
         message: "Password reset email sent successfully",

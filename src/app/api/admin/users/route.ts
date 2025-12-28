@@ -206,9 +206,21 @@ export async function POST(request: NextRequest) {
     }
 
     // Send welcome email with the password
+    let emailSent = false;
     try {
-      const emailSent = await emailWelcome(email.toLowerCase(), full_name, password);
-      if (!emailSent) {
+      emailSent = await emailWelcome(email.toLowerCase(), full_name, password);
+      if (emailSent) {
+        // Log to activity feed
+        await supabase.from("activity_log").insert({
+          user_id: user.id,
+          user_email: user.email,
+          action: "sent welcome email to new user",
+          resource_type: "email",
+          resource_id: newProfile.id,
+          resource_name: email.toLowerCase(),
+          details: { email_type: "welcome", recipient: full_name, new_user: true },
+        });
+      } else {
         console.warn("Welcome email could not be sent (Resend may not be configured)");
       }
     } catch (emailError) {
@@ -219,7 +231,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       user: newProfile,
       message: "User created successfully. They can now log in with their email and password.",
-      emailSent: true
+      emailSent
     });
   } catch (error) {
     console.error("Error creating user:", error);
