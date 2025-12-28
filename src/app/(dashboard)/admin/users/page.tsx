@@ -533,6 +533,10 @@ export default function UserManagementPage() {
   const getWelcomeEmailHtml = () => {
     const loginUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
     const appName = "Spencer McGaw Hub";
+    const displayPassword = newUser.password || "[Password will be shown here]";
+    const displayEmail = newUser.email || "[Email]";
+    const displayName = newUser.full_name || "[Full Name]";
+
     return `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; background: white;">
         <div style="background: #1a1a2e; padding: 20px; text-align: center;">
@@ -540,17 +544,51 @@ export default function UserManagementPage() {
         </div>
         <div style="padding: 30px;">
           <h2>Welcome to ${appName}!</h2>
-          <p>Hi <strong>${newUser.full_name || "[Full Name]"}</strong>,</p>
-          <p>Your account has been created. You can now log in and start using the system.</p>
-          <p style="margin: 30px 0;">
-            <a href="${loginUrl}/login" style="display: inline-block; background: #3b82f6; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 500;">Log In Now</a>
+          <p>Hi <strong>${displayName}</strong>,</p>
+
+          <p>Thank you for joining us! <strong>BotMakers</strong> is pleased to have you on board.</p>
+
+          <p>Your account has been created and you now have access to a powerful suite of tools designed to streamline your workflow:</p>
+
+          <div style="background: #f0f9ff; border-radius: 8px; padding: 20px; margin: 20px 0;">
+            <h3 style="margin-top: 0; color: #0369a1;">What You Can Do:</h3>
+            <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
+              <li><strong>Task Management</strong> - Organize, assign, and track tasks with our intelligent taskpool system</li>
+              <li><strong>Email Integration</strong> - Manage all your emails with AI-powered classification and sorting</li>
+              <li><strong>Client Management</strong> - Keep all your client information organized in one place</li>
+              <li><strong>Team Chat</strong> - Collaborate seamlessly with your team in real-time</li>
+              <li><strong>File Storage</strong> - Securely store and share documents</li>
+              <li><strong>Calendar & Calls</strong> - Schedule meetings and track all communications</li>
+            </ul>
+          </div>
+
+          <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0;">
+            <strong>Your Login Credentials:</strong>
+            <div style="margin-top: 10px;">
+              <div style="margin-bottom: 8px;"><strong>Email:</strong> ${displayEmail}</div>
+              <div><strong>Password:</strong> <span style="font-family: monospace; font-size: 16px; padding: 4px 8px; background: white; border-radius: 4px;">${displayPassword}</span></div>
+            </div>
+            <small style="color: #92400e; display: block; margin-top: 10px;">For security, please change your password after logging in.</small>
+          </div>
+
+          <p style="text-align: center; margin: 30px 0;">
+            <a href="${loginUrl}/login" style="display: inline-block; background: #3b82f6; color: white; padding: 14px 32px; border-radius: 6px; text-decoration: none; font-weight: 500; font-size: 16px;">Get Started Now</a>
           </p>
-          <p style="margin-top: 20px; color: #666;">
-            If you have any questions, please contact your administrator.
+
+          <div style="background: #f8fafc; border-radius: 8px; padding: 15px; margin-top: 30px;">
+            <p style="margin: 0; color: #475569; font-size: 14px;">
+              <strong>Need help getting started?</strong><br>
+              Check out the Help section in the app for guides and FAQs, or reach out to your administrator.
+            </p>
+          </div>
+
+          <p style="margin-top: 30px; color: #666; text-align: center;">
+            We're excited to have you with us!<br>
+            <strong>— The BotMakers Team</strong>
           </p>
         </div>
         <div style="background: #f5f5f5; padding: 20px; text-align: center; font-size: 12px; color: #666;">
-          <p>You're receiving this because of your notification settings.</p>
+          <p style="margin: 0;">You're receiving this because an account was created for you.</p>
         </div>
       </div>
     `;
