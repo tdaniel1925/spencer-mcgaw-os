@@ -17,11 +17,19 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
+  // Only select needed columns for faster query
+  // Skip count for dashboard requests (small limits) to avoid slow count query
+  const limitNum = parseInt(limit);
+  const needsCount = limitNum > 20;
+
   let query = supabase
     .from("activity_log")
-    .select("*", { count: "exact" })
+    .select(
+      "id, user_id, user_email, action, resource_type, resource_name, created_at",
+      needsCount ? { count: "exact" } : undefined
+    )
     .order("created_at", { ascending: false })
-    .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
+    .range(parseInt(offset), parseInt(offset) + limitNum - 1);
 
   if (resourceType && resourceType !== "all") {
     query = query.eq("resource_type", resourceType);
