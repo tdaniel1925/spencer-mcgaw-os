@@ -17,13 +17,13 @@ export async function GET(request: NextRequest) {
   const type = searchParams.get("type") || "welcome";
 
   if (type === "welcome") {
-    const html = getWelcomeEmailPreview(
+    const result = getWelcomeEmailPreview(
       "Test User",
       "test@example.com",
       "TempPassword123!"
     );
 
-    return new NextResponse(html, {
+    return new NextResponse(result.html, {
       headers: { "Content-Type": "text/html" },
     });
   }
