@@ -531,7 +531,7 @@ export default function UserManagementPage() {
   };
 
   const getWelcomeEmailHtml = () => {
-    const loginUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const loginUrl = process.env.NEXT_PUBLIC_APP_URL || "https://spencermcgaw.app";
     const appName = "Spencer McGaw Hub";
     const displayPassword = newUser.password || "[Password will be shown here]";
     const displayEmail = newUser.email || "[Email]";
@@ -572,7 +572,7 @@ export default function UserManagementPage() {
           </div>
 
           <p style="text-align: center; margin: 30px 0;">
-            <a href="${loginUrl}/login" style="display: inline-block; background: #3b82f6; color: white; padding: 14px 32px; border-radius: 6px; text-decoration: none; font-weight: 500; font-size: 16px;">Get Started Now</a>
+            <a href="${loginUrl}/login" style="display: inline-block; background: #143009; color: white; padding: 14px 32px; border-radius: 6px; text-decoration: none; font-weight: 500; font-size: 16px;">Get Started Now</a>
           </p>
 
           <div style="background: #f8fafc; border-radius: 8px; padding: 15px; margin-top: 30px;">
