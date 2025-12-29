@@ -24,10 +24,7 @@ export async function GET(request: NextRequest) {
 
   let query = supabase
     .from("activity_log")
-    .select(
-      "id, user_id, user_email, action, resource_type, resource_name, created_at",
-      needsCount ? { count: "exact" } : undefined
-    )
+    .select("*", needsCount ? { count: "exact" } : undefined)
     .order("created_at", { ascending: false })
     .range(parseInt(offset), parseInt(offset) + limitNum - 1);
 
@@ -44,7 +41,7 @@ export async function GET(request: NextRequest) {
   }
 
   if (search) {
-    query = query.or(`resource_name.ilike.%${search}%,user_email.ilike.%${search}%`);
+    query = query.ilike("resource_name", `%${search}%`);
   }
 
   const { data: activities, error, count } = await query;
@@ -83,7 +80,6 @@ export async function POST(request: NextRequest) {
       .from("activity_log")
       .insert({
         user_id: user.id,
-        user_email: user.email,
         action,
         resource_type,
         resource_id,

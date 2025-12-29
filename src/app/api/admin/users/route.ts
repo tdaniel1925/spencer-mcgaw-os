@@ -213,7 +213,6 @@ export async function POST(request: NextRequest) {
         // Log to activity feed
         await supabase.from("activity_log").insert({
           user_id: user.id,
-          user_email: user.email,
           action: "sent welcome email to new user",
           resource_type: "email",
           resource_id: newProfile.id,

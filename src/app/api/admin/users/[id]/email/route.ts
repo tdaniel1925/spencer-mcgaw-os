@@ -72,7 +72,6 @@ export async function POST(
         // Log to activity feed
         await supabase.from("activity_log").insert({
           user_id: authUser.id,
-          user_email: authUser.email,
           action: "sent welcome email",
           resource_type: "email",
           resource_id: targetUser.id,
@@ -124,7 +123,6 @@ export async function POST(
           // Log to activity feed
           await supabase.from("activity_log").insert({
             user_id: authUser.id,
-            user_email: authUser.email,
             action: "sent password reset email",
             resource_type: "email",
             resource_id: targetUser.id,
@@ -145,7 +143,6 @@ export async function POST(
       // Log to activity feed even for fallback
       await supabase.from("activity_log").insert({
         user_id: authUser.id,
-        user_email: authUser.email,
         action: "sent password reset email",
         resource_type: "email",
         resource_id: targetUser.id,
