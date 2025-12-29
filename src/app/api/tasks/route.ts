@@ -31,12 +31,16 @@ export async function GET(request: NextRequest) {
     selectQuery += ", client:clients(id, first_name, last_name, email, phone)";
   }
 
+  // Skip count query for faster initial load (only need count for pagination)
+  const limitNum = parseInt(limit);
+  const needsCount = parseInt(offset) > 0 || limitNum > 100;
+
   // Fetch tasks - order by updated_at for better relevance
   let query = supabase
     .from("tasks")
-    .select(selectQuery, { count: "exact" })
+    .select(selectQuery, needsCount ? { count: "exact" } : undefined)
     .order("updated_at", { ascending: false })
-    .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
+    .range(parseInt(offset), parseInt(offset) + limitNum - 1);
 
   // RBAC: Staff can only see their assigned, created, or claimed tasks
   if (!canViewAll(apiUser)) {
