@@ -265,9 +265,24 @@ export async function POST(request: NextRequest) {
             const taskTitle = isGenericTitle
               ? `Review: ${email.subject || "(No Subject)"}`
               : actionItem.title;
-            const taskDescription = isGenericTitle
-              ? `Email from ${email.from?.emailAddress?.name || "Unknown"} <${email.from?.emailAddress?.address || ""}>\n\n${classification.summary || "AI classification failed - please review this email manually."}`
-              : `${actionItem.description || ""}\n\nFrom email: ${email.subject}\nSender: ${email.from?.emailAddress?.name} <${email.from?.emailAddress?.address}>`;
+
+            // Build comprehensive task description with full email content
+            const senderName = email.from?.emailAddress?.name || "Unknown";
+            const senderEmail = email.from?.emailAddress?.address || "";
+            const summary = classification.summary || "";
+
+            let taskDescription = `**From:** ${senderName} <${senderEmail}>\n`;
+            taskDescription += `**Subject:** ${email.subject || "(No Subject)"}\n\n`;
+
+            if (summary) {
+              taskDescription += `**Summary:**\n${summary}\n\n`;
+            }
+
+            if (bodyText) {
+              taskDescription += `--- Email Content ---\n\n${bodyText}`;
+            } else if (bodyPreview) {
+              taskDescription += `--- Email Preview ---\n\n${bodyPreview}`;
+            }
 
             // Store in email_action_items with account_id for proper cleanup
             await supabase.from("email_action_items").insert({

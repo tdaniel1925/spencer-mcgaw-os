@@ -185,6 +185,31 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, [fetchStatsAndActivity]);
 
+  // Auto-fix email tasks with missing titles/content (runs once on mount)
+  useEffect(() => {
+    const fixEmailTasks = async () => {
+      try {
+        const response = await fetch("/api/tasks/fix-titles", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data.fixed > 0) {
+            console.log(`[Dashboard] Auto-fixed ${data.fixed} email tasks`);
+            // Refresh tasks from context
+            refreshTasks?.();
+          }
+        }
+      } catch (error) {
+        // Silent fail - this is a background fix
+        console.error("[Dashboard] Error auto-fixing tasks:", error);
+      }
+    };
+
+    fixEmailTasks();
+  }, []);
+
   // Get greeting based on time
   const getGreeting = () => {
     const hour = currentTime.getHours();
