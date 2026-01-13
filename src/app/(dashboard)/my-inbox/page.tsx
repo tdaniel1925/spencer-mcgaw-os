@@ -1188,32 +1188,66 @@ function InboxItemCard({
           </div>
         </div>
 
-        {/* AI Summary */}
-        {item.summary && (
-          <div className="bg-muted/50 rounded-lg p-3 mb-3">
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
-              <Sparkles className="h-3 w-3" />
-              AI Summary
-            </div>
-            <p className="text-sm">{item.summary}</p>
-          </div>
-        )}
+        {/* Email Content Preview - Always show first paragraph of email */}
+        {(() => {
+          // Check if this is a fallback/unavailable summary
+          const isFallbackSummary = !item.summary ||
+            item.summary.includes("Unable to classify") ||
+            item.summary.includes("unavailable") ||
+            item.summary.includes("manual review");
 
-        {/* Action Items Preview */}
-        {item.actionItems.length > 0 && (
-          <div className="flex flex-wrap gap-2 mb-3">
-            {item.actionItems.slice(0, 3).map((action) => (
-              <Badge key={action.id} variant="outline" className="text-xs">
-                {action.title}
-              </Badge>
-            ))}
-            {item.actionItems.length > 3 && (
-              <Badge variant="outline" className="text-xs text-muted-foreground">
-                +{item.actionItems.length - 3} more
-              </Badge>
-            )}
-          </div>
-        )}
+          // Get preview text - use actual email content if summary is fallback
+          const previewText = !isFallbackSummary && item.summary
+            ? item.summary
+            : item.bodyPreview || item.bodyText;
+
+          // Get first ~200 chars of preview
+          const truncatedPreview = previewText
+            ? previewText.substring(0, 200).trim() + (previewText.length > 200 ? "..." : "")
+            : null;
+
+          return truncatedPreview ? (
+            <div className="bg-muted/50 rounded-lg p-3 mb-3">
+              {!isFallbackSummary && item.summary ? (
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+                  <Sparkles className="h-3 w-3" />
+                  AI Summary
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+                  <Mail className="h-3 w-3" />
+                  Email Preview
+                </div>
+              )}
+              <p className="text-sm leading-relaxed">{truncatedPreview}</p>
+            </div>
+          ) : null;
+        })()}
+
+        {/* Action Items Preview - Filter out fallback items */}
+        {(() => {
+          // Filter out generic/fallback action items
+          const meaningfulActions = item.actionItems.filter(action =>
+            action.title !== "Manual review required" &&
+            action.title !== "Review email" &&
+            !action.title.includes("manual review")
+          );
+
+          return meaningfulActions.length > 0 ? (
+            <div className="flex flex-wrap gap-2 mb-3">
+              {meaningfulActions.slice(0, 3).map((action) => (
+                <Badge key={action.id} variant="outline" className="text-xs">
+                  {action.title}
+                </Badge>
+              ))}
+              {meaningfulActions.length > 3 && (
+                <Badge variant="outline" className="text-xs text-muted-foreground">
+                  +{meaningfulActions.length - 3} more
+                </Badge>
+              )}
+            </div>
+          ) : null;
+        })()}
 
         {/* Actions Row */}
         <div className="flex items-center justify-between pt-2 border-t">
@@ -1254,55 +1288,63 @@ function InboxItemCard({
           </div>
         </div>
 
-        {/* Expanded Content */}
+        {/* Expanded Content - Full Email View */}
         {isExpanded && (
-          <div className="mt-4 pt-4 border-t space-y-3">
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="text-muted-foreground">From:</span>
-                <span className="ml-2">{item.from.email}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Account:</span>
-                <span className="ml-2">{item.accountEmail}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Received:</span>
-                <span className="ml-2">{format(new Date(item.receivedAt), "MMM d, yyyy h:mm a")}</span>
-              </div>
-              {item.sentiment && (
-                <div>
-                  <span className="text-muted-foreground">Sentiment:</span>
-                  <span className="ml-2 capitalize">{item.sentiment}</span>
+          <div className="mt-4 pt-4 border-t">
+            {/* Email Header - Like a real email client */}
+            <div className="bg-muted/30 rounded-lg p-4 mb-4">
+              <div className="space-y-2 text-sm">
+                <div className="flex">
+                  <span className="text-muted-foreground w-20 flex-shrink-0">From:</span>
+                  <span className="font-medium">{item.from.name || "Unknown"} &lt;{item.from.email}&gt;</span>
                 </div>
-              )}
+                <div className="flex">
+                  <span className="text-muted-foreground w-20 flex-shrink-0">To:</span>
+                  <span>{item.accountEmail}</span>
+                </div>
+                <div className="flex">
+                  <span className="text-muted-foreground w-20 flex-shrink-0">Date:</span>
+                  <span>{format(new Date(item.receivedAt), "EEEE, MMMM d, yyyy 'at' h:mm a")}</span>
+                </div>
+                <div className="flex">
+                  <span className="text-muted-foreground w-20 flex-shrink-0">Subject:</span>
+                  <span className="font-medium">{item.subject}</span>
+                </div>
+              </div>
             </div>
 
+            {/* Email Body */}
             {(item.bodyText || item.bodyPreview) && (
-              <div className="bg-muted/30 rounded-lg p-4">
-                <span className="text-xs text-muted-foreground block mb-2 font-medium">
-                  Email Content
-                </span>
-                <div className="text-sm max-h-96 overflow-y-auto prose prose-sm dark:prose-invert prose-p:my-2 prose-p:leading-relaxed">
+              <div className="bg-white dark:bg-gray-900 border rounded-lg p-6">
+                <div className="text-sm max-h-[500px] overflow-y-auto prose prose-sm dark:prose-invert prose-p:my-3 prose-p:leading-relaxed">
                   <FormattedEmailBody text={item.bodyText || item.bodyPreview || ""} />
                 </div>
               </div>
             )}
 
-            {item.actionItems.length > 0 && (
-              <div>
-                <span className="text-sm text-muted-foreground">Action Items:</span>
-                <ul className="mt-1 space-y-1">
-                  {item.actionItems.map((action) => (
-                    <li key={action.id} className="flex items-center gap-2 text-sm">
-                      <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                      {action.title}
-                      <Badge variant="outline" className="text-[10px]">{action.type}</Badge>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+            {/* Action Items - Filter out fallback items */}
+            {(() => {
+              const meaningfulActions = item.actionItems.filter(action =>
+                action.title !== "Manual review required" &&
+                action.title !== "Review email" &&
+                !action.title.includes("manual review")
+              );
+
+              return meaningfulActions.length > 0 ? (
+                <div className="mt-4 pt-4 border-t">
+                  <span className="text-sm font-medium text-muted-foreground">Suggested Actions:</span>
+                  <ul className="mt-2 space-y-2">
+                    {meaningfulActions.map((action) => (
+                      <li key={action.id} className="flex items-center gap-2 text-sm bg-muted/30 rounded-lg p-2">
+                        <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                        <span className="flex-1">{action.title}</span>
+                        <Badge variant="outline" className="text-[10px]">{action.type}</Badge>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null;
+            })()}
           </div>
         )}
       </CardContent>
