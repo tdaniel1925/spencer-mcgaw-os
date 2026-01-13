@@ -321,6 +321,7 @@ export const webhookStatusEnum = pgEnum("webhook_status", [
 
 export const webhookLogs = pgTable("webhook_logs", {
   id: uuid("id").primaryKey().defaultRandom(),
+  eventId: varchar("event_id", { length: 255 }), // Unique event ID for deduplication
   endpoint: varchar("endpoint", { length: 100 }).notNull(),
   source: varchar("source", { length: 100 }),
   status: webhookStatusEnum("status").notNull().default("received"),

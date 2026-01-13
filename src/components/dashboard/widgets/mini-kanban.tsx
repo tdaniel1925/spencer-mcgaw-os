@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -34,7 +35,7 @@ const defaultColumns: KanbanColumn[] = [
   { id: "completed", label: "Done", count: 28, color: "bg-green-500", icon: CheckCircle },
 ];
 
-export function MiniKanban({ columns = defaultColumns, loading = false }: MiniKanbanProps) {
+function MiniKanbanBase({ columns = defaultColumns, loading = false }: MiniKanbanProps) {
   const router = useRouter();
 
   const totalTasks = columns.reduce((sum, col) => sum + col.count, 0);
@@ -110,5 +111,14 @@ export function MiniKanban({ columns = defaultColumns, loading = false }: MiniKa
         )}
       </CardContent>
     </Card>
+  );
+}
+
+// Export with error boundary wrapping
+export function MiniKanban(props: MiniKanbanProps) {
+  return (
+    <ErrorBoundary name="Workflow Status" compact>
+      <MiniKanbanBase {...props} />
+    </ErrorBoundary>
   );
 }

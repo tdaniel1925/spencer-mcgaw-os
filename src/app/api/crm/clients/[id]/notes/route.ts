@@ -19,6 +19,17 @@ export async function GET(
   }
 
   try {
+    // Verify client exists and user has access (RLS will filter)
+    const { data: client, error: clientError } = await supabase
+      .from("clients")
+      .select("id")
+      .eq("id", clientId)
+      .single();
+
+    if (clientError || !client) {
+      return NextResponse.json({ error: "Client not found" }, { status: 404 });
+    }
+
     let query = supabase
       .from("client_notes")
       .select(`
@@ -86,6 +97,17 @@ export async function POST(
   }
 
   try {
+    // Verify client exists and user has access (RLS will filter)
+    const { data: client, error: clientError } = await supabase
+      .from("clients")
+      .select("id")
+      .eq("id", clientId)
+      .single();
+
+    if (clientError || !client) {
+      return NextResponse.json({ error: "Client not found" }, { status: 404 });
+    }
+
     const body = await request.json();
     const {
       contact_id,

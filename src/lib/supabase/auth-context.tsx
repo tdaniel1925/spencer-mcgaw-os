@@ -56,17 +56,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const supabase = createClient();
   const isMounted = useRef(true);
 
-  // Admin emails that should always have admin role
-  const adminEmails = ["tdaniel@botmakers.ai"];
-
   // Build user object from session user and optional profile
+  // NOTE: Admin role is determined by the role field in user_profiles table, not hardcoded
   const buildUser = useCallback((sessionUser: User, profile?: Record<string, unknown> | null): AuthUser => {
-    const isAdminEmail = adminEmails.includes(sessionUser.email || "");
-
     if (profile) {
       return {
         ...sessionUser,
-        role: isAdminEmail ? "admin" : (profile.role as UserRole) || "staff",
+        role: (profile.role as UserRole) || "staff",
         full_name: profile.full_name as string | undefined,
         avatar_url: profile.avatar_url as string | undefined,
         department: profile.department as string | undefined,
@@ -76,10 +72,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       };
     }
 
-    // No profile - use basic info from session
+    // No profile - use basic info from session (default to staff role)
     return {
       ...sessionUser,
-      role: isAdminEmail ? "admin" : "staff",
+      role: "staff",
       full_name: sessionUser.user_metadata?.full_name || sessionUser.email?.split("@")[0],
       is_active: true,
     };

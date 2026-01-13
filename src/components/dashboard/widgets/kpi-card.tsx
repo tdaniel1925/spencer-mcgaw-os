@@ -3,6 +3,7 @@
 import { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TrendingUp, TrendingDown } from "lucide-react";
+import { ErrorBoundary } from "@/components/ui/error-boundary";
 
 interface KPICardProps {
   title: string;
@@ -44,7 +45,7 @@ const colorStyles = {
   },
 };
 
-export function KPICard({
+function KPICardBase({
   title,
   value,
   subtitle,
@@ -119,5 +120,14 @@ export function KPICard({
         </div>
       </div>
     </div>
+  );
+}
+
+// Export with error boundary wrapping
+export function KPICard(props: KPICardProps) {
+  return (
+    <ErrorBoundary name="KPI Card" compact>
+      <KPICardBase {...props} />
+    </ErrorBoundary>
   );
 }

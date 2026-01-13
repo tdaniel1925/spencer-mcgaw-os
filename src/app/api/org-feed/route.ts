@@ -58,8 +58,9 @@ export async function GET(request: NextRequest) {
 
   const searchParams = request.nextUrl.searchParams;
   const type = searchParams.get("type") || "all"; // 'all', 'calls', 'emails'
-  const limit = parseInt(searchParams.get("limit") || "50");
-  const offset = parseInt(searchParams.get("offset") || "0");
+  // Validate and constrain pagination params
+  const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "50", 10) || 50, 1), 200);
+  const offset = Math.max(parseInt(searchParams.get("offset") || "0", 10) || 0, 0);
 
   try {
     const feedItems: OrgFeedItem[] = [];
@@ -95,23 +96,27 @@ export async function GET(request: NextRequest) {
           .orderBy(desc(calls.createdAt))
           .limit(limit);
 
-        // Check which calls have tasks
+        // Check which calls have tasks (only query if we have call IDs)
         const callIds = callsData.map(c => c.id);
-        const { data: tasksWithCalls } = await supabase
-          .from("tasks")
-          .select("source_call_id")
-          .in("source_call_id", callIds);
+        let callsWithTasks = new Set<string>();
+        if (callIds.length > 0) {
+          const { data: tasksWithCalls } = await supabase
+            .from("tasks")
+            .select("source_call_id")
+            .in("source_call_id", callIds);
+          callsWithTasks = new Set(tasksWithCalls?.map(t => t.source_call_id) || []);
+        }
 
-        const callsWithTasks = new Set(tasksWithCalls?.map(t => t.source_call_id) || []);
-
-        // Get client names for matched clients
-        const clientIds = callsData.filter(c => c.clientId).map(c => c.clientId);
-        const { data: clients } = await supabase
-          .from("clients")
-          .select("id, first_name, last_name")
-          .in("id", clientIds);
-
-        const clientMap = new Map(clients?.map(c => [c.id, `${c.first_name} ${c.last_name}`]) || []);
+        // Get client names for matched clients (only query if we have client IDs)
+        const clientIds = callsData.filter(c => c.clientId).map(c => c.clientId) as string[];
+        let clientMap = new Map<string, string>();
+        if (clientIds.length > 0) {
+          const { data: clients } = await supabase
+            .from("clients")
+            .select("id, first_name, last_name")
+            .in("id", clientIds);
+          clientMap = new Map(clients?.map(c => [c.id, `${c.first_name} ${c.last_name}`]) || []);
+        }
 
         for (const call of callsData) {
           const metadata = call.metadata as Record<string, unknown> | null;
@@ -195,42 +200,49 @@ export async function GET(request: NextRequest) {
             .limit(limit)
         : { data: [], error: null };
 
-      if (!emailError && emailClassifications) {
+      if (!emailError && emailClassifications && emailClassifications.length > 0) {
         // Get action items for these emails
         const emailIds = emailClassifications.map(e => e.email_id);
-        const { data: actionItems } = await supabase
-          .from("email_action_items")
-          .select("email_id, id, title, type")
-          .in("email_id", emailIds);
-
         const actionItemsByEmail = new Map<string, Array<{ id: string; title: string; type: string }>>();
-        for (const item of actionItems || []) {
-          if (!actionItemsByEmail.has(item.email_id)) {
-            actionItemsByEmail.set(item.email_id, []);
+
+        if (emailIds.length > 0) {
+          const { data: actionItems } = await supabase
+            .from("email_action_items")
+            .select("email_id, id, title, type")
+            .in("email_id", emailIds);
+
+          for (const item of actionItems || []) {
+            if (!actionItemsByEmail.has(item.email_id)) {
+              actionItemsByEmail.set(item.email_id, []);
+            }
+            actionItemsByEmail.get(item.email_id)!.push({
+              id: item.id,
+              title: item.title,
+              type: item.type,
+            });
           }
-          actionItemsByEmail.get(item.email_id)!.push({
-            id: item.id,
-            title: item.title,
-            type: item.type,
-          });
         }
 
         // Check which emails have tasks
-        const { data: tasksWithEmails } = await supabase
-          .from("tasks")
-          .select("source_email_id")
-          .in("source_email_id", emailIds);
+        let emailsWithTasks = new Set<string>();
+        if (emailIds.length > 0) {
+          const { data: tasksWithEmails } = await supabase
+            .from("tasks")
+            .select("source_email_id")
+            .in("source_email_id", emailIds);
+          emailsWithTasks = new Set(tasksWithEmails?.map(t => t.source_email_id) || []);
+        }
 
-        const emailsWithTasks = new Set(tasksWithEmails?.map(t => t.source_email_id) || []);
-
-        // Get client names
-        const clientIds = emailClassifications.filter(e => e.matched_client_id).map(e => e.matched_client_id);
-        const { data: clients } = await supabase
-          .from("clients")
-          .select("id, first_name, last_name")
-          .in("id", clientIds);
-
-        const clientMap = new Map(clients?.map(c => [c.id, `${c.first_name} ${c.last_name}`]) || []);
+        // Get client names (only if we have client IDs)
+        const clientIds = emailClassifications.filter(e => e.matched_client_id).map(e => e.matched_client_id) as string[];
+        let clientMap = new Map<string, string>();
+        if (clientIds.length > 0) {
+          const { data: clients } = await supabase
+            .from("clients")
+            .select("id, first_name, last_name")
+            .in("id", clientIds);
+          clientMap = new Map(clients?.map(c => [c.id, `${c.first_name} ${c.last_name}`]) || []);
+        }
 
         for (const email of emailClassifications) {
           feedItems.push({

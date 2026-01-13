@@ -10,12 +10,16 @@ export async function GET(request: NextRequest) {
   const priority = searchParams.get("priority");
   const clientId = searchParams.get("clientId");
   const search = searchParams.get("search");
-  const limit = searchParams.get("limit") || "50";
-  const offset = searchParams.get("offset") || "0";
+  const limitParam = searchParams.get("limit") || "50";
+  const offsetParam = searchParams.get("offset") || "0";
   const unassigned = searchParams.get("unassigned");
   const includeAssignee = searchParams.get("include_assignee") === "true";
   const includeClient = searchParams.get("include_client") === "true";
   const excludeCompletedBefore = searchParams.get("exclude_completed_before");
+
+  // Validate and parse pagination params
+  const limitNum = Math.min(Math.max(parseInt(limitParam, 10) || 50, 1), 200);
+  const offsetNum = Math.max(parseInt(offsetParam, 10) || 0, 0);
 
   // Get authenticated user with role
   const apiUser = await getApiUser();
@@ -32,15 +36,14 @@ export async function GET(request: NextRequest) {
   }
 
   // Skip count query for faster initial load (only need count for pagination)
-  const limitNum = parseInt(limit);
-  const needsCount = parseInt(offset) > 0 || limitNum > 100;
+  const needsCount = offsetNum > 0 || limitNum > 100;
 
   // Fetch tasks - order by updated_at for better relevance
   let query = supabase
     .from("tasks")
     .select(selectQuery, needsCount ? { count: "exact" } : undefined)
     .order("updated_at", { ascending: false })
-    .range(parseInt(offset), parseInt(offset) + limitNum - 1);
+    .range(offsetNum, offsetNum + limitNum - 1);
 
   // RBAC: Staff can only see their assigned, created, or claimed tasks
   if (!canViewAll(apiUser)) {

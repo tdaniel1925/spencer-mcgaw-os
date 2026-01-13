@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -64,7 +65,7 @@ interface DashboardSettingsProps {
   trigger?: React.ReactNode;
 }
 
-export function DashboardSettings({ trigger }: DashboardSettingsProps) {
+function DashboardSettingsBase({ trigger }: DashboardSettingsProps) {
   const {
     preferences,
     widgets,
@@ -414,5 +415,14 @@ export function DashboardSettings({ trigger }: DashboardSettingsProps) {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// Export with error boundary wrapping
+export function DashboardSettings(props: DashboardSettingsProps) {
+  return (
+    <ErrorBoundary name="Dashboard Settings">
+      <DashboardSettingsBase {...props} />
+    </ErrorBoundary>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { Button } from "@/components/ui/button";
 import {
   Zap,
@@ -37,7 +38,7 @@ interface QuickActionsProps {
   columns?: 2 | 3 | 6;
 }
 
-export function QuickActions({ actions = defaultActions, columns = 3 }: QuickActionsProps) {
+function QuickActionsBase({ actions = defaultActions, columns = 3 }: QuickActionsProps) {
   const router = useRouter();
 
   return (
@@ -78,8 +79,17 @@ export function QuickActions({ actions = defaultActions, columns = 3 }: QuickAct
   );
 }
 
+// Export with error boundary wrapping
+export function QuickActions(props: QuickActionsProps) {
+  return (
+    <ErrorBoundary name="Quick Actions" compact>
+      <QuickActionsBase {...props} />
+    </ErrorBoundary>
+  );
+}
+
 // Compact horizontal version
-export function QuickActionsBar({ actions = defaultActions }: { actions?: QuickAction[] }) {
+function QuickActionsBarBase({ actions = defaultActions }: { actions?: QuickAction[] }) {
   const router = useRouter();
 
   return (
@@ -100,5 +110,13 @@ export function QuickActionsBar({ actions = defaultActions }: { actions?: QuickA
         );
       })}
     </div>
+  );
+}
+
+export function QuickActionsBar(props: { actions?: QuickAction[] }) {
+  return (
+    <ErrorBoundary name="Quick Actions Bar" compact>
+      <QuickActionsBarBase {...props} />
+    </ErrorBoundary>
   );
 }

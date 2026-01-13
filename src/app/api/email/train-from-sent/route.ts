@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { decrypt, encrypt } from "@/lib/shared/crypto";
 
 const MICROSOFT_GRAPH_URL = "https://graph.microsoft.com/v1.0";
 
@@ -90,23 +91,25 @@ export async function POST() {
 
     // Process each connected account
     for (const connection of connections) {
-      let accessToken = connection.access_token;
+      // Decrypt stored tokens
+      let accessToken = decrypt(connection.access_token);
 
       // Check if token is expired
       if (new Date(connection.expires_at) <= new Date()) {
-        const newTokens = await refreshAccessToken(connection.refresh_token);
+        const decryptedRefreshToken = decrypt(connection.refresh_token);
+        const newTokens = await refreshAccessToken(decryptedRefreshToken);
         if (!newTokens) {
           console.error(`Token refresh failed for connection ${connection.id}`);
           continue;
         }
 
-        // Update tokens in database
+        // Update tokens in database (encrypt before storing)
         accessToken = newTokens.access_token;
         await supabase
           .from("email_connections")
           .update({
-            access_token: newTokens.access_token,
-            refresh_token: newTokens.refresh_token,
+            access_token: encrypt(newTokens.access_token),
+            refresh_token: encrypt(newTokens.refresh_token),
             expires_at: new Date(Date.now() + newTokens.expires_in * 1000).toISOString(),
             updated_at: new Date().toISOString(),
           })

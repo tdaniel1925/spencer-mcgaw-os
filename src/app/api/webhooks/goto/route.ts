@@ -17,21 +17,28 @@ import logger from "@/lib/logger";
 async function matchPhoneToClient(phone: string | null): Promise<string | null> {
   if (!phone) return null;
 
-  // Normalize phone number (remove non-digits)
+  // Normalize phone number (remove non-digits) and validate
   const normalizedPhone = phone.replace(/\D/g, "");
-  if (normalizedPhone.length < 7) return null;
+
+  // Validate: must be 7-15 digits only (standard phone number length)
+  if (normalizedPhone.length < 7 || normalizedPhone.length > 15) return null;
+  if (!/^\d+$/.test(normalizedPhone)) return null; // Extra safety check
+
+  // Get last 10 digits for partial matching (sanitized)
+  const last10Digits = normalizedPhone.slice(-10);
+  const likePattern = `%${last10Digits}`;
 
   try {
-    // Try matching against client phone numbers
+    // Try matching against client phone numbers using parameterized queries
     const matchedClients = await db
       .select({ id: clients.id })
       .from(clients)
       .where(
         or(
           sql`regexp_replace(${clients.phone}, '[^0-9]', '', 'g') = ${normalizedPhone}`,
-          sql`regexp_replace(${clients.phone}, '[^0-9]', '', 'g') LIKE ${'%' + normalizedPhone.slice(-10)}`,
+          sql`regexp_replace(${clients.phone}, '[^0-9]', '', 'g') LIKE ${likePattern}`,
           sql`regexp_replace(${clients.alternatePhone}, '[^0-9]', '', 'g') = ${normalizedPhone}`,
-          sql`regexp_replace(${clients.alternatePhone}, '[^0-9]', '', 'g') LIKE ${'%' + normalizedPhone.slice(-10)}`
+          sql`regexp_replace(${clients.alternatePhone}, '[^0-9]', '', 'g') LIKE ${likePattern}`
         )
       )
       .limit(1);
@@ -46,9 +53,8 @@ async function matchPhoneToClient(phone: string | null): Promise<string | null> 
   return null;
 }
 
-// Store processed webhook IDs to prevent replay
-const processedWebhooks = new Set<string>();
-const MAX_PROCESSED_WEBHOOKS = 10000;
+// Deduplication is now handled via database (webhook_logs.event_id column)
+// This provides persistent deduplication across server restarts and multi-instance deployments
 
 /**
  * Verify GoTo Connect webhook signature
@@ -56,13 +62,22 @@ const MAX_PROCESSED_WEBHOOKS = 10000;
 function verifySignature(
   payload: string,
   signature: string | null,
-  secret: string
+  secret: string | undefined
 ): boolean {
-  if (!signature || !secret) {
-    // In development, allow unsigned webhooks if no secret configured
-    if (process.env.NODE_ENV === "development" && !secret) {
-      return true;
+  // If no secret is configured, reject webhooks in production
+  if (!secret) {
+    if (process.env.NODE_ENV === "production") {
+      logger.error("[GoTo Webhook] No GOTO_WEBHOOK_SECRET configured in production - rejecting all webhooks");
+      return false;
     }
+    // In development/test, warn but allow - this helps local testing
+    logger.warn("[GoTo Webhook] No GOTO_WEBHOOK_SECRET configured - accepting unsigned webhooks (dev mode only)");
+    return true;
+  }
+
+  // Secret is configured, require valid signature
+  if (!signature) {
+    logger.warn("[GoTo Webhook] Missing signature header");
     return false;
   }
 
@@ -151,20 +166,32 @@ export async function POST(request: NextRequest) {
       (data.id as string) ||
       `goto-${Date.now()}-${Math.random().toString(36).substring(7)}`;
 
-    // Check for duplicate processing
-    if (processedWebhooks.has(eventId)) {
-      return NextResponse.json({
-        success: true,
-        message: "Webhook already processed",
-        duplicate: true,
-      });
+    // Check for duplicate processing via database (persistent deduplication)
+    try {
+      const [existingLog] = await db
+        .select({ id: webhookLogs.id })
+        .from(webhookLogs)
+        .where(eq(webhookLogs.eventId, eventId))
+        .limit(1);
+
+      if (existingLog) {
+        return NextResponse.json({
+          success: true,
+          message: "Webhook already processed",
+          duplicate: true,
+        });
+      }
+    } catch (checkError) {
+      // Log but continue - better to risk duplicate than reject valid webhook
+      logger.warn("[GoTo Webhook] Error checking for duplicate", { error: checkError instanceof Error ? checkError.message : "Unknown error" });
     }
 
-    // Create webhook log entry
+    // Create webhook log entry with eventId for deduplication
     try {
       const [webhookLog] = await db
         .insert(webhookLogs)
         .values({
+          eventId, // Store eventId for future deduplication checks
           endpoint: "/api/webhooks/goto",
           source: "goto",
           status: "received",
@@ -178,15 +205,6 @@ export async function POST(request: NextRequest) {
       webhookLogId = webhookLog?.id || null;
     } catch (logError) {
       logger.error("[GoTo Webhook] Failed to create webhook log:", logError);
-    }
-
-    // Add to processed set
-    processedWebhooks.add(eventId);
-    if (processedWebhooks.size > MAX_PROCESSED_WEBHOOKS) {
-      const firstItem = processedWebhooks.values().next().value;
-      if (firstItem) {
-        processedWebhooks.delete(firstItem);
-      }
     }
 
     // Update status to parsing

@@ -6,8 +6,9 @@ export async function GET(request: NextRequest) {
   const status = searchParams.get("status") || "pending";
   const category = searchParams.get("category");
   const priority = searchParams.get("priority");
-  const limit = parseInt(searchParams.get("limit") || "50");
-  const offset = parseInt(searchParams.get("offset") || "0");
+  // Enforce parameter bounds to prevent memory issues
+  const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "50", 10) || 50, 1), 200);
+  const offset = Math.max(parseInt(searchParams.get("offset") || "0", 10) || 0, 0);
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();

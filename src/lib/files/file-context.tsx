@@ -85,6 +85,9 @@ interface FileContextType {
   getStarredFiles: () => Promise<FileRecord[]>;
   getTrashedFiles: () => Promise<FileRecord[]>;
 
+  // Trash management
+  emptyTrash: () => Promise<{ success: boolean; deletedCount: number }>;
+
   // Activity
   getFileActivity: (fileId: string) => Promise<FileActivity[]>;
 
@@ -160,6 +163,30 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
       lastAccessedAt: row.last_accessed_at ? new Date(row.last_accessed_at as string) : undefined,
     };
   }, []);
+
+  // Log file activity
+  const logActivity = useCallback(async (
+    action: string,
+    details: Record<string, unknown>,
+    fileId?: string,
+    folderId?: string
+  ) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      await supabase.from("file_activity").insert({
+        file_id: fileId,
+        folder_id: folderId,
+        user_id: user.id,
+        action,
+        details,
+      });
+    } catch (err) {
+      // Don't fail the operation if activity logging fails
+      console.error("Error logging file activity:", err);
+    }
+  }, [supabase]);
 
   // Initialize user storage (create personal root folder if not exists)
   const initializeUserStorage = useCallback(async () => {
@@ -1198,6 +1225,59 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
     }
   }, [supabase, transformFile]);
 
+  // Empty trash - permanently delete all trashed files
+  const emptyTrash = useCallback(async (): Promise<{ success: boolean; deletedCount: number }> => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      // Get all trashed files for this user
+      const { data: trashedFiles, error: fetchError } = await supabase
+        .from("files")
+        .select("id, storage_path, storage_bucket, size_bytes, name")
+        .eq("is_trashed", true)
+        .eq("owner_id", user.id);
+
+      if (fetchError) throw fetchError;
+
+      if (!trashedFiles || trashedFiles.length === 0) {
+        return { success: true, deletedCount: 0 };
+      }
+
+      // Delete files from storage
+      const storagePaths = trashedFiles.map(f => f.storage_path);
+      const { error: storageError } = await supabase.storage
+        .from("files")
+        .remove(storagePaths);
+
+      if (storageError) {
+        console.error("Error deleting files from storage:", storageError);
+        // Continue anyway to clean up database records
+      }
+
+      // Delete file records from database
+      const fileIds = trashedFiles.map(f => f.id);
+      const { error: deleteError } = await supabase
+        .from("files")
+        .delete()
+        .in("id", fileIds);
+
+      if (deleteError) throw deleteError;
+
+      // Log activity
+      await logActivity("empty_trash", {
+        deleted_count: trashedFiles.length,
+        deleted_files: trashedFiles.map(f => f.name),
+        total_bytes_freed: trashedFiles.reduce((sum, f) => sum + (f.size_bytes || 0), 0),
+      });
+
+      return { success: true, deletedCount: trashedFiles.length };
+    } catch (err) {
+      console.error("Error emptying trash:", err);
+      return { success: false, deletedCount: 0 };
+    }
+  }, [supabase, logActivity]);
+
   // Get file activity
   const getFileActivity = useCallback(async (fileId: string): Promise<FileActivity[]> => {
     try {
@@ -1319,6 +1399,7 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
     getRecentFiles,
     getStarredFiles,
     getTrashedFiles,
+    emptyTrash,
     getFileActivity,
     initializeUserStorage,
   }), [
@@ -1328,8 +1409,8 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
     restoreFile, starFile, getFileVersions, restoreVersion, createShareLink, getShareLinks,
     revokeShareLink, getFolderPermissions, setFolderPermission, removeFolderPermission,
     selectItem, deselectItem, selectAll, clearSelection, toggleSelection, bulkMove, bulkDelete,
-    bulkDownload, searchFiles, getRecentFiles, getStarredFiles, getTrashedFiles, getFileActivity,
-    initializeUserStorage,
+    bulkDownload, searchFiles, getRecentFiles, getStarredFiles, getTrashedFiles, emptyTrash,
+    getFileActivity, initializeUserStorage,
   ]);
 
   return (

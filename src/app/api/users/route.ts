@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getApiUser, isAdmin } from "@/lib/auth/api-rbac";
 
 // GET - List users for assignment dropdown
 export async function GET(request: NextRequest) {
@@ -44,14 +45,19 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// PATCH - Update user profile (for admin to update show_in_taskpool)
+// PATCH - Update user profile (admin only - for show_in_taskpool)
 export async function PATCH(request: NextRequest) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
+  // Require admin privileges to update other users
+  const apiUser = await getApiUser();
+  if (!apiUser) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
+
+  if (!isAdmin(apiUser)) {
+    return NextResponse.json({ error: "Admin privileges required" }, { status: 403 });
+  }
+
+  const supabase = await createClient();
 
   try {
     const body = await request.json();
@@ -59,6 +65,11 @@ export async function PATCH(request: NextRequest) {
 
     if (!userId) {
       return NextResponse.json({ error: "User ID is required" }, { status: 400 });
+    }
+
+    // Validate show_in_taskpool is a boolean
+    if (typeof show_in_taskpool !== "boolean") {
+      return NextResponse.json({ error: "show_in_taskpool must be a boolean" }, { status: 400 });
     }
 
     const { data, error } = await supabase

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { encrypt } from "@/lib/shared/crypto";
 
 const MICROSOFT_TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
 const MICROSOFT_GRAPH_URL = "https://graph.microsoft.com/v1.0";
@@ -101,8 +102,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Store the email connection in database
-    // Note: In production, encrypt the tokens before storing
+    // Store the email connection in database with encrypted tokens
     const expiresAt = new Date(Date.now() + expires_in * 1000);
 
     const { error: dbError } = await supabase
@@ -112,8 +112,8 @@ export async function GET(request: NextRequest) {
         provider: "microsoft",
         email: microsoftUser.mail || microsoftUser.userPrincipalName,
         display_name: microsoftUser.displayName,
-        access_token: access_token, // Should be encrypted in production
-        refresh_token: refresh_token, // Should be encrypted in production
+        access_token: encrypt(access_token), // Encrypted with AES-256-GCM
+        refresh_token: encrypt(refresh_token), // Encrypted with AES-256-GCM
         expires_at: expiresAt.toISOString(),
         scopes: ["Mail.Read", "Mail.ReadWrite", "Mail.Send", "User.Read"],
         updated_at: new Date().toISOString(),

@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -143,7 +144,7 @@ interface CalendarWidgetProps {
   size?: "small" | "medium" | "large";
 }
 
-export function CalendarWidget({ className, size = "medium" }: CalendarWidgetProps) {
+function CalendarWidgetBase({ className, size = "medium" }: CalendarWidgetProps) {
   const router = useRouter();
   const { calendars, toggleCalendar, calendarSettings } = useDashboard();
   const [showCalendarPicker, setShowCalendarPicker] = useState(false);
@@ -432,5 +433,14 @@ function EventCard({
         </Tooltip>
       </div>
     </div>
+  );
+}
+
+// Export with error boundary wrapping
+export function CalendarWidget(props: CalendarWidgetProps) {
+  return (
+    <ErrorBoundary name="Calendar Widget" compact>
+      <CalendarWidgetBase {...props} />
+    </ErrorBoundary>
   );
 }

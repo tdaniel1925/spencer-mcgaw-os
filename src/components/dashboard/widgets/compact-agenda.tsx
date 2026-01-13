@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -107,7 +108,7 @@ interface CompactAgendaProps {
   maxItems?: number;
 }
 
-export function CompactAgenda({ maxItems = 4 }: CompactAgendaProps) {
+function CompactAgendaBase({ maxItems = 4 }: CompactAgendaProps) {
   const router = useRouter();
   const { calendars } = useDashboard();
 
@@ -227,5 +228,14 @@ export function CompactAgenda({ maxItems = 4 }: CompactAgendaProps) {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+// Export with error boundary wrapping
+export function CompactAgenda(props: CompactAgendaProps) {
+  return (
+    <ErrorBoundary name="Today's Agenda" compact>
+      <CompactAgendaBase {...props} />
+    </ErrorBoundary>
   );
 }

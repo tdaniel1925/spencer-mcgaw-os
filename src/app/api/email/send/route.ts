@@ -1,7 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { decrypt } from "@/lib/shared/crypto";
+import { z } from "zod";
 
 const MICROSOFT_GRAPH_URL = "https://graph.microsoft.com/v1.0";
+
+// Email validation schema
+const emailSchema = z.string().email();
+const emailArraySchema = z.array(emailSchema).min(1).max(50);
+
+const sendEmailSchema = z.object({
+  to: emailArraySchema,
+  cc: z.array(emailSchema).max(50).optional(),
+  bcc: z.array(emailSchema).max(50).optional(),
+  subject: z.string().min(1).max(500),
+  content: z.string().max(1000000), // 1MB max content
+  contentType: z.enum(["html", "text"]).default("html"),
+  attachments: z.array(z.object({
+    name: z.string().max(255),
+    contentType: z.string().max(100),
+    content: z.string(), // Base64
+  })).max(10).optional().default([]),
+  replyToId: z.string().optional(),
+  saveToSentItems: z.boolean().default(true),
+});
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -28,15 +50,17 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { to, cc, bcc, subject, content, contentType = "html", attachments = [], replyToId, saveToSentItems = true } = body;
 
-    // Validate required fields
-    if (!to || !to.length || !subject) {
+    // Validate with Zod schema
+    const parseResult = sendEmailSchema.safeParse(body);
+    if (!parseResult.success) {
       return NextResponse.json(
-        { error: "Missing required fields: to, subject" },
+        { error: "Invalid request", details: parseResult.error.flatten().fieldErrors },
         { status: 400 }
       );
     }
+
+    const { to, cc, bcc, subject, content, contentType, attachments, replyToId, saveToSentItems } = parseResult.data;
 
     // Build the email message
     const message: any = {
@@ -87,11 +111,12 @@ export async function POST(request: NextRequest) {
       };
     }
 
-    // Send the email via Microsoft Graph
+    // Send the email via Microsoft Graph (decrypt stored token)
+    const accessToken = decrypt(connection.access_token);
     const response = await fetch(endpoint, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${connection.access_token}`,
+        Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(requestBody),

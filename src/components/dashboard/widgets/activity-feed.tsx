@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -94,7 +95,7 @@ interface ActivityFeedProps {
   loading?: boolean;
 }
 
-export function ActivityFeed({
+function ActivityFeedBase({
   activities = demoActivities,
   maxItems = 5,
   loading = false,
@@ -209,5 +210,14 @@ export function ActivityFeed({
         </ScrollArea>
       </CardContent>
     </Card>
+  );
+}
+
+// Export with error boundary wrapping
+export function ActivityFeed(props: ActivityFeedProps) {
+  return (
+    <ErrorBoundary name="Activity Feed" compact>
+      <ActivityFeedBase {...props} />
+    </ErrorBoundary>
   );
 }

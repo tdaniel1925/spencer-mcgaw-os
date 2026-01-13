@@ -85,6 +85,7 @@ import {
   FolderHeart,
   ArrowUpDown,
   RefreshCw,
+  RotateCcw,
   Info,
   CheckCircle,
   AlertCircle,
@@ -166,6 +167,8 @@ export default function FilesPage() {
     getRecentFiles,
     getStarredFiles,
     getTrashedFiles,
+    emptyTrash,
+    restoreFile,
   } = useFiles();
 
   // Local state
@@ -186,6 +189,9 @@ export default function FilesPage() {
   const [sectionFiles, setSectionFiles] = useState<FileRecord[]>([]);
   const [previewFile, setPreviewFile] = useState<FileRecord | null>(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [showEmptyTrashDialog, setShowEmptyTrashDialog] = useState(false);
+  const [isEmptyingTrash, setIsEmptyingTrash] = useState(false);
+  const [permanentDelete, setPermanentDelete] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -293,13 +299,55 @@ export default function FilesPage() {
     if (deleteTarget) {
       if (deleteTarget.type === "folder") {
         await deleteFolder(deleteTarget.id);
+        toast.success("Folder deleted");
       } else {
-        await deleteFile(deleteTarget.id);
+        // If we're in trash or permanent delete is requested, delete permanently
+        const isPermanent = activeSection === "trash" || permanentDelete;
+        await deleteFile(deleteTarget.id, isPermanent);
+        toast.success(isPermanent ? "File permanently deleted" : "File moved to trash");
       }
       setDeleteTarget(null);
       setShowDeleteDialog(false);
+      setPermanentDelete(false);
+      // Refresh trash if we're viewing it
+      if (activeSection === "trash") {
+        const trashed = await getTrashedFiles();
+        setSectionFiles(trashed);
+      }
     }
-  }, [deleteTarget, deleteFolder, deleteFile]);
+  }, [deleteTarget, deleteFolder, deleteFile, activeSection, permanentDelete, getTrashedFiles]);
+
+  // Handle restore from trash
+  const handleRestore = useCallback(async (fileId: string) => {
+    const success = await restoreFile(fileId);
+    if (success) {
+      toast.success("File restored");
+      // Refresh trash view
+      const trashed = await getTrashedFiles();
+      setSectionFiles(trashed);
+    } else {
+      toast.error("Failed to restore file");
+    }
+  }, [restoreFile, getTrashedFiles]);
+
+  // Handle empty trash
+  const handleEmptyTrash = useCallback(async () => {
+    setIsEmptyingTrash(true);
+    try {
+      const result = await emptyTrash();
+      if (result.success) {
+        toast.success(`Permanently deleted ${result.deletedCount} file${result.deletedCount !== 1 ? 's' : ''}`);
+        setSectionFiles([]);
+      } else {
+        toast.error("Failed to empty trash");
+      }
+    } catch {
+      toast.error("Failed to empty trash");
+    } finally {
+      setIsEmptyingTrash(false);
+      setShowEmptyTrashDialog(false);
+    }
+  }, [emptyTrash]);
 
   // Handle share
   const handleShare = useCallback(async () => {
@@ -536,6 +584,18 @@ export default function FilesPage() {
               <Button variant="ghost" size="icon" onClick={refreshCurrentFolder}>
                 <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} />
               </Button>
+
+              {/* Empty Trash - only show in trash section */}
+              {activeSection === "trash" && sectionFiles.length > 0 && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setShowEmptyTrashDialog(true)}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Empty Trash
+                </Button>
+              )}
             </div>
 
             {/* Selection Bar */}
@@ -800,36 +860,55 @@ export default function FilesPage() {
                               <Download className="h-4 w-4 mr-2" />
                               Download
                             </ContextMenuItem>
-                            <ContextMenuItem onClick={() => { setShareTarget(file); setShowShareDialog(true); }}>
-                              <Share2 className="h-4 w-4 mr-2" />
-                              Share
-                            </ContextMenuItem>
-                            <ContextMenuSeparator />
-                            <ContextMenuItem onClick={() => starFile(file.id, !file.isStarred)}>
-                              {file.isStarred ? (
-                                <>
-                                  <StarOff className="h-4 w-4 mr-2" />
-                                  Remove Star
-                                </>
-                              ) : (
-                                <>
-                                  <Star className="h-4 w-4 mr-2" />
-                                  Add Star
-                                </>
-                              )}
-                            </ContextMenuItem>
-                            <ContextMenuItem onClick={() => openRename(file.id, file.name, "file")}>
-                              <Edit3 className="h-4 w-4 mr-2" />
-                              Rename
-                            </ContextMenuItem>
-                            <ContextMenuSeparator />
-                            <ContextMenuItem
-                              className="text-destructive"
-                              onClick={() => openDelete(file.id, file.name, "file")}
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Delete
-                            </ContextMenuItem>
+                            {activeSection === "trash" ? (
+                              <>
+                                <ContextMenuSeparator />
+                                <ContextMenuItem onClick={() => handleRestore(file.id)}>
+                                  <RotateCcw className="h-4 w-4 mr-2" />
+                                  Restore
+                                </ContextMenuItem>
+                                <ContextMenuItem
+                                  className="text-destructive"
+                                  onClick={() => openDelete(file.id, file.name, "file")}
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Delete Permanently
+                                </ContextMenuItem>
+                              </>
+                            ) : (
+                              <>
+                                <ContextMenuItem onClick={() => { setShareTarget(file); setShowShareDialog(true); }}>
+                                  <Share2 className="h-4 w-4 mr-2" />
+                                  Share
+                                </ContextMenuItem>
+                                <ContextMenuSeparator />
+                                <ContextMenuItem onClick={() => starFile(file.id, !file.isStarred)}>
+                                  {file.isStarred ? (
+                                    <>
+                                      <StarOff className="h-4 w-4 mr-2" />
+                                      Remove Star
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Star className="h-4 w-4 mr-2" />
+                                      Add Star
+                                    </>
+                                  )}
+                                </ContextMenuItem>
+                                <ContextMenuItem onClick={() => openRename(file.id, file.name, "file")}>
+                                  <Edit3 className="h-4 w-4 mr-2" />
+                                  Rename
+                                </ContextMenuItem>
+                                <ContextMenuSeparator />
+                                <ContextMenuItem
+                                  className="text-destructive"
+                                  onClick={() => openDelete(file.id, file.name, "file")}
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Delete
+                                </ContextMenuItem>
+                              </>
+                            )}
                           </ContextMenuContent>
                         </ContextMenu>
                       );
@@ -988,13 +1067,30 @@ export default function FilesPage() {
       </Dialog>
 
       {/* Delete Dialog */}
-      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+      <Dialog open={showDeleteDialog} onOpenChange={(open) => {
+        setShowDeleteDialog(open);
+        if (!open) setPermanentDelete(false);
+      }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Delete {deleteTarget?.type}?</DialogTitle>
+            <DialogTitle>
+              {activeSection === "trash" ? "Permanently delete" : "Delete"} {deleteTarget?.type}?
+            </DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete "{deleteTarget?.name}"?
-              {deleteTarget?.type === "folder" && " This will also delete all files inside."}
+              {activeSection === "trash" ? (
+                <>
+                  Are you sure you want to permanently delete "{deleteTarget?.name}"?
+                  <span className="block mt-2 text-destructive font-medium">
+                    This action cannot be undone.
+                  </span>
+                </>
+              ) : (
+                <>
+                  Are you sure you want to delete "{deleteTarget?.name}"?
+                  {deleteTarget?.type === "folder" && " This will also delete all files inside."}
+                  {deleteTarget?.type === "file" && " The file will be moved to trash."}
+                </>
+              )}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -1002,7 +1098,37 @@ export default function FilesPage() {
               Cancel
             </Button>
             <Button variant="destructive" onClick={handleDelete}>
-              Delete
+              {activeSection === "trash" ? "Delete Permanently" : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Empty Trash Confirmation Dialog */}
+      <Dialog open={showEmptyTrashDialog} onOpenChange={setShowEmptyTrashDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Empty Trash?</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to permanently delete all {sectionFiles.length} item{sectionFiles.length !== 1 ? 's' : ''} in the trash?
+              <span className="block mt-2 text-destructive font-medium">
+                This action cannot be undone.
+              </span>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEmptyTrashDialog(false)} disabled={isEmptyingTrash}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleEmptyTrash} disabled={isEmptyingTrash}>
+              {isEmptyingTrash ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Emptying...
+                </>
+              ) : (
+                "Empty Trash"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

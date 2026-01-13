@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { decrypt } from "@/lib/shared/crypto";
 
 const MICROSOFT_GRAPH_URL = "https://graph.microsoft.com/v1.0";
 
@@ -86,12 +87,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Fetch the full email from Microsoft Graph
+    // Fetch the full email from Microsoft Graph (decrypt stored token)
+    const accessToken = decrypt(connection.access_token);
     const emailResponse = await fetch(
       `${MICROSOFT_GRAPH_URL}/me/messages/${emailId}?$expand=attachments`,
       {
         headers: {
-          Authorization: `Bearer ${connection.access_token}`,
+          Authorization: `Bearer ${accessToken}`,
         },
       }
     );

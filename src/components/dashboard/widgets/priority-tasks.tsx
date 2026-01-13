@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -53,7 +54,7 @@ const priorityDotColors = {
   low: "bg-green-500",
 };
 
-export function PriorityTasks({
+function PriorityTasksBase({
   tasks,
   loading = false,
   onCompleteTask,
@@ -207,5 +208,14 @@ export function PriorityTasks({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+// Export with error boundary wrapping
+export function PriorityTasks(props: PriorityTasksProps) {
+  return (
+    <ErrorBoundary name="Priority Tasks" compact>
+      <PriorityTasksBase {...props} />
+    </ErrorBoundary>
   );
 }

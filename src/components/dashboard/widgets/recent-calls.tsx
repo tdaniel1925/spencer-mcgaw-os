@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -41,7 +42,7 @@ const statusConfig = {
   archived: { label: "Handled", color: "bg-green-100 text-green-700" },
 };
 
-export function RecentCalls({ calls, loading = false, maxItems = 4 }: RecentCallsProps) {
+function RecentCallsBase({ calls, loading = false, maxItems = 4 }: RecentCallsProps) {
   const router = useRouter();
   const displayCalls = calls.slice(0, maxItems);
   const todayCount = calls.filter((call) => {
@@ -147,5 +148,14 @@ export function RecentCalls({ calls, loading = false, maxItems = 4 }: RecentCall
         )}
       </CardContent>
     </Card>
+  );
+}
+
+// Export with error boundary wrapping
+export function RecentCalls(props: RecentCallsProps) {
+  return (
+    <ErrorBoundary name="Recent Calls" compact>
+      <RecentCallsBase {...props} />
+    </ErrorBoundary>
   );
 }

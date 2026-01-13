@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { KPICard } from "./kpi-card";
+import { ErrorBoundary } from "@/components/ui/error-boundary";
 import {
   ListTodo,
   AlertTriangle,
@@ -22,7 +23,7 @@ interface KPIRibbonProps {
   loading?: boolean;
 }
 
-export function KPIRibbon({ stats, loading = false }: KPIRibbonProps) {
+function KPIRibbonBase({ stats, loading = false }: KPIRibbonProps) {
   const router = useRouter();
 
   return (
@@ -72,5 +73,14 @@ export function KPIRibbon({ stats, loading = false }: KPIRibbonProps) {
         loading={loading}
       />
     </div>
+  );
+}
+
+// Export with error boundary wrapping
+export function KPIRibbon(props: KPIRibbonProps) {
+  return (
+    <ErrorBoundary name="KPI Ribbon" compact>
+      <KPIRibbonBase {...props} />
+    </ErrorBoundary>
   );
 }
