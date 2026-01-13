@@ -165,6 +165,16 @@ export default function SettingsPage() {
     confirmPassword: "",
   });
   const [savingPassword, setSavingPassword] = useState(false);
+
+  // Call data auto-delete settings
+  const [callAutoDelete, setCallAutoDelete] = useState({
+    enabled: false,
+    deleteAfterDays: 30,
+    deleteOnDay: "", // e.g., "monday", "sunday", or empty for daily
+  });
+  const [savingCallSettings, setSavingCallSettings] = useState(false);
+  const [callCount, setCallCount] = useState(0);
+  const [clearingCalls, setClearingCalls] = useState(false);
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -204,6 +214,18 @@ export default function SettingsPage() {
         if (notificationsRes.ok) {
           const data = await notificationsRes.json();
           setNotifications(data);
+        }
+
+        // Load call data settings
+        const callSettingsRes = await fetch("/api/settings/call-data");
+        if (callSettingsRes.ok) {
+          const data = await callSettingsRes.json();
+          setCallAutoDelete({
+            enabled: data.autoDeleteEnabled || false,
+            deleteAfterDays: data.deleteAfterDays || 30,
+            deleteOnDay: data.deleteOnDay || "",
+          });
+          setCallCount(data.callCount || 0);
         }
       } catch (error) {
         console.error("Error loading settings:", error);
@@ -290,6 +312,58 @@ export default function SettingsPage() {
   // Toggle notification preference
   const toggleNotification = (key: keyof NotificationPreferences) => {
     setNotifications(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  // Save call auto-delete settings
+  const handleSaveCallSettings = async () => {
+    setSavingCallSettings(true);
+    try {
+      const response = await fetch("/api/settings/call-data", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          autoDeleteEnabled: callAutoDelete.enabled,
+          deleteAfterDays: callAutoDelete.deleteAfterDays,
+          deleteOnDay: callAutoDelete.deleteOnDay,
+        }),
+      });
+
+      if (response.ok) {
+        toast.success("Call data settings saved successfully");
+      } else {
+        const data = await response.json();
+        toast.error(data.error || "Failed to save call data settings");
+      }
+    } catch (error) {
+      console.error("Error saving call data settings:", error);
+      toast.error("Failed to save call data settings");
+    } finally {
+      setSavingCallSettings(false);
+    }
+  };
+
+  // Clear all call data
+  const handleClearAllCalls = async () => {
+    setClearingCalls(true);
+    try {
+      const response = await fetch("/api/org-feed?type=calls", {
+        method: "DELETE",
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        toast.success(data.message || "All calls cleared successfully");
+        setCallCount(0);
+      } else {
+        const data = await response.json();
+        toast.error(data.error || "Failed to clear calls");
+      }
+    } catch (error) {
+      console.error("Error clearing calls:", error);
+      toast.error("Failed to clear calls");
+    } finally {
+      setClearingCalls(false);
+    }
   };
 
   // Password validation checks
@@ -489,6 +563,12 @@ export default function SettingsPage() {
               <Mail className="h-4 w-4" />
               My Email Accounts
             </TabsTrigger>
+            {isAdmin && (
+              <TabsTrigger value="data-management" className="flex items-center gap-2">
+                <Phone className="h-4 w-4" />
+                Call Data
+              </TabsTrigger>
+            )}
           </TabsList>
 
           {/* Profile Settings */}
@@ -1151,6 +1231,141 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {/* Call Data Management - Admin Only */}
+          {isAdmin && (
+            <TabsContent value="data-management">
+              <div className="space-y-6">
+                {/* Current Call Data */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Phone className="h-5 w-5" />
+                      Call Data Management
+                    </CardTitle>
+                    <CardDescription>
+                      Manage phone call records and configure automatic cleanup
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    {/* Current Stats */}
+                    <div className="p-4 bg-muted/50 rounded-lg">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-muted-foreground">Total Call Records</p>
+                          <p className="text-2xl font-bold">{callCount.toLocaleString()}</p>
+                        </div>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={handleClearAllCalls}
+                          disabled={clearingCalls || callCount === 0}
+                        >
+                          {clearingCalls ? (
+                            <>
+                              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                              Clearing...
+                            </>
+                          ) : (
+                            <>
+                              <XCircle className="h-4 w-4 mr-2" />
+                              Clear All Calls
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+
+                    <Separator />
+
+                    {/* Auto-Delete Settings */}
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium text-sm">Auto-Delete Call Records</p>
+                          <p className="text-xs text-muted-foreground">
+                            Automatically delete old call records to manage storage
+                          </p>
+                        </div>
+                        <Switch
+                          checked={callAutoDelete.enabled}
+                          onCheckedChange={(checked) =>
+                            setCallAutoDelete(prev => ({ ...prev, enabled: checked }))
+                          }
+                        />
+                      </div>
+
+                      {callAutoDelete.enabled && (
+                        <>
+                          <Separator />
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="deleteAfterDays">Delete calls older than</Label>
+                              <div className="flex items-center gap-2">
+                                <Input
+                                  id="deleteAfterDays"
+                                  type="number"
+                                  min="1"
+                                  max="365"
+                                  value={callAutoDelete.deleteAfterDays}
+                                  onChange={(e) =>
+                                    setCallAutoDelete(prev => ({
+                                      ...prev,
+                                      deleteAfterDays: parseInt(e.target.value) || 30,
+                                    }))
+                                  }
+                                  className="w-24"
+                                />
+                                <span className="text-sm text-muted-foreground">days</span>
+                              </div>
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="deleteOnDay">Run cleanup on</Label>
+                              <Select
+                                value={callAutoDelete.deleteOnDay}
+                                onValueChange={(value) =>
+                                  setCallAutoDelete(prev => ({ ...prev, deleteOnDay: value }))
+                                }
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Every day" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="">Every day</SelectItem>
+                                  <SelectItem value="sunday">Sunday</SelectItem>
+                                  <SelectItem value="monday">Monday</SelectItem>
+                                  <SelectItem value="tuesday">Tuesday</SelectItem>
+                                  <SelectItem value="wednesday">Wednesday</SelectItem>
+                                  <SelectItem value="thursday">Thursday</SelectItem>
+                                  <SelectItem value="friday">Friday</SelectItem>
+                                  <SelectItem value="saturday">Saturday</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Cleanup runs at midnight in your company timezone
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Save Button */}
+                <div className="flex justify-end">
+                  <Button onClick={handleSaveCallSettings} disabled={savingCallSettings}>
+                    {savingCallSettings ? (
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Save className="h-4 w-4 mr-2" />
+                    )}
+                    {savingCallSettings ? "Saving..." : "Save Call Settings"}
+                  </Button>
+                </div>
+              </div>
+            </TabsContent>
+          )}
 
           {/* My Email Accounts */}
           <TabsContent value="my-emails">

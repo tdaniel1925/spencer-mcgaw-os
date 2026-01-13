@@ -49,7 +49,20 @@ import {
   PhoneIncoming,
   PhoneOutgoing,
   ClipboardList,
+  Trash2,
+  AlertTriangle,
 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useAuth } from "@/lib/supabase/auth-context";
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
@@ -125,12 +138,19 @@ function formatDuration(seconds: number): string {
 }
 
 export default function OrgFeedPage() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin" || user?.role === "owner";
+
   const [items, setItems] = useState<OrgFeedItem[]>([]);
   const [totalCount, setTotalCount] = useState(0);
+  const [callCount, setCallCount] = useState(0);
+  const [emailCount, setEmailCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "calls" | "emails">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+  const [clearDialogOpen, setClearDialogOpen] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [taskDialog, setTaskDialog] = useState<TaskCreationState>({
     open: false,
     item: null,
@@ -191,6 +211,8 @@ export default function OrgFeedPage() {
         const data = await response.json();
         setItems(data.items || []);
         setTotalCount(data.total || 0);
+        setCallCount(data.callCount || 0);
+        setEmailCount(data.emailCount || 0);
       } else {
         toast.error("Failed to load feed");
       }
@@ -201,6 +223,30 @@ export default function OrgFeedPage() {
       setLoading(false);
     }
   }, [filter]);
+
+  // Clear all calls (admin only)
+  const handleClearCalls = async () => {
+    setClearing(true);
+    try {
+      const response = await fetch("/api/org-feed?type=calls", {
+        method: "DELETE",
+      });
+      if (response.ok) {
+        const data = await response.json();
+        toast.success(data.message || "Calls cleared successfully");
+        setClearDialogOpen(false);
+        fetchFeed();
+      } else {
+        const data = await response.json();
+        toast.error(data.error || "Failed to clear calls");
+      }
+    } catch (error) {
+      console.error("Error clearing calls:", error);
+      toast.error("Failed to clear calls");
+    } finally {
+      setClearing(false);
+    }
+  };
 
   useEffect(() => {
     fetchFeed();
@@ -306,9 +352,7 @@ export default function OrgFeedPage() {
     );
   });
 
-  // Stats
-  const callCount = items.filter((i) => i.type === "call").length;
-  const emailCount = items.filter((i) => i.type === "email").length;
+  // Stats - use actual counts from API, not limited client-side items
   const pendingCount = items.filter((i) => !i.hasTask).length;
 
   return (
@@ -324,21 +368,21 @@ export default function OrgFeedPage() {
                 <TabsTrigger value="all" className="gap-2 px-3">
                   All
                   <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">
-                    {totalCount}
+                    {callCount + emailCount}
                   </Badge>
                 </TabsTrigger>
                 <TabsTrigger value="calls" className="gap-2 px-3">
                   <Phone className="h-4 w-4" />
                   Calls
                   <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">
-                    {filter === "calls" ? totalCount : callCount}
+                    {callCount}
                   </Badge>
                 </TabsTrigger>
                 <TabsTrigger value="emails" className="gap-2 px-3">
                   <Mail className="h-4 w-4" />
                   Emails
                   <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">
-                    {filter === "emails" ? totalCount : emailCount}
+                    {emailCount}
                   </Badge>
                 </TabsTrigger>
               </TabsList>
@@ -361,6 +405,19 @@ export default function OrgFeedPage() {
               <RefreshCw className="h-4 w-4 mr-2" />
               Refresh
             </Button>
+
+            {/* Clear All Calls (Admin only) */}
+            {isAdmin && callCount > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-destructive hover:text-destructive"
+                onClick={() => setClearDialogOpen(true)}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Clear Calls
+              </Button>
+            )}
 
             {/* Stats */}
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -541,6 +598,42 @@ export default function OrgFeedPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Clear Calls Confirmation Dialog */}
+      <AlertDialog open={clearDialogOpen} onOpenChange={setClearDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Clear All Calls
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete all {callCount} call records from the system.
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={clearing}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleClearCalls}
+              disabled={clearing}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {clearing ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Clearing...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Clear All Calls
+                </>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

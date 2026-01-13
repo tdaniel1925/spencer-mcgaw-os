@@ -63,9 +63,17 @@ export async function GET(request: NextRequest) {
 
   try {
     const feedItems: OrgFeedItem[] = [];
+    let totalCallCount = 0;
+    let totalEmailCount = 0;
 
     // Fetch calls if type is 'all' or 'calls'
     if (type === "all" || type === "calls") {
+      // Get actual count from database
+      const countResult = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(calls);
+      totalCallCount = Number(countResult[0]?.count || 0);
+
       const callsData = await db
         .select({
           id: calls.id,
@@ -136,6 +144,12 @@ export async function GET(request: NextRequest) {
 
     // Fetch email classifications if type is 'all' or 'emails'
     if (type === "all" || type === "emails") {
+      // Get actual email count from database
+      const { count: emailCountResult } = await supabase
+        .from("email_classifications")
+        .select("*", { count: "exact", head: true });
+      totalEmailCount = emailCountResult || 0;
+
       // Get global email accounts (where is_global = true)
       // For now, we'll fetch all email classifications since we haven't added the global flag yet
       const { data: emailClassifications, error: emailError } = await supabase
@@ -229,15 +243,93 @@ export async function GET(request: NextRequest) {
     // Apply offset and limit after combining
     const paginatedItems = feedItems.slice(offset, offset + limit);
 
+    // Calculate total based on type filter
+    const total = type === "calls" ? totalCallCount : type === "emails" ? totalEmailCount : totalCallCount + totalEmailCount;
+
     return NextResponse.json({
       items: paginatedItems,
-      total: feedItems.length,
-      hasMore: offset + limit < feedItems.length,
+      total,
+      callCount: totalCallCount,
+      emailCount: totalEmailCount,
+      hasMore: offset + limit < total,
     });
   } catch (error) {
     console.error("[Org Feed API] Error:", error);
     return NextResponse.json(
       { error: "Failed to fetch org feed" },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * DELETE /api/org-feed
+ * Delete calls (admin only)
+ * Query params:
+ * - type: 'all' | 'calls' - what to delete
+ * - olderThan: ISO date string - only delete items older than this date
+ */
+export async function DELETE(request: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  // Check if user is admin
+  const { data: profile } = await supabase
+    .from("user_profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  if (!profile || !["owner", "admin"].includes(profile.role)) {
+    return NextResponse.json({ error: "Admin access required" }, { status: 403 });
+  }
+
+  const searchParams = request.nextUrl.searchParams;
+  const deleteType = searchParams.get("type") || "calls";
+  const olderThan = searchParams.get("olderThan");
+
+  try {
+    let deletedCount = 0;
+
+    if (deleteType === "calls" || deleteType === "all") {
+      // Get count before deleting
+      const countResult = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(calls);
+      const beforeCount = Number(countResult[0]?.count || 0);
+
+      // Build delete query
+      if (olderThan) {
+        // Delete calls older than specified date
+        await db
+          .delete(calls)
+          .where(sql`${calls.createdAt} < ${new Date(olderThan)}`);
+      } else {
+        // Delete all calls
+        await db.delete(calls);
+      }
+
+      // Get count after deleting to calculate deleted
+      const afterResult = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(calls);
+      const afterCount = Number(afterResult[0]?.count || 0);
+      deletedCount = beforeCount - afterCount;
+    }
+
+    return NextResponse.json({
+      success: true,
+      deletedCount,
+      message: `Deleted ${deletedCount} call${deletedCount !== 1 ? 's' : ''}`,
+    });
+  } catch (error) {
+    console.error("[Org Feed API] Delete error:", error);
+    return NextResponse.json(
+      { error: "Failed to delete items" },
       { status: 500 }
     );
   }
