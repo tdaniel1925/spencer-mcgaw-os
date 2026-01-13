@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { Header } from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -149,13 +150,16 @@ const categoryConfig: Record<string, { label: string; className: string }> = {
 };
 
 export default function MyInboxPage() {
+  const searchParams = useSearchParams();
   const { accounts: contextAccounts, refreshAccounts } = useEmail();
   const [items, setItems] = useState<InboxItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
   const [status, setStatus] = useState<"all" | "pending" | "approved" | "dismissed">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [accountCount, setAccountCount] = useState(0);
+  const hasAutoSynced = useRef(false);
   const [taskDialog, setTaskDialog] = useState<TaskCreationState>({
     open: false,
     item: null,
@@ -173,6 +177,76 @@ export default function MyInboxPage() {
   const [loadingAccounts, setLoadingAccounts] = useState(false);
   const [disconnectConfirm, setDisconnectConfirm] = useState<EmailAccount | null>(null);
   const [disconnecting, setDisconnecting] = useState(false);
+
+  // Sync emails from Microsoft Graph and classify with AI
+  const syncEmails = useCallback(async () => {
+    setSyncing(true);
+    try {
+      const response = await fetch("/api/email-intelligence/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        toast.success(`Synced ${data.processed} emails, created ${data.tasksCreated} tasks`);
+        // Refresh inbox after sync
+        const params = new URLSearchParams();
+        if (status !== "all") params.set("status", status);
+        params.set("limit", "100");
+        const inboxResponse = await fetch(`/api/my-inbox?${params}`);
+        if (inboxResponse.ok) {
+          const inboxData = await inboxResponse.json();
+          setItems(inboxData.items || []);
+          setAccountCount(inboxData.accountCount || 0);
+        }
+      } else {
+        const errorData = await response.json();
+        toast.error(errorData.error || "Failed to sync emails");
+      }
+    } catch (error) {
+      console.error("Error syncing emails:", error);
+      toast.error("Failed to sync emails");
+    } finally {
+      setSyncing(false);
+    }
+  }, [status]);
+
+  // Auto-sync on page load if coming from OAuth callback or if no emails
+  useEffect(() => {
+    const isSyncing = searchParams.get("syncing") === "true";
+    const success = searchParams.get("success");
+
+    if (success) {
+      toast.success(success);
+    }
+
+    // If coming from OAuth callback with syncing flag, show syncing state
+    if (isSyncing && !hasAutoSynced.current) {
+      hasAutoSynced.current = true;
+      setSyncing(true);
+      // Check for sync completion by polling
+      const checkSync = async () => {
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        const params = new URLSearchParams();
+        if (status !== "all") params.set("status", status);
+        params.set("limit", "100");
+        const response = await fetch(`/api/my-inbox?${params}`);
+        if (response.ok) {
+          const data = await response.json();
+          setItems(data.items || []);
+          setAccountCount(data.accountCount || 0);
+          if (data.items?.length > 0) {
+            setSyncing(false);
+            toast.success("Emails synced successfully");
+          } else {
+            // Keep checking for a bit
+            setTimeout(checkSync, 3000);
+          }
+        }
+      };
+      checkSync();
+    }
+  }, [searchParams, status]);
 
   // Derive email accounts from shared context - filter for accounts the user owns
   const emailAccounts: EmailAccount[] = contextAccounts.map((a) => ({
@@ -510,13 +584,31 @@ export default function MyInboxPage() {
                   Connect Email
                 </Button>
               </div>
+            ) : syncing ? (
+              <div className="flex flex-col items-center justify-center h-64 text-center">
+                <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+                <h3 className="text-lg font-medium">Syncing your emails...</h3>
+                <p className="text-sm text-muted-foreground mt-2 max-w-md">
+                  Fetching emails from Microsoft and classifying them with AI.
+                  This may take a moment.
+                </p>
+              </div>
             ) : filteredItems.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-64 text-center">
                 <Inbox className="h-12 w-12 text-muted-foreground mb-4" />
                 <h3 className="text-lg font-medium">Your inbox is empty</h3>
-                <p className="text-sm text-muted-foreground mt-2">
-                  New emails will appear here as they are synced.
+                <p className="text-sm text-muted-foreground mt-2 max-w-md">
+                  No emails have been synced yet. Click the button below to fetch
+                  and classify your emails with AI.
                 </p>
+                <Button className="mt-4" onClick={syncEmails} disabled={syncing}>
+                  {syncing ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                  )}
+                  Sync Emails Now
+                </Button>
               </div>
             ) : (
               filteredItems.map((item) => (

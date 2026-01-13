@@ -126,9 +126,24 @@ export async function GET(request: NextRequest) {
       // Don't fail completely - connection might still work
     }
 
-    // Clear the state cookie
+    // Trigger initial email sync in the background
+    // This runs async - we don't wait for it to complete
+    const syncUrl = new URL("/api/email-intelligence/sync", request.url);
+    fetch(syncUrl.toString(), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        // Pass auth cookie for authentication
+        Cookie: request.headers.get("cookie") || "",
+      },
+    }).catch((err) => {
+      console.error("Background sync trigger failed:", err);
+      // Don't fail the callback - sync can be triggered manually later
+    });
+
+    // Clear the state cookie and redirect to inbox
     const response = NextResponse.redirect(
-      new URL("/email?success=Email%20connected%20successfully", request.url)
+      new URL("/my-inbox?success=Email%20connected%20successfully&syncing=true", request.url)
     );
     response.cookies.delete("oauth_state");
 
