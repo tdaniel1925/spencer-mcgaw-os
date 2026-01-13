@@ -134,6 +134,7 @@ export default function SettingsPage() {
   const [connecting, setConnecting] = useState(false);
   const [orphanedDataCount, setOrphanedDataCount] = useState(0);
   const [clearingData, setClearingData] = useState(false);
+  const [updatingRoutingId, setUpdatingRoutingId] = useState<string | null>(null);
 
   // Profile form state
   const [profile, setProfile] = useState<ProfileSettings>({
@@ -539,6 +540,7 @@ export default function SettingsPage() {
 
   // Handle email routing change (Personal Inbox vs Org Feed)
   const handleRoutingChange = async (accountId: string, isGlobal: boolean) => {
+    setUpdatingRoutingId(accountId);
     try {
       const response = await fetch(`/api/email/accounts/${accountId}`, {
         method: "PUT",
@@ -561,6 +563,8 @@ export default function SettingsPage() {
     } catch (error) {
       console.error("Error updating routing:", error);
       toast.error("Failed to update routing");
+    } finally {
+      setUpdatingRoutingId(null);
     }
   };
 
@@ -1467,28 +1471,34 @@ export default function SettingsPage() {
                             <div className="flex items-center gap-2">
                               <span className="text-sm text-muted-foreground">Route emails to:</span>
                             </div>
-                            <Select
-                              value={account.isGlobal ? "org" : "personal"}
-                              onValueChange={(value) => handleRoutingChange(account.id, value === "org")}
-                            >
-                              <SelectTrigger className="w-[180px]">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="personal">
-                                  <div className="flex items-center gap-2">
-                                    <User className="h-4 w-4" />
-                                    Personal Inbox
-                                  </div>
-                                </SelectItem>
-                                <SelectItem value="org">
-                                  <div className="flex items-center gap-2">
-                                    <Building className="h-4 w-4" />
-                                    Org Feed
-                                  </div>
-                                </SelectItem>
-                              </SelectContent>
-                            </Select>
+                            <div className="flex items-center gap-2">
+                              {updatingRoutingId === account.id && (
+                                <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" />
+                              )}
+                              <Select
+                                value={account.isGlobal ? "org" : "personal"}
+                                onValueChange={(value) => handleRoutingChange(account.id, value === "org")}
+                                disabled={updatingRoutingId === account.id}
+                              >
+                                <SelectTrigger className="w-[180px]">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="personal">
+                                    <div className="flex items-center gap-2">
+                                      <User className="h-4 w-4" />
+                                      Personal Inbox
+                                    </div>
+                                  </SelectItem>
+                                  <SelectItem value="org">
+                                    <div className="flex items-center gap-2">
+                                      <Building className="h-4 w-4" />
+                                      Org Feed
+                                    </div>
+                                  </SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
                           </div>
                         </div>
                       ))}
