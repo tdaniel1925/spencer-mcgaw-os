@@ -89,6 +89,7 @@ interface InboxItem {
   subject: string;
   summary: string | null;
   bodyPreview: string | null;
+  bodyText: string | null;
   category: string;
   priority: "low" | "medium" | "high" | "urgent";
   sentiment: string | null;
@@ -1184,10 +1185,14 @@ function InboxItemCard({
               )}
             </div>
 
-            {item.bodyPreview && (
+            {(item.bodyText || item.bodyPreview) && (
               <div className="bg-muted/30 rounded-lg p-3">
-                <span className="text-xs text-muted-foreground block mb-1">Preview:</span>
-                <p className="text-sm whitespace-pre-wrap">{item.bodyPreview}</p>
+                <span className="text-xs text-muted-foreground block mb-1">
+                  {item.bodyText ? "Full Email:" : "Preview:"}
+                </span>
+                <div className="text-sm whitespace-pre-wrap max-h-96 overflow-y-auto">
+                  {item.bodyText || item.bodyPreview}
+                </div>
               </div>
             )}
 

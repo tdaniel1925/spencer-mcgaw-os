@@ -158,6 +158,22 @@ export async function POST(request: NextRequest) {
             hasAttachments: email.hasAttachments,
           });
 
+          // Extract plain text from HTML body if needed
+          const bodyHtml = email.body?.content || "";
+          const bodyPreview = email.bodyPreview || "";
+          // Simple HTML to text conversion (strip tags)
+          const bodyText = bodyHtml
+            .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+            .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+            .replace(/<[^>]+>/g, " ")
+            .replace(/&nbsp;/g, " ")
+            .replace(/&amp;/g, "&")
+            .replace(/&lt;/g, "<")
+            .replace(/&gt;/g, ">")
+            .replace(/&quot;/g, '"')
+            .replace(/\s+/g, " ")
+            .trim();
+
           // Store classification with account_id for proper cleanup on disconnect
           // Also store email metadata (sender, subject, etc.) for display
           await supabase.from("email_classifications").insert({
@@ -169,6 +185,10 @@ export async function POST(request: NextRequest) {
             subject: email.subject || "(No Subject)",
             has_attachments: email.hasAttachments || false,
             received_at: new Date(email.receivedDateTime).toISOString(),
+            // Email body content
+            body_text: bodyText,
+            body_preview: bodyPreview,
+            body_html: bodyHtml,
             // Classification data
             category: classification.category,
             subcategory: classification.subcategory,

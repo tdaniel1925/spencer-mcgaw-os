@@ -13,6 +13,7 @@ export interface InboxItem {
   subject: string;
   summary: string | null;
   bodyPreview: string | null;
+  bodyText: string | null;
   category: string;
   priority: "low" | "medium" | "high" | "urgent";
   priorityScore: number;
@@ -108,7 +109,9 @@ export async function GET(request: NextRequest) {
         summary,
         key_points,
         confidence,
-        created_at
+        created_at,
+        body_text,
+        body_preview
       `, { count: "exact" })
       .in("account_id", accountIds)
       .order("received_at", { ascending: false, nullsFirst: false })
@@ -222,7 +225,8 @@ export async function GET(request: NextRequest) {
       hasTask: (actionItemsByEmail[email.email_message_id] || []).some(a => a.status === "completed"),
       matchedClientId: null, // Would need additional query to populate
       matchedClientName: null,
-      bodyPreview: null, // Not stored in classifications
+      bodyPreview: email.body_preview || null,
+      bodyText: email.body_text || null,
     }));
 
     // Apply status filter if provided
