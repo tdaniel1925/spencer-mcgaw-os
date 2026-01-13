@@ -330,12 +330,13 @@ ${email.body || email.bodyPreview || "(no content)"}
       sentiment: "neutral",
       urgency: "medium",
       requiresResponse: true,
-      summary: "Unable to classify email - manual review needed",
-      keyPoints: ["AI classification failed"],
+      summary: "AI classification unavailable - please review this email manually.",
+      keyPoints: ["Automatic classification was not available for this email"],
       actionItems: [
         {
           id: `action-${Date.now()}-0`,
-          title: "Manual review required",
+          title: "Review email", // Generic but will be replaced with email subject in sync
+          description: "This email needs manual review as AI classification was unavailable.",
           type: "review",
           priority: "medium",
           confidence: 0,

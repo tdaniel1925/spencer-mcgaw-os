@@ -240,12 +240,21 @@ export async function POST(request: NextRequest) {
           }
 
           for (const actionItem of classification.actionItems) {
+            // Use email subject as fallback if action item title is generic
+            const isGenericTitle = actionItem.title === "Manual review required" || !actionItem.title;
+            const taskTitle = isGenericTitle
+              ? `Review: ${email.subject || "(No Subject)"}`
+              : actionItem.title;
+            const taskDescription = isGenericTitle
+              ? `Email from ${email.from?.emailAddress?.name || "Unknown"} <${email.from?.emailAddress?.address || ""}>\n\n${classification.summary || "AI classification failed - please review this email manually."}`
+              : `${actionItem.description || ""}\n\nFrom email: ${email.subject}\nSender: ${email.from?.emailAddress?.name} <${email.from?.emailAddress?.address}>`;
+
             // Store in email_action_items with account_id for proper cleanup
             await supabase.from("email_action_items").insert({
               email_message_id: email.id,
               account_id: connection.id,
-              title: actionItem.title,
-              description: actionItem.description,
+              title: taskTitle,
+              description: actionItem.description || classification.summary,
               action_type: actionItem.type,
               mentioned_date: actionItem.dueDate ? new Date(actionItem.dueDate) : null,
               priority: actionItem.priority,
@@ -261,8 +270,8 @@ export async function POST(request: NextRequest) {
             const { data: newTask, error: taskError } = await supabase
               .from("tasks")
               .insert({
-                title: actionItem.title,
-                description: `${actionItem.description || ""}\n\nFrom email: ${email.subject}\nSender: ${email.from?.emailAddress?.name} <${email.from?.emailAddress?.address}>`,
+                title: taskTitle,
+                description: taskDescription,
                 action_type_id: taskPoolActionTypeId, // Optional - may be null
                 client_id: matchedClientId,
                 priority: actionItem.priority,
