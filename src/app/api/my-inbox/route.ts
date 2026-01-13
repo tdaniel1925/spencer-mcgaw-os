@@ -12,6 +12,7 @@ export interface InboxItem {
   };
   subject: string;
   summary: string | null;
+  bodyPreview: string | null;
   category: string;
   priority: "low" | "medium" | "high" | "urgent";
   priorityScore: number;
@@ -21,6 +22,10 @@ export interface InboxItem {
   hasAttachments: boolean;
   receivedAt: string;
   keyPoints: string[];
+  status: "pending" | "approved" | "dismissed" | "delegated";
+  hasTask: boolean;
+  matchedClientId: string | null;
+  matchedClientName: string | null;
   actionItems: Array<{
     id: string;
     title: string;
@@ -43,16 +48,31 @@ export async function GET(request: NextRequest) {
 
   const searchParams = request.nextUrl.searchParams;
   const category = searchParams.get("category");
+  const status = searchParams.get("status"); // pending, approved, dismissed
   const limit = parseInt(searchParams.get("limit") || "50");
   const offset = parseInt(searchParams.get("offset") || "0");
 
   try {
+    // Get ALL user's email accounts (both personal and global for debugging)
+    const { data: allAccounts } = await supabase
+      .from("email_connections")
+      .select("id, email, is_global")
+      .eq("user_id", user.id);
+
+    console.log("[My Inbox API] User accounts:", allAccounts?.map(a => ({
+      id: a.id,
+      email: a.email,
+      is_global: a.is_global
+    })));
+
     // Get user's personal (non-global) email accounts
     const { data: personalAccounts } = await supabase
       .from("email_connections")
       .select("id, email")
       .eq("user_id", user.id)
       .eq("is_global", false);
+
+    console.log("[My Inbox API] Personal (non-global) accounts:", personalAccounts?.length || 0);
 
     if (!personalAccounts || personalAccounts.length === 0) {
       return NextResponse.json({
@@ -101,6 +121,21 @@ export async function GET(request: NextRequest) {
 
     const { data: emails, error, count } = await query;
 
+    console.log("[My Inbox API] Query result:", {
+      emailCount: emails?.length || 0,
+      totalCount: count,
+      accountIds,
+      error: error?.message,
+    });
+
+    // Also check total emails in DB for these accounts (without pagination)
+    const { count: totalInDb } = await supabase
+      .from("email_classifications")
+      .select("id", { count: "exact", head: true })
+      .in("account_id", accountIds);
+
+    console.log("[My Inbox API] Total emails in DB for these accounts:", totalInDb);
+
     if (error) {
       console.error("[My Inbox API] Error fetching emails:", error);
       return NextResponse.json(
@@ -118,9 +153,10 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Get action items for these emails
+    // Get action items for these emails to derive status
     const emailMessageIds = emails.map(e => e.email_message_id).filter(Boolean);
     const actionItemsByEmail: Record<string, Array<{ id: string; title: string; type: string; status: string }>> = {};
+    const emailStatusMap: Record<string, string> = {}; // Track status per email
 
     if (emailMessageIds.length > 0) {
       const { data: actionItems } = await supabase
@@ -139,12 +175,25 @@ export async function GET(request: NextRequest) {
             type: item.action_type,
             status: item.status,
           });
+
+          // Derive email status from action items:
+          // If any action item is dismissed, email is dismissed
+          // If any action item is completed, email is approved
+          // Otherwise, email is pending
+          const currentStatus = emailStatusMap[item.email_message_id];
+          if (item.status === "dismissed") {
+            emailStatusMap[item.email_message_id] = "dismissed";
+          } else if (item.status === "completed" && currentStatus !== "dismissed") {
+            emailStatusMap[item.email_message_id] = "approved";
+          } else if (!currentStatus) {
+            emailStatusMap[item.email_message_id] = "pending";
+          }
         }
       }
     }
 
     // Transform to InboxItem format
-    const items: InboxItem[] = emails.map(email => ({
+    let items: InboxItem[] = emails.map(email => ({
       id: email.id,
       emailId: email.email_message_id || email.id,
       accountId: email.account_id,
@@ -168,7 +217,18 @@ export async function GET(request: NextRequest) {
       receivedAt: email.received_at || email.created_at,
       keyPoints: email.key_points || [],
       actionItems: actionItemsByEmail[email.email_message_id] || [],
+      // Derive status from action items, default to pending
+      status: (emailStatusMap[email.email_message_id] || "pending") as "pending" | "approved" | "dismissed" | "delegated",
+      hasTask: (actionItemsByEmail[email.email_message_id] || []).some(a => a.status === "completed"),
+      matchedClientId: null, // Would need additional query to populate
+      matchedClientName: null,
+      bodyPreview: null, // Not stored in classifications
     }));
+
+    // Apply status filter if provided
+    if (status && status !== "all") {
+      items = items.filter(item => item.status === status);
+    }
 
     return NextResponse.json({
       items,
