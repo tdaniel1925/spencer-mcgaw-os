@@ -239,29 +239,16 @@ export async function PUT(
     if (description !== undefined) updates.description = description;
     if (displayOrder !== undefined) updates.display_order = displayOrder;
 
-    // Only admins can set global status
+    // Users can set global status on their OWN accounts (personal inbox vs org feed routing)
+    // This allows users to choose where their emails appear
     if (isGlobal !== undefined) {
-      if (!isAdmin && connection.user_id !== user.id) {
+      // User must own the account to change routing, or be an admin
+      if (connection.user_id !== user.id && !isAdmin) {
         return NextResponse.json(
-          { error: "Only admins can change global status" },
+          { error: "Not authorized to change routing for this account" },
           { status: 403 }
         );
       }
-
-      // Check if user is admin for global changes
-      const { data: profile } = await supabase
-        .from("user_profiles")
-        .select("role")
-        .eq("id", user.id)
-        .single();
-
-      if (profile?.role !== "admin" && isGlobal === true) {
-        return NextResponse.json(
-          { error: "Only admins can make accounts global" },
-          { status: 403 }
-        );
-      }
-
       updates.is_global = isGlobal;
     }
 

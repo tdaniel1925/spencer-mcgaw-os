@@ -150,35 +150,50 @@ export async function GET(request: NextRequest) {
 
     // Fetch email classifications if type is 'all' or 'emails'
     if (type === "all" || type === "emails") {
-      // Get actual email count from database
-      const { count: emailCountResult } = await supabase
-        .from("email_classifications")
-        .select("*", { count: "exact", head: true });
-      totalEmailCount = emailCountResult || 0;
+      // First, get account IDs that are marked as global (Org Feed routing)
+      const { data: globalAccounts } = await supabase
+        .from("email_connections")
+        .select("id")
+        .eq("is_global", true);
 
-      // Get global email accounts (where is_global = true)
-      // For now, we'll fetch all email classifications since we haven't added the global flag yet
-      const { data: emailClassifications, error: emailError } = await supabase
-        .from("email_classifications")
-        .select(`
-          id,
-          email_id,
-          account_id,
-          from_name,
-          from_email,
-          subject,
-          summary,
-          category,
-          priority,
-          sentiment,
-          urgency,
-          requires_response,
-          matched_client_id,
-          status,
-          created_at
-        `)
-        .order("created_at", { ascending: false })
-        .limit(limit);
+      const globalAccountIds = globalAccounts?.map(a => a.id) || [];
+
+      // Get count of emails from global accounts only
+      if (globalAccountIds.length > 0) {
+        const { count: emailCountResult } = await supabase
+          .from("email_classifications")
+          .select("*", { count: "exact", head: true })
+          .in("account_id", globalAccountIds);
+        totalEmailCount = emailCountResult || 0;
+      } else {
+        totalEmailCount = 0;
+      }
+
+      // Fetch emails only from global accounts (accounts routed to Org Feed)
+      const { data: emailClassifications, error: emailError } = globalAccountIds.length > 0
+        ? await supabase
+            .from("email_classifications")
+            .select(`
+              id,
+              email_id,
+              account_id,
+              from_name,
+              from_email,
+              subject,
+              summary,
+              category,
+              priority,
+              sentiment,
+              urgency,
+              requires_response,
+              matched_client_id,
+              status,
+              created_at
+            `)
+            .in("account_id", globalAccountIds)
+            .order("created_at", { ascending: false })
+            .limit(limit)
+        : { data: [], error: null };
 
       if (!emailError && emailClassifications) {
         // Get action items for these emails

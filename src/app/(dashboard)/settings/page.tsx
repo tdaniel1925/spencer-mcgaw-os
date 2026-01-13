@@ -52,6 +52,7 @@ interface EmailAccount {
   provider: string;
   isConnected: boolean;
   lastSyncAt: string | null;
+  isGlobal: boolean; // true = Org Feed, false = Personal Inbox
 }
 
 interface ProfileSettings {
@@ -435,6 +436,7 @@ export default function SettingsPage() {
     provider: a.provider,
     isConnected: a.syncStatus !== "error",
     lastSyncAt: a.lastSyncAt ? new Date(a.lastSyncAt).toISOString() : null,
+    isGlobal: a.isGlobal || false,
   }));
 
   // Load email accounts from context on mount
@@ -532,6 +534,33 @@ export default function SettingsPage() {
       toast.error("Failed to clear orphaned data");
     } finally {
       setClearingData(false);
+    }
+  };
+
+  // Handle email routing change (Personal Inbox vs Org Feed)
+  const handleRoutingChange = async (accountId: string, isGlobal: boolean) => {
+    try {
+      const response = await fetch(`/api/email/accounts/${accountId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isGlobal }),
+      });
+
+      if (response.ok) {
+        toast.success(
+          isGlobal
+            ? "Emails will now appear in Org Feed"
+            : "Emails will now appear in your Personal Inbox"
+        );
+        // Refresh accounts to get updated routing
+        await refreshAccounts();
+      } else {
+        const data = await response.json();
+        toast.error(data.error || "Failed to update routing");
+      }
+    } catch (error) {
+      console.error("Error updating routing:", error);
+      toast.error("Failed to update routing");
     }
   };
 
@@ -1377,8 +1406,8 @@ export default function SettingsPage() {
                     My Email Accounts
                   </CardTitle>
                   <CardDescription>
-                    Connect your personal email accounts to sync emails and get AI-powered insights.
-                    Emails from your personal accounts will appear in your My Inbox.
+                    Connect your email accounts to sync emails and get AI-powered insights.
+                    Choose where each account&apos;s emails appear: Personal Inbox (only you) or Org Feed (visible to team).
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -1391,45 +1420,75 @@ export default function SettingsPage() {
                       {emailAccounts.map((account) => (
                         <div
                           key={account.id}
-                          className="flex items-center justify-between p-4 border rounded-lg"
+                          className="p-4 border rounded-lg space-y-3"
                         >
-                          <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center">
-                              <Mail className="h-6 w-6 text-purple-600" />
-                            </div>
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <p className="font-medium">{account.displayName}</p>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                              <div className="w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center">
+                                <Mail className="h-6 w-6 text-purple-600" />
                               </div>
-                              <p className="text-sm text-muted-foreground">
-                                {account.email}
-                              </p>
-                              {account.lastSyncAt && (
-                                <p className="text-xs text-muted-foreground">
-                                  Last synced: {new Date(account.lastSyncAt).toLocaleString()}
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <p className="font-medium">{account.displayName}</p>
+                                </div>
+                                <p className="text-sm text-muted-foreground">
+                                  {account.email}
                                 </p>
+                                {account.lastSyncAt && (
+                                  <p className="text-xs text-muted-foreground">
+                                    Last synced: {new Date(account.lastSyncAt).toLocaleString()}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {account.isConnected ? (
+                                <Badge className="bg-green-100 text-green-700 flex items-center gap-1">
+                                  <CheckCircle className="h-3 w-3" />
+                                  Connected
+                                </Badge>
+                              ) : (
+                                <Badge className="bg-red-100 text-red-700 flex items-center gap-1">
+                                  <XCircle className="h-3 w-3" />
+                                  Expired
+                                </Badge>
                               )}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleDisconnectAccount(account.id)}
+                              >
+                                Disconnect
+                              </Button>
                             </div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            {account.isConnected ? (
-                              <Badge className="bg-green-100 text-green-700 flex items-center gap-1">
-                                <CheckCircle className="h-3 w-3" />
-                                Connected
-                              </Badge>
-                            ) : (
-                              <Badge className="bg-red-100 text-red-700 flex items-center gap-1">
-                                <XCircle className="h-3 w-3" />
-                                Expired
-                              </Badge>
-                            )}
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleDisconnectAccount(account.id)}
+                          {/* Email Routing Selector */}
+                          <div className="flex items-center justify-between pl-16 pt-2 border-t">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm text-muted-foreground">Route emails to:</span>
+                            </div>
+                            <Select
+                              value={account.isGlobal ? "org" : "personal"}
+                              onValueChange={(value) => handleRoutingChange(account.id, value === "org")}
                             >
-                              Disconnect
-                            </Button>
+                              <SelectTrigger className="w-[180px]">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="personal">
+                                  <div className="flex items-center gap-2">
+                                    <User className="h-4 w-4" />
+                                    Personal Inbox
+                                  </div>
+                                </SelectItem>
+                                <SelectItem value="org">
+                                  <div className="flex items-center gap-2">
+                                    <Building className="h-4 w-4" />
+                                    Org Feed
+                                  </div>
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
                           </div>
                         </div>
                       ))}
