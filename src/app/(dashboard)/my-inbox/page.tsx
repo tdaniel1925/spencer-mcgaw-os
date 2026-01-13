@@ -53,7 +53,6 @@ import {
   Link2,
   Unlink,
   ExternalLink,
-  FileText,
 } from "lucide-react";
 import {
   Sheet,
@@ -251,8 +250,9 @@ export default function MyInboxPage() {
     }
   }, [fetchInbox]);
 
-  // Backfill email body content for existing emails
+  // Backfill email body content for existing emails (runs silently in background)
   const backfillEmailBodies = useCallback(async () => {
+    if (backfilling) return; // Prevent duplicate runs
     setBackfilling(true);
     try {
       const response = await fetch("/api/email-intelligence/backfill-body", {
@@ -261,20 +261,17 @@ export default function MyInboxPage() {
       });
       if (response.ok) {
         const data = await response.json();
-        toast.success(`Updated ${data.updated} emails with full body content`);
-        // Refresh inbox to show the updated content
-        await fetchInbox();
-      } else {
-        const errorData = await response.json();
-        toast.error(errorData.error || "Failed to load email bodies");
+        if (data.updated > 0) {
+          // Silently refresh inbox to show the updated content
+          await fetchInbox();
+        }
       }
     } catch (error) {
       console.error("Error backfilling email bodies:", error);
-      toast.error("Failed to load email bodies");
     } finally {
       setBackfilling(false);
     }
-  }, [fetchInbox]);
+  }, [fetchInbox, backfilling]);
 
   // Auto-sync on page load if coming from OAuth callback or if no emails
   useEffect(() => {
@@ -510,6 +507,17 @@ export default function MyInboxPage() {
     }
   }, [fetchInbox, searchParams]);
 
+  // Auto-backfill email bodies if any are missing (runs silently in background)
+  useEffect(() => {
+    if (!loading && items.length > 0 && !backfilling) {
+      // Check if any items are missing body content
+      const missingBody = items.some(item => !item.bodyText && !item.bodyPreview);
+      if (missingBody) {
+        backfillEmailBodies();
+      }
+    }
+  }, [items, loading, backfilling, backfillEmailBodies]);
+
   // Toggle item expansion
   const toggleExpanded = (id: string) => {
     setExpandedItems((prev) => {
@@ -667,23 +675,6 @@ export default function MyInboxPage() {
             <Button variant="ghost" size="sm" className="h-8" onClick={() => fetchInbox()}>
               <RefreshCw className="h-4 w-4 mr-2" />
               Refresh
-            </Button>
-
-            {/* Load Email Bodies */}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8"
-              onClick={backfillEmailBodies}
-              disabled={backfilling}
-              title="Load full email content for existing emails"
-            >
-              {backfilling ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <FileText className="h-4 w-4 mr-2" />
-              )}
-              Load Bodies
             </Button>
 
             {/* Account Management */}
@@ -1065,6 +1056,64 @@ export default function MyInboxPage() {
   );
 }
 
+// Format email body text into readable paragraphs
+function FormattedEmailBody({ text }: { text: string }) {
+  // Clean up the text and split into paragraphs
+  const formatEmailText = (rawText: string): string[] => {
+    // Remove excessive whitespace but preserve paragraph breaks
+    let cleaned = rawText
+      .replace(/\r\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')  // Collapse multiple newlines to double
+      .trim();
+
+    // Split on double newlines to get paragraphs
+    const paragraphs = cleaned.split(/\n\n+/);
+
+    // Clean each paragraph
+    return paragraphs
+      .map(p => p.replace(/\s+/g, ' ').trim())
+      .filter(p => p.length > 0);
+  };
+
+  const paragraphs = formatEmailText(text);
+
+  // Check if this looks like a reply chain (contains quoted text markers)
+  const isReplyChain = text.includes('From:') && text.includes('Sent:');
+
+  if (paragraphs.length === 0) {
+    return <p className="text-muted-foreground italic">No content available</p>;
+  }
+
+  return (
+    <div className="space-y-3">
+      {paragraphs.map((paragraph, index) => {
+        // Detect quoted/reply sections
+        const isQuoted = paragraph.startsWith('>') ||
+          paragraph.startsWith('From:') ||
+          paragraph.startsWith('-----Original Message-----') ||
+          paragraph.startsWith('On ') && paragraph.includes(' wrote:');
+
+        if (isQuoted) {
+          return (
+            <div
+              key={index}
+              className="pl-3 border-l-2 border-muted-foreground/30 text-muted-foreground text-xs"
+            >
+              {paragraph}
+            </div>
+          );
+        }
+
+        return (
+          <p key={index} className="leading-relaxed">
+            {paragraph}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
 // Inbox Item Card Component
 function InboxItemCard({
   item,
@@ -1230,12 +1279,12 @@ function InboxItemCard({
             </div>
 
             {(item.bodyText || item.bodyPreview) && (
-              <div className="bg-muted/30 rounded-lg p-3">
-                <span className="text-xs text-muted-foreground block mb-1">
-                  {item.bodyText ? "Full Email:" : "Preview:"}
+              <div className="bg-muted/30 rounded-lg p-4">
+                <span className="text-xs text-muted-foreground block mb-2 font-medium">
+                  Email Content
                 </span>
-                <div className="text-sm whitespace-pre-wrap max-h-96 overflow-y-auto">
-                  {item.bodyText || item.bodyPreview}
+                <div className="text-sm max-h-96 overflow-y-auto prose prose-sm dark:prose-invert prose-p:my-2 prose-p:leading-relaxed">
+                  <FormattedEmailBody text={item.bodyText || item.bodyPreview || ""} />
                 </div>
               </div>
             )}
