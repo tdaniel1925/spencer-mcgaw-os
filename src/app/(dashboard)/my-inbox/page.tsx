@@ -586,21 +586,6 @@ export default function MyInboxPage() {
     );
   });
 
-  // Debug logging for items state
-  useEffect(() => {
-    console.log("[My Inbox] Items state changed:", {
-      itemsCount: items.length,
-      filteredCount: filteredItems.length,
-      totalCount,
-      hasMore,
-      status,
-      searchQuery: searchQuery || "(empty)",
-      syncing,
-      loading,
-      firstThreeSubjects: items.slice(0, 3).map(i => i.subject),
-    });
-  }, [items, filteredItems.length, totalCount, hasMore, status, searchQuery, syncing, loading]);
-
   // Stats
   const pendingCount = items.filter((i) => i.status === "pending").length;
   const needsResponseCount = items.filter((i) => i.requiresResponse && i.status === "pending").length;
@@ -734,21 +719,6 @@ export default function MyInboxPage() {
               </div>
             ) : (
               <>
-                {/* Debug banner - remove after fixing */}
-                {(() => {
-                  const ids = filteredItems.map(i => i.id);
-                  const uniqueIds = new Set(ids);
-                  const hasDuplicates = ids.length !== uniqueIds.size;
-                  return (
-                    <div className="bg-yellow-100 border border-yellow-400 text-yellow-800 px-4 py-2 rounded text-sm mb-4">
-                      <strong>Debug:</strong> items={items.length}, filtered={filteredItems.length}, total={totalCount},
-                      uniqueIds={uniqueIds.size}, hasDuplicates={hasDuplicates ? "YES!" : "no"}
-                      <br />
-                      <span className="text-xs">First 5 subjects: {filteredItems.slice(0, 5).map(i => i.subject?.substring(0, 30)).join(" | ")}</span>
-                    </div>
-                  );
-                })()}
-
                 {filteredItems.map((item) => (
                   <InboxItemCard
                     key={item.id}
