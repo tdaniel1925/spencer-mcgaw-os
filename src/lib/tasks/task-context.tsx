@@ -102,7 +102,10 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
 
   // Fetch tasks - optimized to load active tasks first for faster initial load
   const refreshTasks = useCallback(async () => {
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
 
     try {
       // Fetch from the unified tasks API - limit to 100 for faster loading
@@ -129,6 +132,9 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (user?.id) {
       refreshTasks();
+    } else {
+      // No user yet - stop loading spinner
+      setLoading(false);
     }
   }, [user?.id, refreshTasks]);
 
