@@ -17,73 +17,43 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  // Skip count for dashboard requests (small limits) to avoid slow count query
   const limitNum = parseInt(limit);
   const needsCount = limitNum > 20;
 
-  // Join with user_profiles to get user email
-  let query = supabase
-    .from("activity_log")
-    .select(`
-      id,
-      user_id,
-      action,
-      resource_type,
-      resource_id,
-      resource_name,
-      details,
-      created_at,
-      user_profiles!activity_log_user_id_fkey(email, full_name)
-    `, needsCount ? { count: "exact" } : undefined)
-    .order("created_at", { ascending: false })
-    .range(parseInt(offset), parseInt(offset) + limitNum - 1);
-
-  if (resourceType && resourceType !== "all") {
-    query = query.eq("resource_type", resourceType);
-  }
-
-  if (action && action !== "all") {
-    query = query.eq("action", action);
-  }
-
-  if (userId && userId !== "all") {
-    query = query.eq("user_id", userId);
-  }
-
-  if (search) {
-    query = query.ilike("resource_name", `%${search}%`);
-  }
-
-  const { data: rawActivities, error, count } = await query;
-
-  if (error) {
-    console.error("Error fetching activity log:", error);
-    // If join fails, try without join
-    const fallbackQuery = supabase
+  try {
+    // Simple query without join - more reliable
+    let query = supabase
       .from("activity_log")
       .select("*", needsCount ? { count: "exact" } : undefined)
       .order("created_at", { ascending: false })
       .range(parseInt(offset), parseInt(offset) + limitNum - 1);
 
-    const { data: fallbackData, error: fallbackError, count: fallbackCount } = await fallbackQuery;
-
-    if (fallbackError) {
-      return NextResponse.json({ error: "Failed to fetch activity log" }, { status: 500 });
+    if (resourceType && resourceType !== "all") {
+      query = query.eq("resource_type", resourceType);
     }
 
-    // Map fallback data to include empty user_email
-    const activities = (fallbackData || []).map((a: Record<string, unknown>) => ({
-      ...a,
-      user_email: null,
-    }));
+    if (action && action !== "all") {
+      query = query.eq("action", action);
+    }
 
-    return NextResponse.json({ activities, count: fallbackCount });
-  }
+    if (userId && userId !== "all") {
+      query = query.eq("user_id", userId);
+    }
 
-  // Map activities to include user_email from joined data
-  const activities = (rawActivities || []).map((a: Record<string, unknown>) => {
-    const userProfile = a.user_profiles as { email?: string; full_name?: string } | null;
-    return {
+    if (search) {
+      query = query.ilike("resource_name", `%${search}%`);
+    }
+
+    const { data: rawActivities, error, count } = await query;
+
+    if (error) {
+      console.error("Error fetching activity log:", error);
+      // Return empty array if table doesn't exist or query fails
+      return NextResponse.json({ activities: [], count: 0 });
+    }
+
+    // Map activities
+    const activities = (rawActivities || []).map((a: Record<string, unknown>) => ({
       id: a.id,
       user_id: a.user_id,
       action: a.action,
@@ -92,12 +62,16 @@ export async function GET(request: NextRequest) {
       resource_name: a.resource_name,
       details: a.details,
       created_at: a.created_at,
-      user_email: userProfile?.email || null,
-      user_name: userProfile?.full_name || null,
-    };
-  });
+      user_email: null,
+      user_name: null,
+    }));
 
-  return NextResponse.json({ activities, count });
+    return NextResponse.json({ activities, count });
+  } catch (error) {
+    console.error("Activity API error:", error);
+    // Return empty array on any error to not break the dashboard
+    return NextResponse.json({ activities: [], count: 0 });
+  }
 }
 
 export async function POST(request: NextRequest) {

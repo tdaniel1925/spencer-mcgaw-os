@@ -68,77 +68,83 @@ export async function GET(request: NextRequest) {
 
     // Fetch calls if type is 'all' or 'calls'
     if (type === "all" || type === "calls") {
-      // Get actual count from database
-      const countResult = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(calls);
-      totalCallCount = Number(countResult[0]?.count || 0);
+      try {
+        // Get actual count from database
+        const countResult = await db
+          .select({ count: sql<number>`count(*)` })
+          .from(calls);
+        totalCallCount = Number(countResult[0]?.count || 0);
 
-      const callsData = await db
-        .select({
-          id: calls.id,
-          callerPhone: calls.callerPhone,
-          callerName: calls.callerName,
-          status: calls.status,
-          direction: calls.direction,
-          duration: calls.duration,
-          summary: calls.summary,
-          intent: calls.intent,
-          sentiment: calls.sentiment,
-          recordingUrl: calls.recordingUrl,
-          metadata: calls.metadata,
-          clientId: calls.clientId,
-          createdAt: calls.createdAt,
-        })
-        .from(calls)
-        .orderBy(desc(calls.createdAt))
-        .limit(limit);
+        const callsData = await db
+          .select({
+            id: calls.id,
+            callerPhone: calls.callerPhone,
+            callerName: calls.callerName,
+            status: calls.status,
+            direction: calls.direction,
+            duration: calls.duration,
+            summary: calls.summary,
+            intent: calls.intent,
+            sentiment: calls.sentiment,
+            recordingUrl: calls.recordingUrl,
+            metadata: calls.metadata,
+            clientId: calls.clientId,
+            createdAt: calls.createdAt,
+          })
+          .from(calls)
+          .orderBy(desc(calls.createdAt))
+          .limit(limit);
 
-      // Check which calls have tasks
-      const callIds = callsData.map(c => c.id);
-      const { data: tasksWithCalls } = await supabase
-        .from("tasks")
-        .select("source_call_id")
-        .in("source_call_id", callIds);
+        // Check which calls have tasks
+        const callIds = callsData.map(c => c.id);
+        const { data: tasksWithCalls } = await supabase
+          .from("tasks")
+          .select("source_call_id")
+          .in("source_call_id", callIds);
 
-      const callsWithTasks = new Set(tasksWithCalls?.map(t => t.source_call_id) || []);
+        const callsWithTasks = new Set(tasksWithCalls?.map(t => t.source_call_id) || []);
 
-      // Get client names for matched clients
-      const clientIds = callsData.filter(c => c.clientId).map(c => c.clientId);
-      const { data: clients } = await supabase
-        .from("clients")
-        .select("id, first_name, last_name")
-        .in("id", clientIds);
+        // Get client names for matched clients
+        const clientIds = callsData.filter(c => c.clientId).map(c => c.clientId);
+        const { data: clients } = await supabase
+          .from("clients")
+          .select("id, first_name, last_name")
+          .in("id", clientIds);
 
-      const clientMap = new Map(clients?.map(c => [c.id, `${c.first_name} ${c.last_name}`]) || []);
+        const clientMap = new Map(clients?.map(c => [c.id, `${c.first_name} ${c.last_name}`]) || []);
 
-      for (const call of callsData) {
-        const metadata = call.metadata as Record<string, unknown> | null;
-        const actionItems = (metadata?.action_items as string[]) || [];
+        for (const call of callsData) {
+          const metadata = call.metadata as Record<string, unknown> | null;
+          const actionItems = (metadata?.action_items as string[]) || [];
 
-        feedItems.push({
-          id: call.id,
-          type: "call",
-          timestamp: call.createdAt?.toISOString() || new Date().toISOString(),
-          summary: call.summary,
-          priority: determinePriority(call.intent, call.sentiment),
-          from: {
-            name: call.callerName,
-            identifier: call.callerPhone || "Unknown",
-          },
-          hasTask: callsWithTasks.has(call.id),
-          callData: {
-            duration: call.duration,
-            status: call.status,
-            direction: call.direction,
-            recordingUrl: call.recordingUrl,
-            category: call.intent,
-            sentiment: call.sentiment,
-            actionItems,
-          },
-          matchedClientId: call.clientId,
-          matchedClientName: call.clientId ? clientMap.get(call.clientId) || null : null,
-        });
+          feedItems.push({
+            id: call.id,
+            type: "call",
+            timestamp: call.createdAt?.toISOString() || new Date().toISOString(),
+            summary: call.summary,
+            priority: determinePriority(call.intent, call.sentiment),
+            from: {
+              name: call.callerName,
+              identifier: call.callerPhone || "Unknown",
+            },
+            hasTask: callsWithTasks.has(call.id),
+            callData: {
+              duration: call.duration,
+              status: call.status,
+              direction: call.direction,
+              recordingUrl: call.recordingUrl,
+              category: call.intent,
+              sentiment: call.sentiment,
+              actionItems,
+            },
+            matchedClientId: call.clientId,
+            matchedClientName: call.clientId ? clientMap.get(call.clientId) || null : null,
+          });
+        }
+      } catch (callsError) {
+        // If calls table doesn't exist or query fails, continue with 0 calls
+        console.error("[Org Feed API] Calls query error:", callsError);
+        totalCallCount = 0;
       }
     }
 
