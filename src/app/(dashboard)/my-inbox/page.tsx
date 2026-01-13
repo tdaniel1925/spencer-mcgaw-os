@@ -53,6 +53,7 @@ import {
   Link2,
   Unlink,
   ExternalLink,
+  FileText,
 } from "lucide-react";
 import {
   Sheet,
@@ -160,6 +161,7 @@ export default function MyInboxPage() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
   const [status, setStatus] = useState<"all" | "pending" | "approved" | "dismissed">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
@@ -246,6 +248,31 @@ export default function MyInboxPage() {
       toast.error("Failed to sync emails");
     } finally {
       setSyncing(false);
+    }
+  }, [fetchInbox]);
+
+  // Backfill email body content for existing emails
+  const backfillEmailBodies = useCallback(async () => {
+    setBackfilling(true);
+    try {
+      const response = await fetch("/api/email-intelligence/backfill-body", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        toast.success(`Updated ${data.updated} emails with full body content`);
+        // Refresh inbox to show the updated content
+        await fetchInbox();
+      } else {
+        const errorData = await response.json();
+        toast.error(errorData.error || "Failed to load email bodies");
+      }
+    } catch (error) {
+      console.error("Error backfilling email bodies:", error);
+      toast.error("Failed to load email bodies");
+    } finally {
+      setBackfilling(false);
     }
   }, [fetchInbox]);
 
@@ -640,6 +667,23 @@ export default function MyInboxPage() {
             <Button variant="ghost" size="sm" className="h-8" onClick={() => fetchInbox()}>
               <RefreshCw className="h-4 w-4 mr-2" />
               Refresh
+            </Button>
+
+            {/* Load Email Bodies */}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8"
+              onClick={backfillEmailBodies}
+              disabled={backfilling}
+              title="Load full email content for existing emails"
+            >
+              {backfilling ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <FileText className="h-4 w-4 mr-2" />
+              )}
+              Load Bodies
             </Button>
 
             {/* Account Management */}
