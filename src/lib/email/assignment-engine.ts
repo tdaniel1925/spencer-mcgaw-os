@@ -385,7 +385,7 @@ export async function determineAssignment(
   const tags: string[] = [];
 
   // Default assignment
-  let result: AssignmentResult = {
+  const result: AssignmentResult = {
     assignedColumn: "pending",
     priority: email.classification.priorityScore >= 80
       ? "urgent"

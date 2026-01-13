@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     const endpoint = searchParams.get("endpoint");
 
     // Build query
-    let query = db.select({
+    const query = db.select({
       id: webhookLogs.id,
       endpoint: webhookLogs.endpoint,
       source: webhookLogs.source,

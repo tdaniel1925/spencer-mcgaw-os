@@ -223,6 +223,7 @@ export function EmailProvider({ children }: { children: React.ReactNode }) {
     initialLoadDone.current = true;
 
     const loadAccountsAndEmails = async () => {
+      // Wrap entire load in try-catch to prevent breaking the app
       try {
         // Fetch learned patterns from training data first
         try {

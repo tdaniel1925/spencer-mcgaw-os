@@ -120,7 +120,7 @@ export async function GET(request: NextRequest) {
 
     // Get action items for these emails
     const emailMessageIds = emails.map(e => e.email_message_id).filter(Boolean);
-    let actionItemsByEmail: Record<string, Array<{ id: string; title: string; type: string; status: string }>> = {};
+    const actionItemsByEmail: Record<string, Array<{ id: string; title: string; type: string; status: string }>> = {};
 
     if (emailMessageIds.length > 0) {
       const { data: actionItems } = await supabase

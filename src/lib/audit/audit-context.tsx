@@ -26,7 +26,7 @@ function parseUserAgent(ua: string): UserAgentInfo {
   let browserVersion = "";
   let os = "Unknown";
   let osVersion = "";
-  let device = isMobile ? "Mobile" : "Desktop";
+  const device = isMobile ? "Mobile" : "Desktop";
 
   // Browser detection
   if (ua.includes("Chrome") && !ua.includes("Edg")) {
