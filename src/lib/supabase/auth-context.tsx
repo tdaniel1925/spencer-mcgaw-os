@@ -113,6 +113,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    // Safety timeout to prevent infinite loading if queries hang
+    const loadingTimeout = setTimeout(() => {
+      setLoading((current) => {
+        if (current) {
+          console.warn("[Auth] Loading timeout - forcing loading to false after 10s");
+          return false;
+        }
+        return current;
+      });
+    }, 10000);
+
     // Get initial session - OPTIMIZED: parallel queries for faster loading
     const getSession = async () => {
       try {
@@ -143,6 +154,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setSession(null);
             setPermissionOverrides([]);
             setLoading(false);
+            clearTimeout(loadingTimeout);
             return;
           }
 
@@ -157,14 +169,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
 
           setLoading(false);
+          clearTimeout(loadingTimeout);
         } else {
           setUser(null);
           setLoading(false);
+          clearTimeout(loadingTimeout);
         }
       } catch (err) {
         console.error("Error getting session:", err);
         setUser(null);
         setLoading(false);
+        clearTimeout(loadingTimeout);
       }
     };
 
@@ -223,6 +238,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       subscription.unsubscribe();
+      clearTimeout(loadingTimeout);
     };
   }, [supabase, loadPermissionOverrides, buildUser]);
 
