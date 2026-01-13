@@ -87,7 +87,67 @@ export async function GET(request: NextRequest) {
           ? "Emails may be linked to wrong account_id, or account is set to global"
           : "Check the my-inbox API for other filtering issues",
       },
+
+      // Also test what the actual my-inbox API query returns
+      api_test: await testMyInboxQuery(supabase, user.id),
     });
+  } catch (error) {
+    console.error("[Debug API] Error:", error);
+    return NextResponse.json({ error: "Debug failed", details: String(error) }, { status: 500 });
+  }
+}
+
+// Test what the my-inbox query actually returns
+async function testMyInboxQuery(supabase: any, userId: string) {
+  try {
+    // Get personal accounts
+    const { data: personalAccounts } = await supabase
+      .from("email_connections")
+      .select("id, email")
+      .eq("user_id", userId)
+      .eq("is_global", false);
+
+    if (!personalAccounts || personalAccounts.length === 0) {
+      return { error: "No personal accounts" };
+    }
+
+    const accountIds = personalAccounts.map((a: any) => a.id);
+
+    // Run the exact same query as my-inbox API
+    const { data: emails, error, count } = await supabase
+      .from("email_classifications")
+      .select(`
+        id,
+        email_message_id,
+        account_id,
+        sender_name,
+        sender_email,
+        subject,
+        has_attachments,
+        received_at,
+        category,
+        subcategory,
+        is_business_relevant,
+        priority_score,
+        sentiment,
+        urgency,
+        requires_response,
+        summary,
+        key_points,
+        confidence,
+        created_at
+      `, { count: "exact" })
+      .in("account_id", accountIds)
+      .order("received_at", { ascending: false, nullsFirst: false })
+      .range(0, 49);
+
+    return {
+      query_returned: emails?.length || 0,
+      total_count: count,
+      error: error?.message || null,
+      first_3_subjects: emails?.slice(0, 3).map((e: any) => e.subject),
+      account_ids_queried: accountIds,
+    };
   } catch (error) {
     console.error("[Debug API] Error:", error);
     return NextResponse.json({ error: "Debug failed", details: String(error) }, { status: 500 });
