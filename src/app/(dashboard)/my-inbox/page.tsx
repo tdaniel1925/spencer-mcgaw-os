@@ -200,11 +200,19 @@ export default function MyInboxPage() {
       const response = await fetch(`/api/my-inbox?${params}`);
       if (response.ok) {
         const data = await response.json();
+        console.log("[My Inbox Page] API response:", {
+          itemsReceived: data.items?.length || 0,
+          total: data.total,
+          hasMore: data.hasMore,
+          firstItem: data.items?.[0]?.subject,
+        });
         setItems(data.items || []);
         setAccountCount(data.accountCount || 0);
         setTotalCount(data.total || 0);
         setHasMore(data.hasMore || false);
       } else {
+        const errorText = await response.text();
+        console.error("[My Inbox Page] API error:", response.status, errorText);
         toast.error("Failed to load inbox");
       }
     } catch (error) {
@@ -253,26 +261,58 @@ export default function MyInboxPage() {
     if (isSyncing && !hasAutoSynced.current) {
       hasAutoSynced.current = true;
       setSyncing(true);
-      // Check for sync completion by polling
+
+      // Poll for sync completion using the main fetchInbox function
+      let retryCount = 0;
+      const maxRetries = 10;
+
       const checkSync = async () => {
+        retryCount++;
+        console.log(`[My Inbox] Sync check ${retryCount}/${maxRetries}`);
+
         await new Promise(resolve => setTimeout(resolve, 3000));
-        const params = new URLSearchParams();
-        if (status !== "all") params.set("status", status);
-        params.set("limit", "100");
-        const response = await fetch(`/api/my-inbox?${params}`);
-        if (response.ok) {
-          const data = await response.json();
-          setItems(data.items || []);
-          setAccountCount(data.accountCount || 0);
-          if (data.items?.length > 0) {
-            setSyncing(false);
-            toast.success("Emails synced successfully");
+
+        // Use the main fetch function to get proper state updates
+        try {
+          const params = new URLSearchParams();
+          if (status !== "all") params.set("status", status);
+          params.set("limit", String(PAGE_SIZE));
+          params.set("offset", "0");
+
+          const response = await fetch(`/api/my-inbox?${params}`);
+          if (response.ok) {
+            const data = await response.json();
+            console.log("[My Inbox] Sync check result:", {
+              itemsReceived: data.items?.length || 0,
+              total: data.total,
+              hasMore: data.hasMore,
+            });
+
+            if (data.items?.length > 0) {
+              // Update all state properly
+              setItems(data.items);
+              setAccountCount(data.accountCount || 0);
+              setTotalCount(data.total || 0);
+              setHasMore(data.hasMore || false);
+              setSyncing(false);
+              toast.success(`Synced ${data.total || data.items.length} emails`);
+            } else if (retryCount < maxRetries) {
+              // Keep checking
+              setTimeout(checkSync, 3000);
+            } else {
+              // Give up after max retries
+              setSyncing(false);
+              console.log("[My Inbox] Sync check gave up after max retries");
+            }
           } else {
-            // Keep checking for a bit
-            setTimeout(checkSync, 3000);
+            setSyncing(false);
           }
+        } catch (error) {
+          console.error("[My Inbox] Sync check error:", error);
+          setSyncing(false);
         }
       };
+
       checkSync();
     }
   }, [searchParams, status]);
@@ -433,9 +473,14 @@ export default function MyInboxPage() {
     };
   }, [accountCount, fetchInbox]);
 
+  // Initial fetch on mount - skip if already syncing from OAuth callback
   useEffect(() => {
-    fetchInbox();
-  }, [fetchInbox]);
+    const isSyncing = searchParams.get("syncing") === "true";
+    // If syncing, let checkSync handle the data loading to avoid race condition
+    if (!isSyncing) {
+      fetchInbox();
+    }
+  }, [fetchInbox, searchParams]);
 
   // Toggle item expansion
   const toggleExpanded = (id: string) => {
@@ -540,6 +585,21 @@ export default function MyInboxPage() {
       item.summary?.toLowerCase().includes(query)
     );
   });
+
+  // Debug logging for items state
+  useEffect(() => {
+    console.log("[My Inbox] Items state changed:", {
+      itemsCount: items.length,
+      filteredCount: filteredItems.length,
+      totalCount,
+      hasMore,
+      status,
+      searchQuery: searchQuery || "(empty)",
+      syncing,
+      loading,
+      firstThreeSubjects: items.slice(0, 3).map(i => i.subject),
+    });
+  }, [items, filteredItems.length, totalCount, hasMore, status, searchQuery, syncing, loading]);
 
   // Stats
   const pendingCount = items.filter((i) => i.status === "pending").length;
