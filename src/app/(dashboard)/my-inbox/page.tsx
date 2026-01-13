@@ -149,17 +149,25 @@ const categoryConfig: Record<string, { label: string; className: string }> = {
   other: { label: "Other", className: "bg-gray-100 text-gray-700" },
 };
 
+const PAGE_SIZE = 50;
+const AUTO_REFRESH_INTERVAL = 30000; // 30 seconds
+
 export default function MyInboxPage() {
   const searchParams = useSearchParams();
   const { accounts: contextAccounts, refreshAccounts } = useEmail();
   const [items, setItems] = useState<InboxItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [status, setStatus] = useState<"all" | "pending" | "approved" | "dismissed">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [accountCount, setAccountCount] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
   const hasAutoSynced = useRef(false);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+  const autoRefreshRef = useRef<NodeJS.Timeout | null>(null);
   const [taskDialog, setTaskDialog] = useState<TaskCreationState>({
     open: false,
     item: null,
@@ -178,6 +186,35 @@ export default function MyInboxPage() {
   const [disconnectConfirm, setDisconnectConfirm] = useState<EmailAccount | null>(null);
   const [disconnecting, setDisconnecting] = useState(false);
 
+  // Fetch inbox items with pagination (defined early for use by syncEmails)
+  const fetchInbox = useCallback(async (reset = true) => {
+    if (reset) {
+      setLoading(true);
+    }
+    try {
+      const params = new URLSearchParams();
+      if (status !== "all") params.set("status", status);
+      params.set("limit", String(PAGE_SIZE));
+      params.set("offset", "0");
+
+      const response = await fetch(`/api/my-inbox?${params}`);
+      if (response.ok) {
+        const data = await response.json();
+        setItems(data.items || []);
+        setAccountCount(data.accountCount || 0);
+        setTotalCount(data.total || 0);
+        setHasMore(data.hasMore || false);
+      } else {
+        toast.error("Failed to load inbox");
+      }
+    } catch (error) {
+      console.error("Error fetching inbox:", error);
+      toast.error("Failed to load inbox");
+    } finally {
+      setLoading(false);
+    }
+  }, [status]);
+
   // Sync emails from Microsoft Graph and classify with AI
   const syncEmails = useCallback(async () => {
     setSyncing(true);
@@ -189,16 +226,8 @@ export default function MyInboxPage() {
       if (response.ok) {
         const data = await response.json();
         toast.success(`Synced ${data.processed} emails, created ${data.tasksCreated} tasks`);
-        // Refresh inbox after sync
-        const params = new URLSearchParams();
-        if (status !== "all") params.set("status", status);
-        params.set("limit", "100");
-        const inboxResponse = await fetch(`/api/my-inbox?${params}`);
-        if (inboxResponse.ok) {
-          const inboxData = await inboxResponse.json();
-          setItems(inboxData.items || []);
-          setAccountCount(inboxData.accountCount || 0);
-        }
+        // Refresh inbox after sync using the shared fetch function
+        await fetchInbox();
       } else {
         const errorData = await response.json();
         toast.error(errorData.error || "Failed to sync emails");
@@ -209,7 +238,7 @@ export default function MyInboxPage() {
     } finally {
       setSyncing(false);
     }
-  }, [status]);
+  }, [fetchInbox]);
 
   // Auto-sync on page load if coming from OAuth callback or if no emails
   useEffect(() => {
@@ -347,29 +376,62 @@ export default function MyInboxPage() {
     }
   }, []);
 
-  // Fetch inbox items
-  const fetchInbox = useCallback(async () => {
-    setLoading(true);
+  // Load more items for infinite scroll
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore) return;
+
+    setLoadingMore(true);
     try {
       const params = new URLSearchParams();
       if (status !== "all") params.set("status", status);
-      params.set("limit", "100");
+      params.set("limit", String(PAGE_SIZE));
+      params.set("offset", String(items.length));
 
       const response = await fetch(`/api/my-inbox?${params}`);
       if (response.ok) {
         const data = await response.json();
-        setItems(data.items || []);
-        setAccountCount(data.accountCount || 0);
-      } else {
-        toast.error("Failed to load inbox");
+        setItems(prev => [...prev, ...(data.items || [])]);
+        setHasMore(data.hasMore || false);
       }
     } catch (error) {
-      console.error("Error fetching inbox:", error);
-      toast.error("Failed to load inbox");
+      console.error("Error loading more items:", error);
     } finally {
-      setLoading(false);
+      setLoadingMore(false);
     }
-  }, [status]);
+  }, [status, items.length, loadingMore, hasMore]);
+
+  // Intersection Observer for infinite scroll
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loadingMore && !loading) {
+          loadMore();
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    if (loadMoreRef.current) {
+      observer.observe(loadMoreRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, [hasMore, loadingMore, loading, loadMore]);
+
+  // Auto-refresh for new emails every 30 seconds
+  useEffect(() => {
+    if (accountCount > 0) {
+      autoRefreshRef.current = setInterval(() => {
+        fetchInbox(false);
+      }, AUTO_REFRESH_INTERVAL);
+    }
+
+    return () => {
+      if (autoRefreshRef.current) {
+        clearInterval(autoRefreshRef.current);
+      }
+    };
+  }, [accountCount, fetchInbox]);
 
   useEffect(() => {
     fetchInbox();
@@ -496,7 +558,7 @@ export default function MyInboxPage() {
                 <TabsTrigger value="all" className="gap-2 px-3">
                   All
                   <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px]">
-                    {items.length}
+                    {totalCount > 0 ? totalCount : items.length}
                   </Badge>
                 </TabsTrigger>
                 <TabsTrigger value="pending" className="gap-2 px-3">
@@ -529,7 +591,7 @@ export default function MyInboxPage() {
             </div>
 
             {/* Refresh */}
-            <Button variant="ghost" size="sm" className="h-8" onClick={fetchInbox}>
+            <Button variant="ghost" size="sm" className="h-8" onClick={() => fetchInbox()}>
               <RefreshCw className="h-4 w-4 mr-2" />
               Refresh
             </Button>
@@ -611,16 +673,36 @@ export default function MyInboxPage() {
                 </Button>
               </div>
             ) : (
-              filteredItems.map((item) => (
-                <InboxItemCard
-                  key={item.id}
-                  item={item}
-                  isExpanded={expandedItems.has(item.id)}
-                  onToggleExpand={() => toggleExpanded(item.id)}
-                  onCreateTask={() => openTaskDialog(item)}
-                  onDismiss={() => handleDismiss(item)}
-                />
-              ))
+              <>
+                {filteredItems.map((item) => (
+                  <InboxItemCard
+                    key={item.id}
+                    item={item}
+                    isExpanded={expandedItems.has(item.id)}
+                    onToggleExpand={() => toggleExpanded(item.id)}
+                    onCreateTask={() => openTaskDialog(item)}
+                    onDismiss={() => handleDismiss(item)}
+                  />
+                ))}
+
+                {/* Infinite scroll trigger */}
+                <div ref={loadMoreRef} className="h-4" />
+
+                {/* Loading more indicator */}
+                {loadingMore && (
+                  <div className="flex items-center justify-center py-4">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    <span className="ml-2 text-sm text-muted-foreground">Loading more emails...</span>
+                  </div>
+                )}
+
+                {/* End of list indicator */}
+                {!hasMore && items.length > 0 && (
+                  <div className="text-center py-4 text-sm text-muted-foreground">
+                    Showing all {totalCount} emails
+                  </div>
+                )}
+              </>
             )}
           </div>
         </ScrollArea>
