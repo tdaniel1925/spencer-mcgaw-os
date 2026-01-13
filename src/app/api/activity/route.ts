@@ -17,14 +17,24 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  // Only select needed columns for faster query
   // Skip count for dashboard requests (small limits) to avoid slow count query
   const limitNum = parseInt(limit);
   const needsCount = limitNum > 20;
 
+  // Join with user_profiles to get user email
   let query = supabase
     .from("activity_log")
-    .select("*", needsCount ? { count: "exact" } : undefined)
+    .select(`
+      id,
+      user_id,
+      action,
+      resource_type,
+      resource_id,
+      resource_name,
+      details,
+      created_at,
+      user_profiles!activity_log_user_id_fkey(email, full_name)
+    `, needsCount ? { count: "exact" } : undefined)
     .order("created_at", { ascending: false })
     .range(parseInt(offset), parseInt(offset) + limitNum - 1);
 
@@ -44,12 +54,48 @@ export async function GET(request: NextRequest) {
     query = query.ilike("resource_name", `%${search}%`);
   }
 
-  const { data: activities, error, count } = await query;
+  const { data: rawActivities, error, count } = await query;
 
   if (error) {
     console.error("Error fetching activity log:", error);
-    return NextResponse.json({ error: "Failed to fetch activity log" }, { status: 500 });
+    // If join fails, try without join
+    const fallbackQuery = supabase
+      .from("activity_log")
+      .select("*", needsCount ? { count: "exact" } : undefined)
+      .order("created_at", { ascending: false })
+      .range(parseInt(offset), parseInt(offset) + limitNum - 1);
+
+    const { data: fallbackData, error: fallbackError, count: fallbackCount } = await fallbackQuery;
+
+    if (fallbackError) {
+      return NextResponse.json({ error: "Failed to fetch activity log" }, { status: 500 });
+    }
+
+    // Map fallback data to include empty user_email
+    const activities = (fallbackData || []).map((a: Record<string, unknown>) => ({
+      ...a,
+      user_email: null,
+    }));
+
+    return NextResponse.json({ activities, count: fallbackCount });
   }
+
+  // Map activities to include user_email from joined data
+  const activities = (rawActivities || []).map((a: Record<string, unknown>) => {
+    const userProfile = a.user_profiles as { email?: string; full_name?: string } | null;
+    return {
+      id: a.id,
+      user_id: a.user_id,
+      action: a.action,
+      resource_type: a.resource_type,
+      resource_id: a.resource_id,
+      resource_name: a.resource_name,
+      details: a.details,
+      created_at: a.created_at,
+      user_email: userProfile?.email || null,
+      user_name: userProfile?.full_name || null,
+    };
+  });
 
   return NextResponse.json({ activities, count });
 }

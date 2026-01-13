@@ -150,9 +150,14 @@ export default function UserManagementPage() {
   const [permissionsOpen, setPermissionsOpen] = useState(false);
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
   const [emailPreviewOpen, setEmailPreviewOpen] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<TeamMember | null>(null);
   const [saving, setSaving] = useState(false);
   const [sendingEmail, setSendingEmail] = useState<string | null>(null);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [adminNewPassword, setAdminNewPassword] = useState("");
+  const [adminPasswordErrors, setAdminPasswordErrors] = useState<string[]>([]);
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
 
   // New user form state
   const [newUser, setNewUser] = useState({
@@ -530,6 +535,51 @@ export default function UserManagementPage() {
     }
   };
 
+  const handleAdminPasswordChange = (password: string) => {
+    setAdminNewPassword(password);
+    if (password) {
+      setAdminPasswordErrors(validatePassword(password));
+    } else {
+      setAdminPasswordErrors([]);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    if (!selectedUser) return;
+
+    const errors = validatePassword(adminNewPassword);
+    if (errors.length > 0) {
+      toast.error("Please fix password requirements");
+      setAdminPasswordErrors(errors);
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      const response = await fetch(`/api/admin/users/${selectedUser.id}/password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: adminNewPassword }),
+      });
+
+      if (response.ok) {
+        toast.success(`Password changed for ${selectedUser.full_name}`);
+        setChangePasswordOpen(false);
+        setSelectedUser(null);
+        setAdminNewPassword("");
+        setAdminPasswordErrors([]);
+      } else {
+        const data = await response.json();
+        toast.error(data.error || "Failed to change password");
+      }
+    } catch (error) {
+      console.error("Error changing password:", error);
+      toast.error("Failed to change password");
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
   const getWelcomeEmailHtml = () => {
     const loginUrl = process.env.NEXT_PUBLIC_APP_URL || "https://spencermcgaw.app";
     const appName = "Spencer McGaw Hub";
@@ -827,6 +877,17 @@ export default function UserManagementPage() {
                         >
                           <KeyRound className="h-4 w-4 mr-2" />
                           {sendingEmail === member.id ? "Sending..." : "Send Password Reset"}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => {
+                            setSelectedUser(member);
+                            setAdminNewPassword("");
+                            setAdminPasswordErrors([]);
+                            setChangePasswordOpen(true);
+                          }}
+                        >
+                          <Key className="h-4 w-4 mr-2" />
+                          Change Password
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
@@ -1466,6 +1527,114 @@ export default function UserManagementPage() {
               )}
               <Button variant="outline" onClick={() => setPermissionsOpen(false)}>
                 Close
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Change Password Dialog */}
+      {selectedUser && (
+        <Dialog open={changePasswordOpen} onOpenChange={(open) => {
+          setChangePasswordOpen(open);
+          if (!open) {
+            setAdminNewPassword("");
+            setAdminPasswordErrors([]);
+          }
+        }}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Key className="h-5 w-5" />
+                Change Password
+              </DialogTitle>
+              <DialogDescription>
+                Set a new password for {selectedUser.full_name}. The user will need to use this password to log in.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4 space-y-4">
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted">
+                <Avatar className="h-10 w-10">
+                  <AvatarImage src={selectedUser.avatar_url} />
+                  <AvatarFallback>
+                    {getUserInitials(selectedUser.full_name)}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <p className="font-medium">{selectedUser.full_name}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedUser.email}
+                  </p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="admin_new_password">New Password</Label>
+                <div className="relative">
+                  <Input
+                    id="admin_new_password"
+                    type={showAdminPassword ? "text" : "password"}
+                    value={adminNewPassword}
+                    onChange={(e) => handleAdminPasswordChange(e.target.value)}
+                    placeholder="Enter new password"
+                    className={cn(
+                      "pr-10",
+                      adminNewPassword && adminPasswordErrors.length > 0 && "border-red-500 focus-visible:ring-red-500"
+                    )}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                    onClick={() => setShowAdminPassword(!showAdminPassword)}
+                  >
+                    {showAdminPassword ? (
+                      <EyeOff className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      <Eye className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </Button>
+                </div>
+                {adminNewPassword && (
+                  <div className="space-y-1 mt-2">
+                    {adminPasswordErrors.length === 0 ? (
+                      <p className="text-xs text-green-600 flex items-center gap-1">
+                        <CheckCircle className="h-3 w-3" />
+                        Password meets all requirements
+                      </p>
+                    ) : (
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">Password requirements:</p>
+                        {[
+                          { text: "At least 8 characters", met: adminNewPassword.length >= 8 },
+                          { text: "At least one uppercase letter", met: /[A-Z]/.test(adminNewPassword) },
+                          { text: "At least one lowercase letter", met: /[a-z]/.test(adminNewPassword) },
+                          { text: "At least one number", met: /[0-9]/.test(adminNewPassword) },
+                        ].map((req) => (
+                          <p key={req.text} className={cn(
+                            "text-xs flex items-center gap-1",
+                            req.met ? "text-green-600" : "text-red-500"
+                          )}>
+                            {req.met ? <CheckCircle className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
+                            {req.text}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setChangePasswordOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleChangePassword}
+                disabled={!adminNewPassword || adminPasswordErrors.length > 0 || changingPassword}
+              >
+                <Key className="h-4 w-4 mr-2" />
+                {changingPassword ? "Changing..." : "Change Password"}
               </Button>
             </DialogFooter>
           </DialogContent>
