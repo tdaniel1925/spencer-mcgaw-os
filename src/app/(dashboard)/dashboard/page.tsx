@@ -368,7 +368,7 @@ export default function DashboardPage() {
           {/* Quick Stats in Top Bar */}
           <div className="flex items-center gap-4 text-sm">
             <button
-              onClick={() => router.push("/tasks-table?status=overdue")}
+              onClick={() => router.push("/taskpool?view=overdue")}
               className={cn(
                 "flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors",
                 overdueCount > 0 && "hover:bg-red-50"
@@ -380,7 +380,7 @@ export default function DashboardPage() {
               </span>
             </button>
             <button
-              onClick={() => router.push("/tasks-table?status=due_today")}
+              onClick={() => router.push("/tasks")}
               className={cn(
                 "flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors",
                 dueTodayCount > 0 && "hover:bg-amber-50"
@@ -434,7 +434,7 @@ export default function DashboardPage() {
                     "cursor-pointer transition-all border-border/50 hover:shadow-md",
                     overdueCount > 0 && "border-red-200 bg-red-50/50"
                   )}
-                  onClick={() => router.push("/tasks-table?status=overdue")}
+                  onClick={() => router.push("/taskpool?view=overdue")}
                 >
                   <CardContent className="p-3">
                     <div className="flex items-center gap-2 mb-1">
@@ -454,7 +454,7 @@ export default function DashboardPage() {
                     "cursor-pointer transition-all border-border/50 hover:shadow-md",
                     dueTodayCount > 0 && "border-amber-200 bg-amber-50/50"
                   )}
-                  onClick={() => router.push("/tasks-table?status=due_today")}
+                  onClick={() => router.push("/tasks")}
                 >
                   <CardContent className="p-3">
                     <div className="flex items-center gap-2 mb-1">
@@ -471,7 +471,7 @@ export default function DashboardPage() {
 
                 <Card
                   className="cursor-pointer transition-all border-border/50 hover:shadow-md"
-                  onClick={() => router.push("/tasks-table?status=completed")}
+                  onClick={() => router.push("/tasks")}
                 >
                   <CardContent className="p-3">
                     <div className="flex items-center gap-2 mb-1">

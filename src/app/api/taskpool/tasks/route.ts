@@ -30,8 +30,8 @@ export async function GET(request: NextRequest) {
 
     // Apply filters based on view
     if (view === "pool") {
-      // Pool view: unclaimed AND unassigned, open tasks
-      query = query.is("claimed_by", null).is("assigned_to", null).eq("status", "open");
+      // Pool view: unclaimed AND unassigned, pending tasks
+      query = query.is("claimed_by", null).is("assigned_to", null).eq("status", "pending");
     } else if (view === "all") {
       // All non-completed tasks (for board view)
       query = query.neq("status", "completed");
@@ -132,7 +132,7 @@ export async function POST(request: NextRequest) {
         source_metadata: source_metadata || {},
         ai_confidence,
         ai_extracted_data: ai_extracted_data || {},
-        status: "open",
+        status: "pending",
         organization_id: DEFAULT_ORGANIZATION_ID,
         created_by: user.id,
       })

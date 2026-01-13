@@ -33,7 +33,7 @@ export async function POST(
       );
     }
 
-    if (existingTask.status !== "open") {
+    if (existingTask.status !== "pending") {
       return NextResponse.json(
         { error: "Task is not available for claiming" },
         { status: 400 }
@@ -115,7 +115,7 @@ export async function DELETE(
       .update({
         claimed_by: null,
         claimed_at: null,
-        status: "open",
+        status: "pending",
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)

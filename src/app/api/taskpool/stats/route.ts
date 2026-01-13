@@ -14,10 +14,10 @@ export async function GET(request: NextRequest) {
     const today = new Date().toISOString().split("T")[0];
 
     // Get counts by status
-    const { count: openCount } = await supabase
+    const { count: pendingCount } = await supabase
       .from("tasks")
       .select("*", { count: "exact", head: true })
-      .eq("status", "open");
+      .eq("status", "pending");
 
     const { count: inProgressCount } = await supabase
       .from("tasks")
@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
       .from("tasks")
       .select("*", { count: "exact", head: true })
       .is("claimed_by", null)
-      .eq("status", "open");
+      .eq("status", "pending");
 
     // Get my claimed count
     const { count: myClaimedCount } = await supabase
@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
           .from("tasks")
           .select("*", { count: "exact", head: true })
           .eq("action_type_id", actionType.id)
-          .eq("status", "open")
+          .eq("status", "pending")
           .is("claimed_by", null);
 
         actionTypeCounts[actionType.code] = count || 0;
@@ -100,10 +100,10 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       totals: {
-        open: openCount || 0,
+        pending: pendingCount || 0,
         in_progress: inProgressCount || 0,
         completed: completedCount || 0,
-        total: (openCount || 0) + (inProgressCount || 0) + (completedCount || 0),
+        total: (pendingCount || 0) + (inProgressCount || 0) + (completedCount || 0),
       },
       pool: {
         available: poolCount || 0,

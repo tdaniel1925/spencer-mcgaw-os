@@ -50,6 +50,7 @@ import { cn } from "@/lib/utils";
 import { TaskDetailModal } from "./task-detail-modal";
 import { CreateTaskDialog } from "./create-task-dialog";
 import { SuggestedTasks } from "./suggested-tasks";
+import { useTaskContext } from "@/lib/tasks/task-context";
 
 interface ActionType {
   id: string;
@@ -132,6 +133,7 @@ const priorityBorderColors: Record<string, string> = {
 
 export default function TaskPoolPage() {
   const router = useRouter();
+  const { claimTask: contextClaimTask, releaseTask: contextReleaseTask, refreshTasks: contextRefreshTasks } = useTaskContext();
   const [actionTypes, setActionTypes] = useState<ActionType[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -189,16 +191,13 @@ export default function TaskPoolPage() {
 
   const handleClaimTask = async (taskId: string) => {
     try {
-      const response = await fetch(`/api/taskpool/tasks/${taskId}/claim`, {
-        method: "POST",
-      });
-
-      if (response.ok) {
+      // Use shared context for mutation consistency
+      const success = await contextClaimTask(taskId);
+      if (success) {
         toast.success("Task claimed successfully");
-        loadTasks(false);
+        loadTasks(false); // Refresh local view
       } else {
-        const data = await response.json();
-        toast.error(data.error || "Failed to claim task");
+        toast.error("Failed to claim task");
       }
     } catch (error) {
       console.error("Error claiming task:", error);
@@ -208,16 +207,13 @@ export default function TaskPoolPage() {
 
   const handleReleaseTask = async (taskId: string) => {
     try {
-      const response = await fetch(`/api/taskpool/tasks/${taskId}/claim`, {
-        method: "DELETE",
-      });
-
-      if (response.ok) {
+      // Use shared context for mutation consistency
+      const success = await contextReleaseTask(taskId);
+      if (success) {
         toast.success("Task released");
-        loadTasks(false);
+        loadTasks(false); // Refresh local view
       } else {
-        const data = await response.json();
-        toast.error(data.error || "Failed to release task");
+        toast.error("Failed to release task");
       }
     } catch (error) {
       console.error("Error releasing task:", error);

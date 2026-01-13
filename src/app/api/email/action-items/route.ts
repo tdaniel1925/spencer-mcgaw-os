@@ -252,7 +252,9 @@ export async function POST(request: NextRequest) {
         source: "email",
         source_id: actionItem.email_message_id,
         created_by: user.id,
-        assignee_id: actionItem.assigned_to_user_id,
+        assigned_to: actionItem.assigned_to_user_id,
+        assigned_at: actionItem.assigned_to_user_id ? new Date().toISOString() : null,
+        assigned_by: actionItem.assigned_to_user_id ? user.id : null,
       })
       .select()
       .single();

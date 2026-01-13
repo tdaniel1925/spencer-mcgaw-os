@@ -146,6 +146,8 @@ export default function TasksPage() {
     setSearchQuery,
     priorityFilter,
     setPriorityFilter,
+    statusFilter,
+    setStatusFilter,
     refreshTasks,
     updateTaskStatus,
     claimTask,
@@ -696,6 +698,20 @@ export default function TasksPage() {
                 className="w-[200px] h-8 pl-9 text-sm"
               />
             </div>
+
+            {/* Status Filter */}
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-28 h-8 text-sm">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="in_progress">In Progress</SelectItem>
+                <SelectItem value="completed">Completed</SelectItem>
+              </SelectContent>
+            </Select>
 
             {/* Priority Filter */}
             <Select value={priorityFilter} onValueChange={setPriorityFilter}>

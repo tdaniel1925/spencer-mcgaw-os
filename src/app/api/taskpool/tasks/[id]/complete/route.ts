@@ -80,7 +80,7 @@ export async function POST(
           source_type: "routed",
           source_metadata: { routed_from_task_id: id },
           routed_from_task_id: id,
-          status: "open",
+          status: "pending",
           organization_id: currentTask.organization_id,
           created_by: user.id,
         })

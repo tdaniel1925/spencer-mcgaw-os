@@ -65,11 +65,13 @@ interface TaskContextType {
   currentView: TaskView;
   searchQuery: string;
   priorityFilter: string;
+  statusFilter: string;
 
   // Actions
   setCurrentView: (view: TaskView) => void;
   setSearchQuery: (query: string) => void;
   setPriorityFilter: (priority: string) => void;
+  setStatusFilter: (status: string) => void;
   refreshTasks: () => Promise<void>;
   updateTaskStatus: (taskId: string, status: Task["status"]) => Promise<boolean>;
   claimTask: (taskId: string) => Promise<boolean>;
@@ -96,6 +98,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   const [currentView, setCurrentView] = useState<TaskView>("my-work");
   const [searchQuery, setSearchQuery] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("active"); // "all", "active", "pending", "in_progress", "completed"
 
   const supabase = createClient();
   const subscriptionRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -265,21 +268,35 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     }
   }, [refreshTasks]);
 
-  // Computed: filter tasks
-  const filterByPriority = useCallback((taskList: Task[]) => {
-    if (priorityFilter === "all") return taskList;
-    return taskList.filter(t => t.priority === priorityFilter);
-  }, [priorityFilter]);
+  // Computed: filter tasks by priority and status
+  const filterTasks = useCallback((taskList: Task[]) => {
+    let filtered = taskList;
+
+    // Apply priority filter
+    if (priorityFilter !== "all") {
+      filtered = filtered.filter(t => t.priority === priorityFilter);
+    }
+
+    // Apply status filter
+    if (statusFilter === "active") {
+      // Active means not completed or cancelled
+      filtered = filtered.filter(t => t.status !== "completed" && t.status !== "cancelled");
+    } else if (statusFilter !== "all") {
+      filtered = filtered.filter(t => t.status === statusFilter);
+    }
+
+    return filtered;
+  }, [priorityFilter, statusFilter]);
 
   // My tasks: assigned to current user OR claimed by current user
-  const myTasks = filterByPriority(
+  const myTasks = filterTasks(
     tasks.filter(t =>
       t.assigned_to === user?.id || t.claimed_by === user?.id
     )
   );
 
-  // Team pool: open tasks not assigned or claimed
-  const teamPoolTasks = filterByPriority(
+  // Team pool: open tasks not assigned or claimed (always pending)
+  const teamPoolTasks = filterTasks(
     tasks.filter(t =>
       t.status === "pending" &&
       !t.assigned_to &&
@@ -288,7 +305,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   );
 
   // All tasks
-  const allTasks = filterByPriority(tasks);
+  const allTasks = filterTasks(tasks);
 
   // Task counts
   const taskCounts = {
@@ -305,9 +322,11 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         currentView,
         searchQuery,
         priorityFilter,
+        statusFilter,
         setCurrentView,
         setSearchQuery,
         setPriorityFilter,
+        setStatusFilter,
         refreshTasks,
         updateTaskStatus,
         claimTask,

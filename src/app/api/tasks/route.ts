@@ -144,7 +144,7 @@ export async function POST(request: NextRequest) {
       client_id,
       client_name,
       assignee_id,
-      assignee_name,
+      assigned_to,
       source = "manual",
       source_id,
       tags,
@@ -154,6 +154,9 @@ export async function POST(request: NextRequest) {
     if (!title) {
       return NextResponse.json({ error: "Title is required" }, { status: 400 });
     }
+
+    // Map assignee_id to assigned_to for backwards compatibility
+    const assigneeValue = assigned_to ?? assignee_id;
 
     const { data: task, error } = await supabase
       .from("tasks")
@@ -165,8 +168,9 @@ export async function POST(request: NextRequest) {
         due_date,
         client_id,
         client_name,
-        assignee_id,
-        assignee_name,
+        assigned_to: assigneeValue || null,
+        assigned_at: assigneeValue ? new Date().toISOString() : null,
+        assigned_by: assigneeValue ? apiUser.id : null,
         source,
         source_id,
         tags,
@@ -193,8 +197,8 @@ export async function POST(request: NextRequest) {
     });
 
     // Send email notification if task is assigned to someone else
-    if (assignee_id && assignee_id !== apiUser.id) {
-      emailTaskAssigned(assignee_id, task.id, title, apiUser.email).catch((err) =>
+    if (assigneeValue && assigneeValue !== apiUser.id) {
+      emailTaskAssigned(assigneeValue, task.id, title, apiUser.email).catch((err) =>
         logger.error("Failed to send task assigned email", err)
       );
     }

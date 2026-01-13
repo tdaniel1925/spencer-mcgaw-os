@@ -227,7 +227,7 @@ export async function createTasksFromExtraction(
             original_task: task,
             client_match: extraction.client_match,
           },
-          status: "open",
+          status: "pending",
           organization_id: DEFAULT_ORGANIZATION_ID,
           created_by: userId,
         })
