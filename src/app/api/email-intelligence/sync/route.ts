@@ -52,7 +52,7 @@ async function refreshAccessToken(refreshToken: string): Promise<{
   }
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(_request: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -213,6 +213,28 @@ export async function POST(request: NextRequest) {
             processing_time_ms: classification.processingTimeMs,
             tokens_used: classification.tokensUsed,
           });
+
+          // SMART FILTERING: Only create tasks for actionable emails
+          // Skip emails that don't require user action
+          // Categories: document_request, question, payment, appointment, tax_filing, compliance, follow_up, information, urgent, internal, other
+          const nonActionableCategories = ["information", "other"];
+          const shouldCreateTasks =
+            classification.isBusinessRelevant &&
+            !nonActionableCategories.includes(classification.category) &&
+            classification.priorityScore >= 30 &&
+            (classification.requiresResponse || classification.actionItems.length > 0);
+
+          if (!shouldCreateTasks) {
+            logger.info(`[Email Sync] Skipping task creation for non-actionable email: ${email.subject}`, {
+              category: classification.category,
+              isBusinessRelevant: classification.isBusinessRelevant,
+              priorityScore: classification.priorityScore,
+              requiresResponse: classification.requiresResponse,
+              actionItemsCount: classification.actionItems.length,
+            });
+            totalProcessed++;
+            continue;
+          }
 
           // Store action items AND create TaskPool tasks
           // First, get the action types from TaskPool
