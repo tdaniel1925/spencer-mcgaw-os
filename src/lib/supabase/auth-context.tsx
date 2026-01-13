@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { createClient } from "./client";
 import {
@@ -30,70 +30,43 @@ interface AuthContextType {
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   refreshPermissions: () => Promise<void>;
-  // Role-based helpers (legacy)
   hasRole: (roles: UserRole[]) => boolean;
-  // Permission-based helpers
   can: (permission: Permission) => boolean;
   canAny: (permissions: Permission[]) => boolean;
   canAll: (permissions: Permission[]) => boolean;
   canAccessRoute: (href: string) => boolean;
-  // User info helpers
   isAdmin: boolean;
   isManager: boolean;
   isOwner: boolean;
-  // Authentication state
   isAuthenticated: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Helper to check if error is an abort error (expected during navigation)
+function isAbortError(err: unknown): boolean {
+  return err instanceof Error && err.name === "AbortError";
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  // Start with null - no user until authenticated
   const [user, setUser] = useState<AuthUser | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [permissionOverrides, setPermissionOverrides] = useState<PermissionOverride[]>([]);
   const supabase = createClient();
+  const isMounted = useRef(true);
 
-  // Function to load permission overrides for a user
-  const loadPermissionOverrides = useCallback(async (userId: string) => {
-    try {
-      const { data: overrides, error } = await supabase
-        .from("user_permission_overrides")
-        .select("*")
-        .eq("user_id", userId);
+  // Admin emails that should always have admin role
+  const adminEmails = ["tdaniel@botmakers.ai"];
 
-      if (!error && overrides) {
-        // Filter out expired overrides
-        const activeOverrides = overrides.filter(
-          o => !o.expires_at || new Date(o.expires_at) > new Date()
-        );
-        setPermissionOverrides(activeOverrides);
-      }
-    } catch (err) {
-      console.error("Error loading permission overrides:", err);
-    }
-  }, [supabase]);
-
-  // Refresh permissions (can be called after admin changes)
-  const refreshPermissions = useCallback(async () => {
-    if (user?.id) {
-      await loadPermissionOverrides(user.id);
-    }
-  }, [user?.id, loadPermissionOverrides]);
-
-  // Helper to build user from session and profile
-  const buildUser = useCallback((sessionUser: User, profile: Record<string, unknown> | null): AuthUser => {
-    const adminEmails = ["tdaniel@botmakers.ai"];
+  // Build user object from session user and optional profile
+  const buildUser = useCallback((sessionUser: User, profile?: Record<string, unknown> | null): AuthUser => {
+    const isAdminEmail = adminEmails.includes(sessionUser.email || "");
 
     if (profile) {
-      const userRole = adminEmails.includes(sessionUser.email || "")
-        ? "admin"
-        : (profile.role as UserRole) || "staff";
-
       return {
         ...sessionUser,
-        role: userRole,
+        role: isAdminEmail ? "admin" : (profile.role as UserRole) || "staff",
         full_name: profile.full_name as string | undefined,
         avatar_url: profile.avatar_url as string | undefined,
         department: profile.department as string | undefined,
@@ -103,131 +76,100 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       };
     }
 
-    // No profile - use basic info
+    // No profile - use basic info from session
     return {
       ...sessionUser,
-      role: adminEmails.includes(sessionUser.email || "") ? "admin" : "staff",
+      role: isAdminEmail ? "admin" : "staff",
       full_name: sessionUser.user_metadata?.full_name || sessionUser.email?.split("@")[0],
       is_active: true,
     };
   }, []);
 
-  useEffect(() => {
-    // Safety timeout to prevent infinite loading if queries hang
-    const loadingTimeout = setTimeout(() => {
-      setLoading((current) => {
-        if (current) {
-          console.warn("[Auth] Loading timeout - forcing loading to false after 10s");
-          return false;
-        }
-        return current;
-      });
-    }, 10000);
+  // Load user profile (called after session is set)
+  const loadUserProfile = useCallback(async (sessionUser: User) => {
+    if (!isMounted.current) return;
 
-    // Get initial session - OPTIMIZED: parallel queries for faster loading
-    const getSession = async () => {
+    try {
+      const { data: profile, error } = await supabase
+        .from("user_profiles")
+        .select("role, full_name, avatar_url, department, job_title, phone, is_active")
+        .eq("id", sessionUser.id)
+        .single();
+
+      if (!isMounted.current) return;
+
+      // Profile not found - user might not have been provisioned yet
+      if (error?.code === "PGRST116") {
+        // Just use session data, don't sign out - profile might be created later
+        setUser(buildUser(sessionUser, null));
+        return;
+      }
+
+      setUser(buildUser(sessionUser, profile));
+
+      // Load permission overrides in background (non-blocking)
+      supabase
+        .from("user_permission_overrides")
+        .select("*")
+        .eq("user_id", sessionUser.id)
+        .then(({ data, error }) => {
+          if (!error && isMounted.current && data) {
+            const active = data.filter(o => !o.expires_at || new Date(o.expires_at) > new Date());
+            setPermissionOverrides(active);
+          }
+        });
+
+    } catch (err) {
+      if (isAbortError(err) || !isMounted.current) return;
+      // On error, still set user with basic info so app doesn't break
+      setUser(buildUser(sessionUser, null));
+    }
+  }, [supabase, buildUser]);
+
+  // Initialize auth on mount
+  useEffect(() => {
+    isMounted.current = true;
+
+    const initAuth = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        setSession(session);
+
+        if (!isMounted.current) return;
 
         if (session?.user) {
-          // Fetch profile and permissions in PARALLEL for faster loading
-          const [profileResult, overridesResult] = await Promise.all([
-            supabase
-              .from("user_profiles")
-              .select("role, full_name, avatar_url, department, job_title, phone, is_active")
-              .eq("id", session.user.id)
-              .single(),
-            supabase
-              .from("user_permission_overrides")
-              .select("*")
-              .eq("user_id", session.user.id)
-          ]);
-
-          const { data: profile, error: profileError } = profileResult;
-
-          // If user doesn't exist in database, sign them out immediately
-          if (profileError && profileError.code === "PGRST116") {
-            console.warn("Session exists but user not found in database. Clearing stale session.");
-            await supabase.auth.signOut();
-            setUser(null);
-            setSession(null);
-            setPermissionOverrides([]);
-            setLoading(false);
-            clearTimeout(loadingTimeout);
-            return;
-          }
-
-          // User exists - set user data and permissions together
-          setUser(buildUser(session.user, profile));
-
-          if (overridesResult.data) {
-            const activeOverrides = overridesResult.data.filter(
-              (o: PermissionOverride) => !o.expires_at || new Date(o.expires_at) > new Date()
-            );
-            setPermissionOverrides(activeOverrides);
-          }
-
+          setSession(session);
+          // Set basic user immediately so app can render
+          setUser(buildUser(session.user, null));
           setLoading(false);
-          clearTimeout(loadingTimeout);
+          // Load full profile in background
+          loadUserProfile(session.user);
         } else {
+          setSession(null);
           setUser(null);
           setLoading(false);
-          clearTimeout(loadingTimeout);
         }
       } catch (err) {
+        if (isAbortError(err) || !isMounted.current) return;
         console.error("Error getting session:", err);
-        setUser(null);
         setLoading(false);
-        clearTimeout(loadingTimeout);
       }
     };
 
-    getSession();
+    initAuth();
 
-    // Listen for auth changes - OPTIMIZED: parallel queries
+    // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        if (!isMounted.current) return;
+
         setSession(session);
 
         if (session?.user) {
-          // Fetch profile and permissions in PARALLEL
-          const [profileResult, overridesResult] = await Promise.all([
-            supabase
-              .from("user_profiles")
-              .select("role, full_name, avatar_url, department, job_title, phone, is_active")
-              .eq("id", session.user.id)
-              .single(),
-            supabase
-              .from("user_permission_overrides")
-              .select("*")
-              .eq("user_id", session.user.id)
-          ]);
-
-          const { data: profile, error: profileError } = profileResult;
-
-          // If user doesn't exist in database, sign them out
-          if (profileError && profileError.code === "PGRST116") {
-            console.warn("Auth state changed but user not found in database. Clearing session.");
-            await supabase.auth.signOut();
-            setUser(null);
-            setSession(null);
-            setPermissionOverrides([]);
-            setLoading(false);
-            return;
-          }
-
-          // User exists - set user data and permissions together
-          setUser(buildUser(session.user, profile));
-
-          if (overridesResult.data) {
-            const activeOverrides = overridesResult.data.filter(
-              (o: PermissionOverride) => !o.expires_at || new Date(o.expires_at) > new Date()
-            );
-            setPermissionOverrides(activeOverrides);
-          }
-
+          // Set basic user immediately
+          setUser(buildUser(session.user, null));
           setLoading(false);
+          // Load full profile in background
+          loadUserProfile(session.user);
         } else {
           setUser(null);
           setPermissionOverrides([]);
@@ -237,16 +179,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
 
     return () => {
+      isMounted.current = false;
       subscription.unsubscribe();
-      clearTimeout(loadingTimeout);
     };
-  }, [supabase, loadPermissionOverrides, buildUser]);
+  }, [supabase, buildUser, loadUserProfile]);
+
+  // Refresh permissions
+  const refreshPermissions = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      const { data } = await supabase
+        .from("user_permission_overrides")
+        .select("*")
+        .eq("user_id", user.id);
+      if (data) {
+        const active = data.filter(o => !o.expires_at || new Date(o.expires_at) > new Date());
+        setPermissionOverrides(active);
+      }
+    } catch (err) {
+      if (!isAbortError(err)) {
+        console.error("Error refreshing permissions:", err);
+      }
+    }
+  }, [user?.id, supabase]);
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
     return { error };
   };
 
@@ -254,20 +212,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: {
-        data: {
-          full_name: fullName,
-        },
-      },
+      options: { data: { full_name: fullName } },
     });
 
     if (!error && data.user) {
-      // Create user profile in user_profiles table
+      // Create user profile
       await supabase.from("user_profiles").insert({
         id: data.user.id,
         email: email,
         full_name: fullName,
-        role: "staff", // Default role
+        role: "staff",
         is_active: true,
       });
     }
@@ -282,28 +236,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setPermissionOverrides([]);
   };
 
-  // Legacy role check
-  const checkHasRole = (roles: UserRole[]) => {
-    if (!user?.role) return false;
-    return roles.includes(user.role);
-  };
-
-  // Permission-based checks with overrides
-  const can = (permission: Permission) =>
-    hasPermissionWithOverrides(user?.role, permission, permissionOverrides);
-
-  const canAny = (permissions: Permission[]) =>
-    permissions.some(p => hasPermissionWithOverrides(user?.role, p, permissionOverrides));
-
-  const canAll = (permissions: Permission[]) =>
-    permissions.every(p => hasPermissionWithOverrides(user?.role, p, permissionOverrides));
-
+  // Permission checks
+  const checkHasRole = (roles: UserRole[]) => user?.role ? roles.includes(user.role) : false;
+  const can = (permission: Permission) => hasPermissionWithOverrides(user?.role, permission, permissionOverrides);
+  const canAny = (permissions: Permission[]) => permissions.some(p => can(p));
+  const canAll = (permissions: Permission[]) => permissions.every(p => can(p));
   const checkCanAccessRoute = (href: string) => canAccessRoute(user?.role, href);
 
   // Role shortcuts
   const isOwner = user?.role === "owner";
-  const isAdmin = user?.role === "admin" || user?.role === "owner";
-  const isManager = user?.role === "manager" || user?.role === "admin" || user?.role === "owner";
+  const isAdmin = user?.role === "admin" || isOwner;
+  const isManager = user?.role === "manager" || isAdmin;
   const isAuthenticated = !!user && !!session;
 
   return (
