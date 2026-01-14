@@ -98,6 +98,9 @@ import { format, formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { useFiles } from "@/lib/files";
 import { Folder as FolderType, FileRecord, formatFileSize, getFileCategory, DEFAULT_STORAGE_QUOTA_BYTES } from "@/lib/files/types";
+
+// Maximum file size: 1GB (matches Supabase bucket config)
+const MAX_FILE_SIZE_BYTES = 1073741824;
 import { FilePreview } from "@/components/files/file-preview";
 import { StorageInfo, SyncStatusBadge } from "@/components/files/sync-status-badge";
 
@@ -176,6 +179,8 @@ export default function FilesPage() {
   const [sortField, setSortField] = useState<SortField>("name");
   const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<FileRecord[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [showNewFolderDialog, setShowNewFolderDialog] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
@@ -185,7 +190,7 @@ export default function FilesPage() {
   const [shareTarget, setShareTarget] = useState<FileRecord | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; type: "file" | "folder" } | null>(null);
-  const [activeSection, setActiveSection] = useState<"all" | "recent" | "starred" | "trash">("all");
+  const [activeSection, setActiveSection] = useState<"all" | "recent" | "starred" | "trash" | "team" | "repository">("all");
   const [sectionFiles, setSectionFiles] = useState<FileRecord[]>([]);
   const [previewFile, setPreviewFile] = useState<FileRecord | null>(null);
   const [showPreview, setShowPreview] = useState(false);
@@ -238,14 +243,70 @@ export default function FilesPage() {
     loadSectionFiles();
   }, [activeSection, getRecentFiles, getStarredFiles, getTrashedFiles]);
 
+  // Filter folders by type for team/repository sections
+  const filteredFolders = activeSection === "team"
+    ? folders.filter(f => f.folderType === "team")
+    : activeSection === "repository"
+      ? folders.filter(f => f.folderType === "repository")
+      : folders;
+
+  // Search files when query changes (debounced)
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+
+    const timeoutId = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const results = await searchFiles(searchQuery.trim());
+        setSearchResults(results);
+      } catch (err) {
+        console.error("Search error:", err);
+        setSearchResults([]);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 300); // 300ms debounce
+
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery, searchFiles]);
+
+  // Validate and filter files by size
+  const validateFiles = useCallback((filesToValidate: File[]): File[] => {
+    const validFiles: File[] = [];
+    const oversizedFiles: string[] = [];
+
+    for (const file of filesToValidate) {
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        oversizedFiles.push(`${file.name} (${formatFileSize(file.size)})`);
+      } else {
+        validFiles.push(file);
+      }
+    }
+
+    if (oversizedFiles.length > 0) {
+      toast.error(
+        `${oversizedFiles.length} file(s) exceed 1GB limit: ${oversizedFiles.slice(0, 3).join(", ")}${oversizedFiles.length > 3 ? "..." : ""}`
+      );
+    }
+
+    return validFiles;
+  }, []);
+
   // Handle file upload via input
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = e.target.files;
     if (selectedFiles && selectedFiles.length > 0) {
-      uploadFiles(Array.from(selectedFiles));
+      const validFiles = validateFiles(Array.from(selectedFiles));
+      if (validFiles.length > 0) {
+        uploadFiles(validFiles);
+      }
     }
     e.target.value = "";
-  }, [uploadFiles]);
+  }, [uploadFiles, validateFiles]);
 
   // Handle drag and drop
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -263,9 +324,12 @@ export default function FilesPage() {
     setIsDragging(false);
     const droppedFiles = e.dataTransfer.files;
     if (droppedFiles && droppedFiles.length > 0) {
-      uploadFiles(Array.from(droppedFiles));
+      const validFiles = validateFiles(Array.from(droppedFiles));
+      if (validFiles.length > 0) {
+        uploadFiles(validFiles);
+      }
     }
-  }, [uploadFiles]);
+  }, [uploadFiles, validateFiles]);
 
   // Handle folder creation
   const handleCreateFolder = useCallback(async () => {
@@ -321,14 +385,16 @@ export default function FilesPage() {
   const handleRestore = useCallback(async (fileId: string) => {
     const success = await restoreFile(fileId);
     if (success) {
-      toast.success("File restored");
+      toast.success("File restored to original folder");
       // Refresh trash view
       const trashed = await getTrashedFiles();
       setSectionFiles(trashed);
+      // Also refresh the main folder view in case user navigates there
+      refreshCurrentFolder();
     } else {
       toast.error("Failed to restore file");
     }
-  }, [restoreFile, getTrashedFiles]);
+  }, [restoreFile, getTrashedFiles, refreshCurrentFolder]);
 
   // Handle empty trash
   const handleEmptyTrash = useCallback(async () => {
@@ -355,6 +421,10 @@ export default function FilesPage() {
       const share = await createShareLink(shareTarget.id);
       if (share?.shareUrl) {
         await navigator.clipboard.writeText(share.shareUrl);
+        toast.success("Share link copied to clipboard");
+        setShowShareDialog(false);
+      } else {
+        toast.error("Failed to create share link");
       }
     }
   }, [shareTarget, createShareLink]);
@@ -390,11 +460,13 @@ export default function FilesPage() {
     setShowDeleteDialog(true);
   };
 
-  // Get display items based on active section
-  const displayFolders = activeSection === "all" ? sortItems(folders) : [];
-  const displayFiles = activeSection === "all"
-    ? sortItems(files)
-    : sortItems(sectionFiles);
+  // Get display items based on active section and search
+  const isSearchActive = searchQuery.trim().length > 0;
+  const showFolders = activeSection === "all" || activeSection === "team" || activeSection === "repository";
+  const displayFolders = isSearchActive ? [] : (showFolders ? sortItems(filteredFolders) : []);
+  const displayFiles = isSearchActive
+    ? sortItems(searchResults)
+    : (activeSection === "all" || activeSection === "team" || activeSection === "repository" ? sortItems(files) : sortItems(sectionFiles));
 
   // Sidebar navigation items
   const sidebarItems = [
@@ -452,20 +524,37 @@ export default function FilesPage() {
               {/* Folder Types */}
               <p className="px-3 text-xs font-medium text-muted-foreground mb-2">Folders</p>
               <button
-                onClick={() => { setActiveSection("all"); navigateToFolder(null); }}
-                className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm hover:bg-muted text-muted-foreground hover:text-foreground"
+                onClick={() => { setActiveSection("all"); setSearchQuery(""); navigateToFolder(null); }}
+                className={cn(
+                  "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors",
+                  activeSection === "all"
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "hover:bg-muted text-muted-foreground hover:text-foreground"
+                )}
               >
                 <Folder className="h-4 w-4" />
                 My Files
               </button>
               <button
-                className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm hover:bg-muted text-muted-foreground hover:text-foreground"
+                onClick={() => { setActiveSection("team"); setSearchQuery(""); navigateToFolder(null); }}
+                className={cn(
+                  "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors",
+                  activeSection === "team"
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "hover:bg-muted text-muted-foreground hover:text-foreground"
+                )}
               >
                 <Users className="h-4 w-4" />
                 Team Files
               </button>
               <button
-                className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm hover:bg-muted text-muted-foreground hover:text-foreground"
+                onClick={() => { setActiveSection("repository"); setSearchQuery(""); navigateToFolder(null); }}
+                className={cn(
+                  "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors",
+                  activeSection === "repository"
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "hover:bg-muted text-muted-foreground hover:text-foreground"
+                )}
               >
                 <FolderLock className="h-4 w-4" />
                 Repository

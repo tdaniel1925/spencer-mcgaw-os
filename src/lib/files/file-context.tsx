@@ -502,9 +502,35 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
     }
   }, [supabase]);
 
-  // Delete folder
-  const deleteFolder = useCallback(async (folderId: string): Promise<boolean> => {
+  // Delete folder (with contents check)
+  const deleteFolder = useCallback(async (folderId: string, forceDelete = false): Promise<boolean> => {
     try {
+      // Check for subfolders
+      const { data: subfolders, error: subfoldersError } = await supabase
+        .from("folders")
+        .select("id")
+        .eq("parent_id", folderId)
+        .limit(1);
+
+      if (subfoldersError) throw subfoldersError;
+
+      // Check for files
+      const { data: folderFiles, error: filesError } = await supabase
+        .from("files")
+        .select("id")
+        .eq("folder_id", folderId)
+        .eq("is_trashed", false)
+        .limit(1);
+
+      if (filesError) throw filesError;
+
+      const hasContents = (subfolders && subfolders.length > 0) || (folderFiles && folderFiles.length > 0);
+
+      if (hasContents && !forceDelete) {
+        // Set error to inform user - deletion will proceed via CASCADE but warn them
+        setError("Warning: Folder contains items that will also be deleted");
+      }
+
       const { error } = await supabase
         .from("folders")
         .delete()
@@ -513,11 +539,66 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
       if (error) throw error;
 
       setFolders(prev => prev.filter(f => f.id !== folderId));
+      // Also remove any files that were in this folder from local state
+      setFiles(prev => prev.filter(f => f.folderId !== folderId));
       return true;
     } catch (err) {
       console.error("Error deleting folder:", err);
       return false;
     }
+  }, [supabase]);
+
+  // Generate unique filename if duplicate exists
+  const generateUniqueName = useCallback(async (
+    name: string,
+    folderId: string | null | undefined,
+    ownerId: string
+  ): Promise<string> => {
+    // Check if file with same name exists in folder
+    const { data: existing } = await supabase
+      .from("files")
+      .select("name")
+      .eq("folder_id", folderId)
+      .eq("owner_id", ownerId)
+      .eq("is_trashed", false)
+      .ilike("name", name);
+
+    if (!existing || existing.length === 0) {
+      return name; // No duplicate, use original name
+    }
+
+    // Find a unique name by appending a number
+    const baseName = name.replace(/\.[^/.]+$/, ""); // Remove extension
+    const extension = name.includes(".") ? name.substring(name.lastIndexOf(".")) : "";
+
+    let counter = 1;
+    let newName = `${baseName} (${counter})${extension}`;
+
+    // Get all similar names to find the highest counter
+    const { data: similarNames } = await supabase
+      .from("files")
+      .select("name")
+      .eq("folder_id", folderId)
+      .eq("owner_id", ownerId)
+      .eq("is_trashed", false)
+      .ilike("name", `${baseName} (%`);
+
+    if (similarNames && similarNames.length > 0) {
+      // Extract counters from existing names
+      const counters = similarNames
+        .map(f => {
+          const match = f.name.match(/\((\d+)\)[^(]*$/);
+          return match ? parseInt(match[1], 10) : 0;
+        })
+        .filter(n => !isNaN(n));
+
+      if (counters.length > 0) {
+        counter = Math.max(...counters) + 1;
+      }
+      newName = `${baseName} (${counter})${extension}`;
+    }
+
+    return newName;
   }, [supabase]);
 
   // Upload files
@@ -568,11 +649,14 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
         // Get file extension
         const extension = file.name.split(".").pop()?.toLowerCase();
 
+        // Generate unique name if duplicate exists
+        const uniqueName = await generateUniqueName(file.name, targetFolderId, user.id);
+
         // Create file record in database
         const { data: fileRecord, error: dbError } = await supabase
           .from("files")
           .insert({
-            name: file.name,
+            name: uniqueName,
             original_name: file.name,
             folder_id: targetFolderId,
             owner_id: user.id,
@@ -742,11 +826,14 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
 
       if (copyError) throw copyError;
 
+      // Generate unique name for the copy
+      const copyName = await generateUniqueName(`Copy of ${file.name}`, newFolderId, user.id);
+
       // Create new file record
       const { data: newFile, error: dbError } = await supabase
         .from("files")
         .insert({
-          name: `Copy of ${file.name}`,
+          name: copyName,
           original_name: file.originalName,
           folder_id: newFolderId,
           owner_id: user.id,
@@ -762,6 +849,16 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
         .single();
 
       if (dbError) throw dbError;
+
+      // Update storage quota for the copied file (trigger handles this via on_file_insert)
+      // But also update local quota state
+      setQuota(prev => prev ? {
+        ...prev,
+        usedBytes: prev.usedBytes + file.sizeBytes,
+        fileCount: prev.fileCount + 1,
+        remainingBytes: prev.remainingBytes - file.sizeBytes,
+        percentUsed: ((prev.usedBytes + file.sizeBytes) / prev.quotaBytes) * 100,
+      } : null);
 
       return transformFile(newFile);
     } catch (err) {
@@ -876,9 +973,13 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
     }
   }, [supabase]);
 
-  // Restore version
+  // Restore version (creates a new version entry for audit trail)
   const restoreVersion = useCallback(async (fileId: string, versionId: string): Promise<boolean> => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      // Get the version to restore
       const { data: version, error: versionError } = await supabase
         .from("file_versions")
         .select("*")
@@ -887,25 +988,61 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
 
       if (versionError) throw versionError;
 
+      // Get current file to determine new version number
+      const { data: currentFile, error: fileError } = await supabase
+        .from("files")
+        .select("version")
+        .eq("id", fileId)
+        .single();
+
+      if (fileError) throw fileError;
+
+      const newVersionNumber = (currentFile.version || 1) + 1;
+
+      // Create a new version entry for the restoration (audit trail)
+      const { data: newVersion, error: newVersionError } = await supabase
+        .from("file_versions")
+        .insert({
+          file_id: fileId,
+          version_number: newVersionNumber,
+          storage_path: version.storage_path,
+          storage_bucket: version.storage_bucket,
+          size_bytes: version.size_bytes,
+          checksum: version.checksum,
+          change_summary: `Restored from version ${version.version_number}`,
+          created_by: user.id,
+        })
+        .select()
+        .single();
+
+      if (newVersionError) throw newVersionError;
+
+      // Update the file to point to the restored version
       const { error: updateError } = await supabase
         .from("files")
         .update({
           storage_path: version.storage_path,
           size_bytes: version.size_bytes,
-          version: version.version_number,
-          current_version_id: versionId,
+          version: newVersionNumber,
+          current_version_id: newVersion.id,
           updated_at: new Date().toISOString(),
         })
         .eq("id", fileId);
 
       if (updateError) throw updateError;
 
+      // Log activity
+      await logActivity("restore_version", {
+        restored_from_version: version.version_number,
+        new_version: newVersionNumber,
+      }, fileId);
+
       return true;
     } catch (err) {
       console.error("Error restoring version:", err);
       return false;
     }
-  }, [supabase]);
+  }, [supabase, logActivity]);
 
   // Create share link
   const createShareLink = useCallback(async (
@@ -1128,11 +1265,26 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
   }, [selectedItems, folders, deleteFolder, deleteFile, clearSelection]);
 
   const bulkDownload = useCallback(async () => {
-    for (const itemId of selectedItems) {
-      const isFile = files.some(f => f.id === itemId);
-      if (isFile) {
-        await downloadFile(itemId);
+    const fileIds = selectedItems.filter(itemId => files.some(f => f.id === itemId));
+
+    if (fileIds.length === 0) return;
+
+    if (fileIds.length === 1) {
+      // Single file - download directly
+      await downloadFile(fileIds[0]);
+      return;
+    }
+
+    // Multiple files - stagger downloads with delay to avoid browser blocking
+    // Also notify user about multiple downloads
+    console.log(`Starting bulk download of ${fileIds.length} files...`);
+
+    for (let i = 0; i < fileIds.length; i++) {
+      // Add delay between downloads to prevent browser blocking
+      if (i > 0) {
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
+      await downloadFile(fileIds[i]);
     }
   }, [selectedItems, files, downloadFile]);
 
@@ -1244,6 +1396,9 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
         return { success: true, deletedCount: 0 };
       }
 
+      // Calculate total bytes to free
+      const totalBytesFreed = trashedFiles.reduce((sum, f) => sum + (f.size_bytes || 0), 0);
+
       // Delete files from storage
       const storagePaths = trashedFiles.map(f => f.storage_path);
       const { error: storageError } = await supabase.storage
@@ -1255,7 +1410,7 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
         // Continue anyway to clean up database records
       }
 
-      // Delete file records from database
+      // Delete file records from database (triggers will update quota)
       const fileIds = trashedFiles.map(f => f.id);
       const { error: deleteError } = await supabase
         .from("files")
@@ -1264,11 +1419,20 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
 
       if (deleteError) throw deleteError;
 
+      // Update local quota state
+      setQuota(prev => prev ? {
+        ...prev,
+        usedBytes: Math.max(0, prev.usedBytes - totalBytesFreed),
+        fileCount: Math.max(0, prev.fileCount - trashedFiles.length),
+        remainingBytes: prev.remainingBytes + totalBytesFreed,
+        percentUsed: Math.max(0, ((prev.usedBytes - totalBytesFreed) / prev.quotaBytes) * 100),
+      } : null);
+
       // Log activity
       await logActivity("empty_trash", {
         deleted_count: trashedFiles.length,
         deleted_files: trashedFiles.map(f => f.name),
-        total_bytes_freed: trashedFiles.reduce((sum, f) => sum + (f.size_bytes || 0), 0),
+        total_bytes_freed: totalBytesFreed,
       });
 
       return { success: true, deletedCount: trashedFiles.length };

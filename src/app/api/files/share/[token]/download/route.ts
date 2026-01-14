@@ -6,34 +6,60 @@ interface RouteParams {
   params: Promise<{ token: string }>;
 }
 
-// Simple in-memory rate limiter for password attempts
-const passwordAttempts = new Map<string, { count: number; resetAt: number }>();
 const MAX_PASSWORD_ATTEMPTS = 5;
-const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+const RATE_LIMIT_WINDOW_MINUTES = 1;
 
-function checkPasswordRateLimit(token: string, ip: string): { allowed: boolean; remainingAttempts: number } {
-  const key = `${token}:${ip}`;
-  const now = Date.now();
-  const record = passwordAttempts.get(key);
+// Database-backed rate limiter for serverless environments
+async function checkPasswordRateLimit(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  shareId: string,
+  ip: string
+): Promise<{ allowed: boolean; remainingAttempts: number }> {
+  const windowStart = new Date(Date.now() - RATE_LIMIT_WINDOW_MINUTES * 60 * 1000).toISOString();
 
-  // Clean up old entries periodically
-  if (passwordAttempts.size > 10000) {
-    for (const [k, v] of passwordAttempts.entries()) {
-      if (v.resetAt < now) passwordAttempts.delete(k);
-    }
+  // Count recent failed attempts from file_activity
+  const { data: recentAttempts, error } = await supabase
+    .from("file_activity")
+    .select("id")
+    .eq("action", "share_password_attempt")
+    .gte("created_at", windowStart)
+    .or(`details->>share_id.eq.${shareId},details->>ip.eq.${ip}`);
+
+  if (error) {
+    console.error("Rate limit check error:", error);
+    // On error, allow the attempt but log it
+    return { allowed: true, remainingAttempts: MAX_PASSWORD_ATTEMPTS };
   }
 
-  if (!record || record.resetAt < now) {
-    passwordAttempts.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
-    return { allowed: true, remainingAttempts: MAX_PASSWORD_ATTEMPTS - 1 };
-  }
+  const attemptCount = recentAttempts?.length || 0;
 
-  if (record.count >= MAX_PASSWORD_ATTEMPTS) {
+  if (attemptCount >= MAX_PASSWORD_ATTEMPTS) {
     return { allowed: false, remainingAttempts: 0 };
   }
 
-  record.count++;
-  return { allowed: true, remainingAttempts: MAX_PASSWORD_ATTEMPTS - record.count };
+  return { allowed: true, remainingAttempts: MAX_PASSWORD_ATTEMPTS - attemptCount };
+}
+
+// Log a password attempt for rate limiting
+async function logPasswordAttempt(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  shareId: string,
+  ip: string,
+  success: boolean
+): Promise<void> {
+  try {
+    await supabase.from("file_activity").insert({
+      action: "share_password_attempt",
+      details: {
+        share_id: shareId,
+        ip: ip,
+        success: success,
+      },
+      ip_address: ip,
+    });
+  } catch (err) {
+    console.error("Failed to log password attempt:", err);
+  }
 }
 
 /**
@@ -114,7 +140,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
       // Rate limit password attempts to prevent brute force
       const ip = request.headers.get("x-forwarded-for")?.split(",")[0] || "unknown";
-      const rateLimit = checkPasswordRateLimit(token, ip);
+      const rateLimit = await checkPasswordRateLimit(supabase, share.id, ip);
 
       if (!rateLimit.allowed) {
         return NextResponse.json(
@@ -124,9 +150,13 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       }
 
       const isValidPassword = await bcrypt.compare(providedPassword, share.password_hash);
+
+      // Log the attempt (for rate limiting)
+      await logPasswordAttempt(supabase, share.id, ip, isValidPassword);
+
       if (!isValidPassword) {
         return NextResponse.json(
-          { error: "Invalid password", remainingAttempts: rateLimit.remainingAttempts },
+          { error: "Invalid password", remainingAttempts: rateLimit.remainingAttempts - 1 },
           { status: 401 }
         );
       }
