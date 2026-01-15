@@ -510,8 +510,8 @@ async function processCallReport(
       .insert(calls)
       .values({
         vapiCallId: vapiCallIdValue,
-        clientId: matchedClientId,
-        callerPhone: finalCallerPhone,
+        clientId: matchedClientId || null, // Ensure null instead of undefined/empty
+        callerPhone: finalCallerPhone || null,
         callerName: callerName || parsedData?.contact?.name || null,
         status: "completed",
         direction,
@@ -719,8 +719,8 @@ async function processCallEvent(
     .insert(calls)
     .values({
       vapiCallId: conversationSpaceId ? `goto-${conversationSpaceId}` : `goto-${Date.now()}`,
-      clientId: matchedClientId,
-      callerPhone: finalCallerPhone,
+      clientId: matchedClientId || null, // Ensure null instead of undefined/empty
+      callerPhone: finalCallerPhone || null,
       callerName: enrichedCallerName,
       status: "completed",
       direction,
@@ -826,9 +826,9 @@ async function processUnknownEvent(
     .insert(calls)
     .values({
       vapiCallId: `goto-unknown-${Date.now()}`,
-      clientId: matchedClientId,
-      callerPhone: finalCallerPhone,
-      callerName: unknownEnrichedName,
+      clientId: matchedClientId || null, // Ensure null instead of undefined/empty
+      callerPhone: finalCallerPhone || null,
+      callerName: unknownEnrichedName || null,
       status: "completed",
       direction,
       duration: parsedData.call?.duration || null,
