@@ -103,6 +103,7 @@ import { Folder as FolderType, FileRecord, formatFileSize, getFileCategory, DEFA
 const MAX_FILE_SIZE_BYTES = 1073741824;
 import { FilePreview } from "@/components/files/file-preview";
 import { StorageInfo, SyncStatusBadge } from "@/components/files/sync-status-badge";
+import { FileErrorBoundary } from "@/components/files/file-error-boundary";
 
 // File type to icon mapping
 const getFileIcon = (mimeType: string) => {
@@ -166,6 +167,7 @@ export default function FilesPage() {
     clearSelection,
     toggleSelection,
     bulkDelete,
+    bulkDownload,
     searchFiles,
     getRecentFiles,
     getStarredFiles,
@@ -477,7 +479,7 @@ export default function FilesPage() {
   ];
 
   return (
-    <>
+    <FileErrorBoundary>
       <Header title="Files" />
       <TooltipProvider>
         <div className="flex h-[calc(100vh-64px)]">
@@ -696,11 +698,26 @@ export default function FilesPage() {
                   Clear
                 </Button>
                 <div className="flex-1" />
-                <Button variant="ghost" size="sm">
+                <Button variant="ghost" size="sm" onClick={bulkDownload}>
                   <Download className="h-4 w-4 mr-2" />
                   Download
                 </Button>
-                <Button variant="ghost" size="sm">
+                <Button variant="ghost" size="sm" onClick={() => {
+                  const fileIds = selectedItems.filter(itemId => files.some(f => f.id === itemId));
+                  if (fileIds.length === 0) {
+                    toast.error("Please select files to share");
+                    return;
+                  }
+                  if (fileIds.length > 1) {
+                    toast.info("Bulk sharing coming soon. Please select one file.");
+                    return;
+                  }
+                  const file = files.find(f => f.id === fileIds[0]);
+                  if (file) {
+                    setShareTarget(file);
+                    setShowShareDialog(true);
+                  }
+                }}>
                   <Share2 className="h-4 w-4 mr-2" />
                   Share
                 </Button>
@@ -1262,6 +1279,6 @@ export default function FilesPage() {
         hasNext={previewFile ? displayFiles.findIndex(f => f.id === previewFile.id) < displayFiles.length - 1 : false}
         hasPrevious={previewFile ? displayFiles.findIndex(f => f.id === previewFile.id) > 0 : false}
       />
-    </>
+    </FileErrorBoundary>
   );
 }

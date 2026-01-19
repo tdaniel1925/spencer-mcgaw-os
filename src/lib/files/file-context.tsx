@@ -502,9 +502,43 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
     }
   }, [supabase]);
 
-  // Delete folder (with contents check)
+  // Recursively get all files in a folder tree
+  const getAllFilesInFolder = useCallback(async (folderId: string): Promise<Array<{id: string; storage_path: string; storage_bucket: string; size_bytes: number}>> => {
+    const allFiles: Array<{id: string; storage_path: string; storage_bucket: string; size_bytes: number}> = [];
+
+    // Get direct files in this folder
+    const { data: directFiles } = await supabase
+      .from("files")
+      .select("id, storage_path, storage_bucket, size_bytes")
+      .eq("folder_id", folderId);
+
+    if (directFiles) {
+      allFiles.push(...directFiles);
+    }
+
+    // Get subfolders
+    const { data: subfolders } = await supabase
+      .from("folders")
+      .select("id")
+      .eq("parent_id", folderId);
+
+    // Recursively get files from subfolders
+    if (subfolders) {
+      for (const subfolder of subfolders) {
+        const subfolderFiles = await getAllFilesInFolder(subfolder.id);
+        allFiles.push(...subfolderFiles);
+      }
+    }
+
+    return allFiles;
+  }, [supabase]);
+
+  // Delete folder (with recursive storage cleanup)
   const deleteFolder = useCallback(async (folderId: string, forceDelete = false): Promise<boolean> => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
       // Check for subfolders
       const { data: subfolders, error: subfoldersError } = await supabase
         .from("folders")
@@ -527,16 +561,69 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
       const hasContents = (subfolders && subfolders.length > 0) || (folderFiles && folderFiles.length > 0);
 
       if (hasContents && !forceDelete) {
-        // Set error to inform user - deletion will proceed via CASCADE but warn them
         setError("Warning: Folder contains items that will also be deleted");
       }
 
+      // Get all files recursively for storage cleanup
+      const allFiles = await getAllFilesInFolder(folderId);
+
+      // Delete files from storage first
+      if (allFiles.length > 0) {
+        const storagePaths = allFiles.map(f => f.storage_path);
+        const { error: storageError } = await supabase.storage
+          .from("files")
+          .remove(storagePaths);
+
+        if (storageError) {
+          console.error("Error deleting files from storage:", storageError);
+          // Continue anyway to clean up database
+        }
+
+        // Calculate total bytes freed
+        const totalBytesFreed = allFiles.reduce((sum, f) => sum + (f.size_bytes || 0), 0);
+
+        // Update quota
+        if (totalBytesFreed > 0) {
+          try {
+            await supabase.rpc("increment_storage_usage", {
+              p_user_id: user.id,
+              p_bytes: -totalBytesFreed, // Negative to decrease
+            });
+          } catch {
+            // Fallback to manual update
+            await supabase.from("storage_quotas")
+              .update({
+                used_bytes: Math.max(0, (quota?.usedBytes || 0) - totalBytesFreed),
+                file_count: Math.max(0, (quota?.fileCount || 0) - allFiles.length),
+              })
+              .eq("user_id", user.id);
+          }
+
+          // Update local quota state
+          setQuota(prev => prev ? {
+            ...prev,
+            usedBytes: Math.max(0, prev.usedBytes - totalBytesFreed),
+            fileCount: Math.max(0, prev.fileCount - allFiles.length),
+            remainingBytes: prev.remainingBytes + totalBytesFreed,
+            percentUsed: Math.max(0, ((prev.usedBytes - totalBytesFreed) / prev.quotaBytes) * 100),
+          } : null);
+        }
+      }
+
+      // Delete folder from database (CASCADE will delete files and subfolders in DB)
       const { error } = await supabase
         .from("folders")
         .delete()
         .eq("id", folderId);
 
       if (error) throw error;
+
+      // Log activity
+      await logActivity("delete_folder", {
+        folder_id: folderId,
+        files_deleted: allFiles.length,
+        recursive: hasContents,
+      }, undefined, folderId);
 
       setFolders(prev => prev.filter(f => f.id !== folderId));
       // Also remove any files that were in this folder from local state
@@ -546,7 +633,7 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
       console.error("Error deleting folder:", err);
       return false;
     }
-  }, [supabase]);
+  }, [supabase, quota, getAllFilesInFolder, logActivity]);
 
   // Generate unique filename if duplicate exists
   const generateUniqueName = useCallback(async (
@@ -554,16 +641,21 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
     folderId: string | null | undefined,
     ownerId: string
   ): Promise<string> => {
-    // Check if file with same name exists in folder
+    // Check if file with exact same name exists in folder (case-insensitive)
     const { data: existing } = await supabase
       .from("files")
       .select("name")
       .eq("folder_id", folderId)
       .eq("owner_id", ownerId)
-      .eq("is_trashed", false)
-      .ilike("name", name);
+      .eq("is_trashed", false);
 
     if (!existing || existing.length === 0) {
+      return name; // No files in folder at all
+    }
+
+    // Check for exact match (case-insensitive)
+    const exactMatch = existing.find(f => f.name.toLowerCase() === name.toLowerCase());
+    if (!exactMatch) {
       return name; // No duplicate, use original name
     }
 
@@ -571,32 +663,18 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
     const baseName = name.replace(/\.[^/.]+$/, ""); // Remove extension
     const extension = name.includes(".") ? name.substring(name.lastIndexOf(".")) : "";
 
-    let counter = 1;
-    let newName = `${baseName} (${counter})${extension}`;
+    // Get all files with similar names to find the highest counter
+    const pattern = new RegExp(`^${baseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\((\\d+)\\)${extension.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
 
-    // Get all similar names to find the highest counter
-    const { data: similarNames } = await supabase
-      .from("files")
-      .select("name")
-      .eq("folder_id", folderId)
-      .eq("owner_id", ownerId)
-      .eq("is_trashed", false)
-      .ilike("name", `${baseName} (%`);
+    const counters = existing
+      .map(f => {
+        const match = f.name.match(pattern);
+        return match ? parseInt(match[1], 10) : 0;
+      })
+      .filter(n => n > 0);
 
-    if (similarNames && similarNames.length > 0) {
-      // Extract counters from existing names
-      const counters = similarNames
-        .map(f => {
-          const match = f.name.match(/\((\d+)\)[^(]*$/);
-          return match ? parseInt(match[1], 10) : 0;
-        })
-        .filter(n => !isNaN(n));
-
-      if (counters.length > 0) {
-        counter = Math.max(...counters) + 1;
-      }
-      newName = `${baseName} (${counter})${extension}`;
-    }
+    const counter = counters.length > 0 ? Math.max(...counters) + 1 : 1;
+    const newName = `${baseName} (${counter})${extension}`;
 
     return newName;
   }, [supabase]);
@@ -850,15 +928,33 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
 
       if (dbError) throw dbError;
 
-      // Update storage quota for the copied file (trigger handles this via on_file_insert)
-      // But also update local quota state
-      setQuota(prev => prev ? {
-        ...prev,
-        usedBytes: prev.usedBytes + file.sizeBytes,
-        fileCount: prev.fileCount + 1,
-        remainingBytes: prev.remainingBytes - file.sizeBytes,
-        percentUsed: ((prev.usedBytes + file.sizeBytes) / prev.quotaBytes) * 100,
-      } : null);
+      // Update storage quota for the copied file
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (currentUser) {
+        try {
+          await supabase.rpc("increment_storage_usage", {
+            p_user_id: currentUser.id,
+            p_bytes: file.sizeBytes,
+          });
+        } catch {
+          // Fallback: manually update if RPC doesn't exist
+          await supabase.from("storage_quotas")
+            .update({
+              used_bytes: (quota?.usedBytes || 0) + file.sizeBytes,
+              file_count: (quota?.fileCount || 0) + 1,
+            })
+            .eq("user_id", currentUser.id);
+        }
+
+        // Update local quota state
+        setQuota(prev => prev ? {
+          ...prev,
+          usedBytes: prev.usedBytes + file.sizeBytes,
+          fileCount: prev.fileCount + 1,
+          remainingBytes: prev.remainingBytes - file.sizeBytes,
+          percentUsed: ((prev.usedBytes + file.sizeBytes) / prev.quotaBytes) * 100,
+        } : null);
+      }
 
       return transformFile(newFile);
     } catch (err) {
@@ -910,21 +1006,31 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
   // Restore file from trash
   const restoreFile = useCallback(async (fileId: string): Promise<boolean> => {
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("files")
         .update({
           is_trashed: false,
           trashed_at: null,
+          updated_at: new Date().toISOString(),
         })
-        .eq("id", fileId);
+        .eq("id", fileId)
+        .select()
+        .single();
 
       if (error) throw error;
+
+      // Remove from local trash view (files state)
+      setFiles(prev => prev.filter(f => f.id !== fileId));
+
+      // Log activity
+      await logActivity("restore_file", { file_id: fileId }, fileId);
+
       return true;
     } catch (err) {
       console.error("Error restoring file:", err);
       return false;
     }
-  }, [supabase]);
+  }, [supabase, logActivity]);
 
   // Star/unstar file
   const starFile = useCallback(async (fileId: string, starred: boolean): Promise<boolean> => {
@@ -973,7 +1079,7 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
     }
   }, [supabase]);
 
-  // Restore version (creates a new version entry for audit trail)
+  // Restore version (creates a new version entry and copies the file in storage)
   const restoreVersion = useCallback(async (fileId: string, versionId: string): Promise<boolean> => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -988,10 +1094,10 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
 
       if (versionError) throw versionError;
 
-      // Get current file to determine new version number
+      // Get current file info
       const { data: currentFile, error: fileError } = await supabase
         .from("files")
-        .select("version")
+        .select("version, storage_path, storage_bucket, folder_id, name")
         .eq("id", fileId)
         .single();
 
@@ -999,13 +1105,23 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
 
       const newVersionNumber = (currentFile.version || 1) + 1;
 
+      // Create a new storage path for the restored version (copy the file)
+      const newStoragePath = `${user.id}/${currentFile.folder_id || "root"}/${crypto.randomUUID()}-${currentFile.name}`;
+
+      // Copy the old version's file to new location in storage
+      const { error: copyError } = await supabase.storage
+        .from(version.storage_bucket)
+        .copy(version.storage_path, newStoragePath);
+
+      if (copyError) throw copyError;
+
       // Create a new version entry for the restoration (audit trail)
       const { data: newVersion, error: newVersionError } = await supabase
         .from("file_versions")
         .insert({
           file_id: fileId,
           version_number: newVersionNumber,
-          storage_path: version.storage_path,
+          storage_path: newStoragePath,
           storage_bucket: version.storage_bucket,
           size_bytes: version.size_bytes,
           checksum: version.checksum,
@@ -1021,7 +1137,7 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
       const { error: updateError } = await supabase
         .from("files")
         .update({
-          storage_path: version.storage_path,
+          storage_path: newStoragePath,
           size_bytes: version.size_bytes,
           version: newVersionNumber,
           current_version_id: newVersion.id,
@@ -1030,6 +1146,15 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
         .eq("id", fileId);
 
       if (updateError) throw updateError;
+
+      // Update local state
+      setFiles(prev => prev.map(f => f.id === fileId ? {
+        ...f,
+        storagePath: newStoragePath,
+        sizeBytes: version.size_bytes,
+        version: newVersionNumber,
+        updatedAt: new Date(),
+      } : f));
 
       // Log activity
       await logActivity("restore_version", {
@@ -1267,35 +1392,59 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
   const bulkDownload = useCallback(async () => {
     const fileIds = selectedItems.filter(itemId => files.some(f => f.id === itemId));
 
-    if (fileIds.length === 0) return;
+    if (fileIds.length === 0) {
+      setError("No files selected for download");
+      return;
+    }
 
     if (fileIds.length === 1) {
       // Single file - download directly
-      await downloadFile(fileIds[0]);
+      try {
+        await downloadFile(fileIds[0]);
+      } catch (err) {
+        console.error("Error downloading file:", err);
+        setError(err instanceof Error ? err.message : "Failed to download file");
+      }
       return;
     }
 
     // Multiple files - stagger downloads with delay to avoid browser blocking
-    // Also notify user about multiple downloads
-    console.log(`Starting bulk download of ${fileIds.length} files...`);
+    let successCount = 0;
+    let failCount = 0;
 
     for (let i = 0; i < fileIds.length; i++) {
-      // Add delay between downloads to prevent browser blocking
-      if (i > 0) {
-        await new Promise(resolve => setTimeout(resolve, 500));
+      try {
+        // Add delay between downloads to prevent browser blocking
+        if (i > 0) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        await downloadFile(fileIds[i]);
+        successCount++;
+      } catch (err) {
+        console.error(`Error downloading file ${fileIds[i]}:`, err);
+        failCount++;
       }
-      await downloadFile(fileIds[i]);
+    }
+
+    // Show summary
+    if (failCount > 0) {
+      setError(`Downloaded ${successCount} of ${fileIds.length} files. ${failCount} failed.`);
     }
   }, [selectedItems, files, downloadFile]);
 
   // Search files
-  const searchFiles = useCallback(async (query: string, filter?: FileFilter): Promise<FileRecord[]> => {
+  const searchFiles = useCallback(async (query: string, filter?: FileFilter, searchInCurrentFolderOnly = false): Promise<FileRecord[]> => {
     try {
       let queryBuilder = supabase
         .from("files")
         .select("*")
         .eq("is_trashed", false)
         .ilike("name", `%${query}%`);
+
+      // Optionally search only in current folder
+      if (searchInCurrentFolderOnly && currentFolder) {
+        queryBuilder = queryBuilder.eq("folder_id", currentFolder.id);
+      }
 
       if (filter?.mimeTypes?.length) {
         queryBuilder = queryBuilder.in("mime_type", filter.mimeTypes);
@@ -1309,7 +1458,13 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
         queryBuilder = queryBuilder.eq("client_id", filter.clientId);
       }
 
-      const { data, error } = await queryBuilder.limit(50);
+      if (filter?.ownerId) {
+        queryBuilder = queryBuilder.eq("owner_id", filter.ownerId);
+      }
+
+      const { data, error } = await queryBuilder
+        .order("updated_at", { ascending: false })
+        .limit(50);
 
       if (error) throw error;
 
@@ -1318,7 +1473,7 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
       console.error("Error searching files:", err);
       return [];
     }
-  }, [supabase, transformFile]);
+  }, [supabase, transformFile, currentFolder]);
 
   // Get recent files
   const getRecentFiles = useCallback(async (limit = 10): Promise<FileRecord[]> => {
@@ -1419,6 +1574,22 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
 
       if (deleteError) throw deleteError;
 
+      // Update quota using RPC
+      try {
+        await supabase.rpc("increment_storage_usage", {
+          p_user_id: user.id,
+          p_bytes: -totalBytesFreed, // Negative to decrease
+        });
+      } catch {
+        // Fallback to manual update
+        await supabase.from("storage_quotas")
+          .update({
+            used_bytes: Math.max(0, (quota?.usedBytes || 0) - totalBytesFreed),
+            file_count: Math.max(0, (quota?.fileCount || 0) - trashedFiles.length),
+          })
+          .eq("user_id", user.id);
+      }
+
       // Update local quota state
       setQuota(prev => prev ? {
         ...prev,
@@ -1471,45 +1642,81 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
     }
   }, [supabase]);
 
-  // Initialize on mount
+  // Initialize on mount (only once)
   useEffect(() => {
     initializeUserStorage();
     navigateToFolder(null);
-  }, [initializeUserStorage, navigateToFolder]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty deps - intentionally run only once on mount
 
-  // Set up realtime subscription
+  // Set up realtime subscription (with owner_id filter for better performance)
   useEffect(() => {
-    channelRef.current = supabase
-      .channel("files-realtime")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "files" }, (payload) => {
-        const newFile = transformFile(payload.new as Record<string, unknown>);
-        if (newFile.folderId === currentFolder?.id) {
-          setFiles(prev => [newFile, ...prev]);
-        }
-      })
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "files" }, (payload) => {
-        const updatedFile = transformFile(payload.new as Record<string, unknown>);
-        setFiles(prev => prev.map(f => f.id === updatedFile.id ? updatedFile : f));
-      })
-      .on("postgres_changes", { event: "DELETE", schema: "public", table: "files" }, (payload) => {
-        const deletedId = (payload.old as { id: string }).id;
-        setFiles(prev => prev.filter(f => f.id !== deletedId));
-      })
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "folders" }, (payload) => {
-        const newFolder = transformFolder(payload.new as Record<string, unknown>);
-        if (newFolder.parentId === currentFolder?.id || (!newFolder.parentId && !currentFolder)) {
-          setFolders(prev => [...prev, newFolder]);
-        }
-      })
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "folders" }, (payload) => {
-        const updatedFolder = transformFolder(payload.new as Record<string, unknown>);
-        setFolders(prev => prev.map(f => f.id === updatedFolder.id ? updatedFolder : f));
-      })
-      .on("postgres_changes", { event: "DELETE", schema: "public", table: "folders" }, (payload) => {
-        const deletedId = (payload.old as { id: string }).id;
-        setFolders(prev => prev.filter(f => f.id !== deletedId));
-      })
-      .subscribe();
+    const setupRealtime = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      channelRef.current = supabase
+        .channel("files-realtime")
+        .on("postgres_changes", {
+          event: "INSERT",
+          schema: "public",
+          table: "files",
+          filter: `owner_id=eq.${user.id}`,
+        }, (payload) => {
+          const newFile = transformFile(payload.new as Record<string, unknown>);
+          if (newFile.folderId === currentFolder?.id) {
+            setFiles(prev => [newFile, ...prev]);
+          }
+        })
+        .on("postgres_changes", {
+          event: "UPDATE",
+          schema: "public",
+          table: "files",
+          filter: `owner_id=eq.${user.id}`,
+        }, (payload) => {
+          const updatedFile = transformFile(payload.new as Record<string, unknown>);
+          setFiles(prev => prev.map(f => f.id === updatedFile.id ? updatedFile : f));
+        })
+        .on("postgres_changes", {
+          event: "DELETE",
+          schema: "public",
+          table: "files",
+        }, (payload) => {
+          const deletedId = (payload.old as { id: string }).id;
+          setFiles(prev => prev.filter(f => f.id !== deletedId));
+        })
+        .on("postgres_changes", {
+          event: "INSERT",
+          schema: "public",
+          table: "folders",
+          filter: `owner_id=eq.${user.id}`,
+        }, (payload) => {
+          const newFolder = transformFolder(payload.new as Record<string, unknown>);
+          if (newFolder.parentId === currentFolder?.id || (!newFolder.parentId && !currentFolder)) {
+            setFolders(prev => [...prev, newFolder]);
+          }
+        })
+        .on("postgres_changes", {
+          event: "UPDATE",
+          schema: "public",
+          table: "folders",
+          filter: `owner_id=eq.${user.id}`,
+        }, (payload) => {
+          const updatedFolder = transformFolder(payload.new as Record<string, unknown>);
+          setFolders(prev => prev.map(f => f.id === updatedFolder.id ? updatedFolder : f));
+        })
+        .on("postgres_changes", {
+          event: "DELETE",
+          schema: "public",
+          table: "folders",
+        }, (payload) => {
+          const deletedId = (payload.old as { id: string }).id;
+          setFolders(prev => prev.filter(f => f.id !== deletedId));
+        })
+        .subscribe();
+    };
+
+    setupRealtime();
 
     return () => {
       if (channelRef.current) {

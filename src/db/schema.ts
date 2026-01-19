@@ -71,6 +71,10 @@ export const activityTypeEnum = pgEnum("activity_type", [
   "form_submission",
   "webhook_received",
 ]);
+export const folderTypeEnum = pgEnum("folder_type", ["personal", "team", "repository", "client"]);
+export const permissionEnum = pgEnum("permission", ["view", "edit", "admin"]);
+export const shareTypeEnum = pgEnum("share_type", ["link", "email", "internal"]);
+export const sharePermissionEnum = pgEnum("share_permission", ["view", "download", "edit"]);
 
 // Users table
 export const users = pgTable("users", {
@@ -212,6 +216,127 @@ export const calendarEvents = pgTable("calendar_events", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
+// Folders table (File Management)
+export const folders = pgTable("folders", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: varchar("name", { length: 255 }).notNull(),
+  slug: varchar("slug", { length: 255 }).notNull(),
+  description: text("description"),
+  parentId: uuid("parent_id"),
+  ownerId: uuid("owner_id").references(() => users.id),
+  folderType: folderTypeEnum("folder_type").notNull().default("personal"),
+  clientId: uuid("client_id").references(() => clients.id),
+  isRoot: boolean("is_root").notNull().default(false),
+  color: varchar("color", { length: 20 }),
+  icon: varchar("icon", { length: 50 }),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  createdBy: uuid("created_by").references(() => users.id),
+});
+
+// Files table (File Management)
+export const files = pgTable("files", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: varchar("name", { length: 500 }).notNull(),
+  originalName: varchar("original_name", { length: 500 }).notNull(),
+  description: text("description"),
+  folderId: uuid("folder_id").references(() => folders.id, { onDelete: "cascade" }),
+  ownerId: uuid("owner_id").references(() => users.id),
+  storagePath: text("storage_path").notNull(),
+  storageBucket: varchar("storage_bucket", { length: 100 }).notNull().default("files"),
+  mimeType: varchar("mime_type", { length: 100 }).notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  fileExtension: varchar("file_extension", { length: 20 }),
+  checksum: varchar("checksum", { length: 64 }),
+  isStarred: boolean("is_starred").notNull().default(false),
+  isTrashed: boolean("is_trashed").notNull().default(false),
+  trashedAt: timestamp("trashed_at"),
+  clientId: uuid("client_id").references(() => clients.id),
+  version: integer("version").notNull().default(1),
+  currentVersionId: uuid("current_version_id"),
+  thumbnailPath: text("thumbnail_path"),
+  previewGenerated: boolean("preview_generated").notNull().default(false),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
+  tags: jsonb("tags").$type<string[]>().default([]),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  createdBy: uuid("created_by").references(() => users.id),
+  lastAccessedAt: timestamp("last_accessed_at"),
+});
+
+// File Versions table (Version Control)
+export const fileVersions = pgTable("file_versions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  fileId: uuid("file_id").references(() => files.id, { onDelete: "cascade" }).notNull(),
+  versionNumber: integer("version_number").notNull(),
+  storagePath: text("storage_path").notNull(),
+  storageBucket: varchar("storage_bucket", { length: 100 }).notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  checksum: varchar("checksum", { length: 64 }),
+  changeSummary: text("change_summary"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdBy: uuid("created_by").references(() => users.id),
+});
+
+// File Shares table (Sharing & Permissions)
+export const fileShares = pgTable("file_shares", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  fileId: uuid("file_id").references(() => files.id, { onDelete: "cascade" }),
+  folderId: uuid("folder_id").references(() => folders.id, { onDelete: "cascade" }),
+  shareToken: varchar("share_token", { length: 255 }).notNull().unique(),
+  shareType: shareTypeEnum("share_type").notNull().default("link"),
+  permission: sharePermissionEnum("permission").notNull().default("view"),
+  passwordHash: text("password_hash"),
+  maxDownloads: integer("max_downloads"),
+  downloadCount: integer("download_count").notNull().default(0),
+  expiresAt: timestamp("expires_at"),
+  createdBy: uuid("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  lastAccessedAt: timestamp("last_accessed_at"),
+  recipientEmail: varchar("recipient_email", { length: 255 }),
+  message: text("message"),
+  isActive: boolean("is_active").notNull().default(true),
+});
+
+// Folder Permissions table (Access Control)
+export const folderPermissions = pgTable("folder_permissions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  folderId: uuid("folder_id").references(() => folders.id, { onDelete: "cascade" }).notNull(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+  role: varchar("role", { length: 50 }),
+  permission: permissionEnum("permission").notNull().default("view"),
+  inherited: boolean("inherited").notNull().default(false),
+  grantedBy: uuid("granted_by").references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  expiresAt: timestamp("expires_at"),
+});
+
+// Storage Quotas table (Resource Management)
+export const storageQuotas = pgTable("storage_quotas", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull().unique(),
+  quotaBytes: integer("quota_bytes").notNull().default(26843545600), // 25GB default
+  usedBytes: integer("used_bytes").notNull().default(0),
+  fileCount: integer("file_count").notNull().default(0),
+  lastCalculatedAt: timestamp("last_calculated_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// File Activity table (Audit Trail for Files)
+export const fileActivity = pgTable("file_activity", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  fileId: uuid("file_id").references(() => files.id, { onDelete: "cascade" }),
+  folderId: uuid("folder_id").references(() => folders.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").references(() => users.id),
+  action: varchar("action", { length: 100 }).notNull(),
+  details: jsonb("details").$type<Record<string, unknown>>().default({}),
+  ipAddress: varchar("ip_address", { length: 45 }),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   assignedClients: many(clients),
@@ -310,6 +435,107 @@ export const calendarEventsRelations = relations(calendarEvents, ({ one }) => ({
   }),
 }));
 
+export const foldersRelations = relations(folders, ({ one, many }) => ({
+  owner: one(users, {
+    fields: [folders.ownerId],
+    references: [users.id],
+  }),
+  client: one(clients, {
+    fields: [folders.clientId],
+    references: [clients.id],
+  }),
+  parent: one(folders, {
+    fields: [folders.parentId],
+    references: [folders.id],
+    relationName: "subfolders",
+  }),
+  children: many(folders, { relationName: "subfolders" }),
+  files: many(files),
+  permissions: many(folderPermissions),
+  shares: many(fileShares),
+}));
+
+export const filesRelations = relations(files, ({ one, many }) => ({
+  folder: one(folders, {
+    fields: [files.folderId],
+    references: [folders.id],
+  }),
+  owner: one(users, {
+    fields: [files.ownerId],
+    references: [users.id],
+  }),
+  client: one(clients, {
+    fields: [files.clientId],
+    references: [clients.id],
+  }),
+  versions: many(fileVersions),
+  shares: many(fileShares),
+  activity: many(fileActivity),
+}));
+
+export const fileVersionsRelations = relations(fileVersions, ({ one }) => ({
+  file: one(files, {
+    fields: [fileVersions.fileId],
+    references: [files.id],
+  }),
+  createdBy: one(users, {
+    fields: [fileVersions.createdBy],
+    references: [users.id],
+  }),
+}));
+
+export const fileSharesRelations = relations(fileShares, ({ one }) => ({
+  file: one(files, {
+    fields: [fileShares.fileId],
+    references: [files.id],
+  }),
+  folder: one(folders, {
+    fields: [fileShares.folderId],
+    references: [folders.id],
+  }),
+  createdBy: one(users, {
+    fields: [fileShares.createdBy],
+    references: [users.id],
+  }),
+}));
+
+export const folderPermissionsRelations = relations(folderPermissions, ({ one }) => ({
+  folder: one(folders, {
+    fields: [folderPermissions.folderId],
+    references: [folders.id],
+  }),
+  user: one(users, {
+    fields: [folderPermissions.userId],
+    references: [users.id],
+  }),
+  grantedBy: one(users, {
+    fields: [folderPermissions.grantedBy],
+    references: [users.id],
+  }),
+}));
+
+export const storageQuotasRelations = relations(storageQuotas, ({ one }) => ({
+  user: one(users, {
+    fields: [storageQuotas.userId],
+    references: [users.id],
+  }),
+}));
+
+export const fileActivityRelations = relations(fileActivity, ({ one }) => ({
+  file: one(files, {
+    fields: [fileActivity.fileId],
+    references: [files.id],
+  }),
+  folder: one(folders, {
+    fields: [fileActivity.folderId],
+    references: [folders.id],
+  }),
+  user: one(users, {
+    fields: [fileActivity.userId],
+    references: [users.id],
+  }),
+}));
+
 // Webhook Logs table (for monitoring webhook activity)
 export const webhookStatusEnum = pgEnum("webhook_status", [
   "received",
@@ -366,3 +592,17 @@ export type CalendarEvent = typeof calendarEvents.$inferSelect;
 export type NewCalendarEvent = typeof calendarEvents.$inferInsert;
 export type WebhookLog = typeof webhookLogs.$inferSelect;
 export type NewWebhookLog = typeof webhookLogs.$inferInsert;
+export type Folder = typeof folders.$inferSelect;
+export type NewFolder = typeof folders.$inferInsert;
+export type File = typeof files.$inferSelect;
+export type NewFile = typeof files.$inferInsert;
+export type FileVersion = typeof fileVersions.$inferSelect;
+export type NewFileVersion = typeof fileVersions.$inferInsert;
+export type FileShare = typeof fileShares.$inferSelect;
+export type NewFileShare = typeof fileShares.$inferInsert;
+export type FolderPermission = typeof folderPermissions.$inferSelect;
+export type NewFolderPermission = typeof folderPermissions.$inferInsert;
+export type StorageQuota = typeof storageQuotas.$inferSelect;
+export type NewStorageQuota = typeof storageQuotas.$inferInsert;
+export type FileActivity = typeof fileActivity.$inferSelect;
+export type NewFileActivity = typeof fileActivity.$inferInsert;
