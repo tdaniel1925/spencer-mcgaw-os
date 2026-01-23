@@ -287,15 +287,22 @@ export async function POST(request: NextRequest): Promise<NextResponse<Classific
             await db.insert(tasks).values({
               title: item.title,
               description: item.description || `AI-extracted task from email: ${email.subject || "No subject"}`,
-              status: "pending",
+              status: "open",
               priority: item.priority === "urgent" ? "urgent" :
                        item.priority === "high" ? "high" :
                        item.priority === "medium" ? "medium" : "low",
-              source: "email",
+              sourceType: "email",
+              sourceEmailId: email.id,
+              sourceMetadata: {
+                emailSubject: email.subject || "",
+                fromEmail: email.from?.email || "",
+                fromName: email.from?.name || "",
+                receivedAt: email.receivedAt?.toISOString() || "",
+              },
               clientId: clientMatchResult.primaryMatch?.clientId,
-              assignedToId: assignmentResult.assignedUserId,
+              assignedTo: assignmentResult.assignedUserId,
               dueDate: item.dueDate ? new Date(item.dueDate) : undefined,
-              metadata: {
+              aiExtractedData: {
                 aiSuggested: true,
                 aiConfidence: item.confidence,
                 aiSourceType: "email_extraction",

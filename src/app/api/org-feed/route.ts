@@ -94,7 +94,8 @@ export async function GET(request: NextRequest) {
           })
           .from(calls)
           .orderBy(desc(calls.createdAt))
-          .limit(limit);
+          .limit(type === "calls" ? limit : limit + offset) // Fetch extra rows when merging with emails
+          .offset(type === "calls" ? offset : 0); // Only apply offset when showing calls only
 
         // Check which calls have tasks (only query if we have call IDs)
         const callIds = callsData.map(c => c.id);
@@ -197,7 +198,10 @@ export async function GET(request: NextRequest) {
             `)
             .in("account_id", globalAccountIds)
             .order("created_at", { ascending: false })
-            .limit(limit)
+            .range(
+              type === "emails" ? offset : 0,
+              type === "emails" ? offset + limit - 1 : limit + offset - 1
+            ) // Apply offset only when showing emails only
         : { data: [], error: null };
 
       if (!emailError && emailClassifications && emailClassifications.length > 0) {
@@ -273,8 +277,8 @@ export async function GET(request: NextRequest) {
     // Sort by timestamp descending
     feedItems.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
-    // Apply offset and limit after combining
-    const paginatedItems = feedItems.slice(offset, offset + limit);
+    // Apply offset and limit after combining (only needed when type="all", since single types already paginated at DB level)
+    const paginatedItems = type === "all" ? feedItems.slice(offset, offset + limit) : feedItems;
 
     // Calculate total based on type filter
     const total = type === "calls" ? totalCallCount : type === "emails" ? totalEmailCount : totalCallCount + totalEmailCount;

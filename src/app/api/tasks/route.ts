@@ -138,15 +138,17 @@ export async function POST(request: NextRequest) {
     const {
       title,
       description,
-      status = "pending",
+      status = "open",
       priority = "medium",
       due_date,
       client_id,
       client_name,
       assignee_id,
       assigned_to,
-      source = "manual",
-      source_id,
+      source_type = "manual",
+      source_email_id,
+      source_call_id,
+      source_metadata,
       tags,
       estimated_minutes,
     } = body;
@@ -171,8 +173,10 @@ export async function POST(request: NextRequest) {
         assigned_to: assigneeValue || null,
         assigned_at: assigneeValue ? new Date().toISOString() : null,
         assigned_by: assigneeValue ? apiUser.id : null,
-        source,
-        source_id,
+        source_type,
+        source_email_id,
+        source_call_id,
+        source_metadata: source_metadata || {},
         tags,
         estimated_minutes,
         created_by: apiUser.id,
@@ -193,7 +197,7 @@ export async function POST(request: NextRequest) {
       resource_type: "task",
       resource_id: task.id,
       resource_name: title,
-      details: { source, priority },
+      details: { source_type, priority },
     });
 
     // Send email notification if task is assigned to someone else

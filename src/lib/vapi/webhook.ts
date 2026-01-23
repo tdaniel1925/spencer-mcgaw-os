@@ -131,15 +131,17 @@ async function handleFunctionCall(payload: WebhookPayload) {
  * Create a task from the phone call
  */
 async function handleCreateTask(params: Record<string, any>) {
-  const { title, description, priority, clientId } = params;
+  const { title, description, priority, clientId, callId, callMetadata } = params;
 
   await db.insert(tasks).values({
     title,
     description,
     priority: priority || "medium",
-    source: "phone_call",
+    sourceType: "manual", // VAPI tasks marked as manual since they're created via AI assistant
+    sourceCallId: callId,
+    sourceMetadata: callMetadata || {},
     clientId,
-    status: "pending",
+    status: "open",
   });
 
   return {

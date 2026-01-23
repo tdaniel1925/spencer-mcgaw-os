@@ -9,9 +9,9 @@ export interface Task {
   id: string;
   title: string;
   description: string | null;
-  status: "pending" | "in_progress" | "completed" | "cancelled";
+  status: "open" | "in_progress" | "waiting" | "completed" | "cancelled";
   priority: "low" | "medium" | "high" | "urgent";
-  source_type: "phone_call" | "email" | "document_intake" | "manual" | null;
+  source_type: "manual" | "email" | "calendar" | "recurring" | "ai" | "phone_call" | "document_intake" | null; // phone_call & document_intake are legacy values
   source_email_id: string | null;
   source_metadata: {
     caller_phone?: string;
@@ -98,7 +98,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   const [currentView, setCurrentView] = useState<TaskView>("my-work");
   const [searchQuery, setSearchQuery] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("active"); // "all", "active", "pending", "in_progress", "completed"
+  const [statusFilter, setStatusFilter] = useState("active"); // "all", "active", "open", "in_progress", "waiting", "completed"
 
   const supabase = createClient();
   const subscriptionRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -295,10 +295,10 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
     )
   );
 
-  // Team pool: open tasks not assigned or claimed (always pending)
+  // Team pool: open tasks not assigned or claimed (always open status)
   const teamPoolTasks = filterTasks(
     tasks.filter(t =>
-      t.status === "pending" &&
+      t.status === "open" &&
       !t.assigned_to &&
       !t.claimed_by
     )
@@ -310,7 +310,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
   // Task counts
   const taskCounts = {
     myWork: tasks.filter(t => t.assigned_to === user?.id || t.claimed_by === user?.id).length,
-    teamPool: tasks.filter(t => t.status === "pending" && !t.assigned_to && !t.claimed_by).length,
+    teamPool: tasks.filter(t => t.status === "open" && !t.assigned_to && !t.claimed_by).length,
     all: tasks.length,
   };
 

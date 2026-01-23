@@ -54,7 +54,7 @@ interface DashboardTask {
   description?: string | null;
   priority: "urgent" | "high" | "medium" | "low";
   due_date: string | null;
-  status: "pending" | "in_progress" | "completed" | "cancelled";
+  status: "open" | "in_progress" | "waiting" | "completed" | "cancelled";
   client_id: string | null;
   source_type: string | null;
   assigned_to?: string | null;
@@ -69,7 +69,7 @@ interface DashboardTask {
 
 interface TaskStats {
   total: number;
-  pending: number;
+  open: number;
   inProgress: number;
   completed: number;
   completedToday: number;
@@ -275,7 +275,7 @@ export default function DashboardPage() {
           description: newTask.description || null,
           priority: newTask.priority,
           due_date: newTask.due_date || null,
-          status: "pending",
+          status: "open",
         }),
       });
 

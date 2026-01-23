@@ -558,7 +558,7 @@ export default function OrgTasksPage() {
   };
 
   // Stats
-  const todoCount = filteredTasks.filter((t) => t.status === "pending").length;
+  const todoCount = filteredTasks.filter((t) => t.status === "open").length;
   const inProgressCount = filteredTasks.filter((t) => t.status === "in_progress").length;
   const doneCount = filteredTasks.filter((t) => t.status === "completed").length;
 

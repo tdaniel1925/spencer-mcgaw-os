@@ -67,20 +67,22 @@ export async function POST(request: NextRequest) {
         title: body.title,
         description: body.description || null,
         priority: body.priority || "medium",
-        status: "pending",
+        status: "open",
         assigned_to: body.assignedTo || null,
+        assigned_at: body.assignedTo ? new Date().toISOString() : null,
+        assigned_by: body.assignedTo ? user.id : null,
         client_id: body.clientId || null,
         action_type_id: actionType?.id || null,
         due_date: body.dueDate || null,
+        source_type: body.sourceType === "phone_call" ? "manual" : "email", // Map to new source types
         source_call_id: body.sourceType === "phone_call" ? body.sourceId : null,
-        created_by: user.id,
-        metadata: {
-          source_type: body.sourceType,
-          source_id: body.sourceId,
+        source_email_id: body.sourceType === "email" ? body.sourceId : null,
+        source_metadata: {
           action_type: body.type,
           created_from_action_item: true,
           ...body.metadata,
         },
+        created_by: user.id,
       })
       .select("id, title")
       .single();

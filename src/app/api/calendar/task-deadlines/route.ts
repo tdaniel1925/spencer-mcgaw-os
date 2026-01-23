@@ -49,13 +49,13 @@ export async function GET(request: NextRequest) {
         clientId: tasks.clientId,
         clientFirstName: clients.firstName,
         clientLastName: clients.lastName,
-        assignedToId: tasks.assignedToId,
+        assignedToId: tasks.assignedTo,
         assignedToName: users.fullName,
         createdAt: tasks.createdAt,
       })
       .from(tasks)
       .leftJoin(clients, eq(tasks.clientId, clients.id))
-      .leftJoin(users, eq(tasks.assignedToId, users.id))
+      .leftJoin(users, eq(tasks.assignedTo, users.id))
       .where(and(...conditions))
       .orderBy(tasks.dueDate);
 

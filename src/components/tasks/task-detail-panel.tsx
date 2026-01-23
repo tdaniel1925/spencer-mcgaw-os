@@ -94,8 +94,9 @@ interface TaskDetailPanelProps {
 }
 
 const statusConfig = {
-  pending: { label: "To Do", className: "bg-yellow-100 text-yellow-700 border-yellow-200" },
+  open: { label: "To Do", className: "bg-yellow-100 text-yellow-700 border-yellow-200" },
   in_progress: { label: "In Progress", className: "bg-blue-100 text-blue-700 border-blue-200" },
+  waiting: { label: "Waiting", className: "bg-purple-100 text-purple-700 border-purple-200" },
   completed: { label: "Done", className: "bg-green-100 text-green-700 border-green-200" },
   cancelled: { label: "Cancelled", className: "bg-gray-100 text-gray-700 border-gray-200" },
 };

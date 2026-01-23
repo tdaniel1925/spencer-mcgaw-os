@@ -98,7 +98,7 @@ const columnColors = [
 
 // Config
 const statusConfig = {
-  pending: {
+  open: {
     label: "To Do",
     className: "bg-yellow-100 text-yellow-700 border-yellow-200",
     headerBg: "bg-yellow-50 border-yellow-200",
@@ -107,6 +107,11 @@ const statusConfig = {
     label: "In Progress",
     className: "bg-blue-100 text-blue-700 border-blue-200",
     headerBg: "bg-blue-50 border-blue-200",
+  },
+  waiting: {
+    label: "Waiting",
+    className: "bg-purple-100 text-purple-700 border-purple-200",
+    headerBg: "bg-purple-50 border-purple-200",
   },
   completed: {
     label: "Done",
@@ -134,7 +139,7 @@ const sourceIcons = {
   manual: ClipboardList,
 };
 
-const KANBAN_STATUSES: Array<keyof typeof statusConfig> = ["pending", "in_progress", "completed"];
+const KANBAN_STATUSES: Array<keyof typeof statusConfig> = ["open", "in_progress", "completed"];
 
 export default function TasksPage() {
   const { user } = useAuth();
@@ -646,7 +651,7 @@ export default function TasksPage() {
 
   // Stats for current view
   const currentTasks = getTasksForView();
-  const todoCount = currentTasks.filter((t) => t.status === "pending").length;
+  const todoCount = currentTasks.filter((t) => t.status === "open").length;
   const inProgressCount = currentTasks.filter((t) => t.status === "in_progress").length;
   const doneCount = currentTasks.filter((t) => t.status === "completed").length;
 
@@ -812,9 +817,10 @@ export default function TasksPage() {
                       <div className="flex items-center gap-2">
                         <div className={cn(
                           "w-2 h-2 rounded-full",
-                          status === "pending" && "bg-yellow-400",
+                          status === "open" && "bg-yellow-400",
                           status === "in_progress" && "bg-blue-400",
-                          status === "completed" && "bg-green-400"
+                          status === "completed" && "bg-green-400",
+                          status === "waiting" && "bg-purple-400"
                         )} />
                         <h3 className="font-medium text-sm">{config.label}</h3>
                         <Badge variant="secondary" className="ml-auto text-[10px]">
