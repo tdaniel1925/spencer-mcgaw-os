@@ -43,62 +43,62 @@ interface ComposeDialogProps {
 }
 
 export function ComposeDialog({ open, onClose, mode = 'new', replyTo, onSent }: ComposeDialogProps) {
-  // Initialize fields based on mode
-  const initializeFields = () => {
-    if (!replyTo) return { to: '', cc: '', subject: '', body: '' };
-
-    if (mode === 'reply') {
-      return {
-        to: replyTo.from?.address || '',
-        cc: '',
-        subject: replyTo.subject.startsWith('Re:') ? replyTo.subject : `Re: ${replyTo.subject}`,
-        body: '',
-      };
-    }
-
-    if (mode === 'replyAll') {
-      const toAddrs = replyTo.to?.map(r => r.emailAddress.address).join(', ') || '';
-      const ccAddrs = replyTo.cc?.map(r => r.emailAddress.address).join(', ') || '';
-      return {
-        to: [replyTo.from?.address, toAddrs].filter(Boolean).join(', '),
-        cc: ccAddrs,
-        subject: replyTo.subject.startsWith('Re:') ? replyTo.subject : `Re: ${replyTo.subject}`,
-        body: '',
-      };
-    }
-
-    if (mode === 'forward') {
-      return {
-        to: '',
-        cc: '',
-        subject: replyTo.subject.startsWith('Fwd:') ? replyTo.subject : `Fwd: ${replyTo.subject}`,
-        body: `\n\n--- Forwarded message ---\n${replyTo.body || ''}`,
-      };
-    }
-
-    return { to: '', cc: '', subject: '', body: '' };
-  };
-
-  const initial = initializeFields();
-  const [to, setTo] = useState(initial.to);
-  const [cc, setCc] = useState(initial.cc);
+  // State with default empty values
+  const [to, setTo] = useState("");
+  const [cc, setCc] = useState("");
   const [bcc, setBcc] = useState("");
-  const [subject, setSubject] = useState(initial.subject);
-  const [body, setBody] = useState(initial.body);
+  const [subject, setSubject] = useState("");
+  const [body, setBody] = useState("");
   const [importance, setImportance] = useState<"low" | "normal" | "high">("normal");
   const [isSending, setIsSending] = useState(false);
-  const [showCc, setShowCc] = useState(!!initial.cc);
+  const [showCc, setShowCc] = useState(false);
   const [showBcc, setShowBcc] = useState(false);
 
-  // Update fields when replyTo changes
+  // Update fields when dialog opens or mode/replyTo changes
   React.useEffect(() => {
-    if (open) {
-      const fields = initializeFields();
-      setTo(fields.to);
-      setCc(fields.cc);
-      setSubject(fields.subject);
-      setBody(fields.body);
-      setShowCc(!!fields.cc);
+    if (!open) {
+      // Reset when closing
+      setTo("");
+      setCc("");
+      setBcc("");
+      setSubject("");
+      setBody("");
+      setImportance("normal");
+      setShowCc(false);
+      setShowBcc(false);
+      return;
+    }
+
+    // Initialize fields based on mode when opening
+    if (!replyTo) {
+      setTo("");
+      setCc("");
+      setSubject("");
+      setBody("");
+      setShowCc(false);
+      return;
+    }
+
+    if (mode === 'reply') {
+      setTo(replyTo.from?.address || '');
+      setCc('');
+      setSubject(replyTo.subject.startsWith('Re:') ? replyTo.subject : `Re: ${replyTo.subject}`);
+      setBody('');
+      setShowCc(false);
+    } else if (mode === 'replyAll') {
+      const toAddrs = replyTo.to?.map(r => r.emailAddress.address).join(', ') || '';
+      const ccAddrs = replyTo.cc?.map(r => r.emailAddress.address).join(', ') || '';
+      setTo([replyTo.from?.address, toAddrs].filter(Boolean).join(', '));
+      setCc(ccAddrs);
+      setSubject(replyTo.subject.startsWith('Re:') ? replyTo.subject : `Re: ${replyTo.subject}`);
+      setBody('');
+      setShowCc(!!ccAddrs);
+    } else if (mode === 'forward') {
+      setTo('');
+      setCc('');
+      setSubject(replyTo.subject.startsWith('Fwd:') ? replyTo.subject : `Fwd: ${replyTo.subject}`);
+      setBody(`\n\n--- Forwarded message ---\n${replyTo.body || ''}`);
+      setShowCc(false);
     }
   }, [open, mode, replyTo]);
 
