@@ -16,8 +16,9 @@ const replySchema = z.object({
   replyAll: z.boolean().default(false),
 });
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -39,7 +40,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     const validated = replySchema.parse(body);
 
     await graphService.replyToEmail(
-      params.id,
+      id,
       validated.body,
       validated.bodyType,
       validated.replyAll

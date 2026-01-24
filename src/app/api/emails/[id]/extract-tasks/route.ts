@@ -40,8 +40,9 @@ From: {from}
 Subject: {subject}
 Body: {body}`;
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -60,7 +61,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       );
     }
 
-    const email = await graphService.getEmail(params.id);
+    const email = await graphService.getEmail(id);
 
     // Extract text content
     const bodyText =
@@ -111,7 +112,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     // For now, just return the suggestions
     return NextResponse.json({
       tasks,
-      emailId: params.id,
+      emailId: id,
       emailSubject: email.subject,
     });
   } catch (error) {

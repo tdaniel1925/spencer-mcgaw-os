@@ -10,8 +10,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { GraphEmailService } from "@/lib/email/graph-service";
 import { createClient } from "@/lib/supabase/server";
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -29,7 +30,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       );
     }
 
-    const email = await graphService.getEmail(params.id);
+    const email = await graphService.getEmail(id);
 
     return NextResponse.json({ email });
   } catch (error) {
@@ -38,8 +39,9 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -61,19 +63,19 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 
     // Handle different update operations
     if (body.isRead !== undefined) {
-      await graphService.markAsRead(params.id, body.isRead);
+      await graphService.markAsRead(id, body.isRead);
     }
 
     if (body.flagged !== undefined) {
-      await graphService.flagEmail(params.id, body.flagged);
+      await graphService.flagEmail(id, body.flagged);
     }
 
     if (body.folderId) {
-      await graphService.moveToFolder(params.id, body.folderId);
+      await graphService.moveToFolder(id, body.folderId);
     }
 
     // Fetch updated email
-    const email = await graphService.getEmail(params.id);
+    const email = await graphService.getEmail(id);
 
     return NextResponse.json({ email, success: true });
   } catch (error) {
@@ -82,8 +84,9 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -105,9 +108,9 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     const permanent = searchParams.get("permanent") === "true";
 
     if (permanent) {
-      await graphService.permanentlyDeleteEmail(params.id);
+      await graphService.permanentlyDeleteEmail(id);
     } else {
-      await graphService.deleteEmail(params.id);
+      await graphService.deleteEmail(id);
     }
 
     return NextResponse.json({ success: true });

@@ -21,8 +21,9 @@ const forwardSchema = z.object({
   bodyType: z.enum(["text", "html"]).default("html"),
 });
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -44,7 +45,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     const validated = forwardSchema.parse(body);
 
     await graphService.forwardEmail(
-      params.id,
+      id,
       validated.to,
       validated.body,
       validated.bodyType

@@ -9,8 +9,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { GraphEmailService } from "@/lib/email/graph-service";
 import { createClient } from "@/lib/supabase/server";
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -33,7 +34,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
     // If downloading specific attachment
     if (downloadId) {
-      const attachment = await graphService.getAttachment(params.id, downloadId);
+      const attachment = await graphService.getAttachment(id, downloadId);
 
       // Return attachment as file download
       if (attachment.contentBytes) {
@@ -52,7 +53,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     }
 
     // List all attachments
-    const attachments = await graphService.getAttachments(params.id);
+    const attachments = await graphService.getAttachments(id);
 
     return NextResponse.json({ attachments });
   } catch (error) {

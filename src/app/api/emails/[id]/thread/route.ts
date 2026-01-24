@@ -8,8 +8,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { GraphEmailService } from "@/lib/email/graph-service";
 import { createClient } from "@/lib/supabase/server";
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
     const supabase = await createClient();
     const {
       data: { user },
@@ -28,7 +29,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     }
 
     // First get the email to get its conversation ID
-    const email = await graphService.getEmail(params.id);
+    const email = await graphService.getEmail(id);
 
     if (!email.conversationId) {
       return NextResponse.json({ thread: [email] });
