@@ -172,8 +172,18 @@ export default function EmailClientPage() {
       }
 
       const currentSkip = append ? skip : 0;
+      console.log(`[Email Client] Fetching emails for folder: ${folder}, skip: ${currentSkip}, append: ${append}`);
+
       const response = await fetch(`/api/emails?folder=${folder}&top=50&skip=${currentSkip}`);
+
+      if (!response.ok) {
+        console.error(`[Email Client] API error: ${response.status} ${response.statusText}`);
+        toast.error(`Failed to load emails: ${response.statusText}`);
+        return;
+      }
+
       const data = await response.json();
+      console.log(`[Email Client] Received ${data.emails?.length || 0} emails`);
 
       if (data.needsConnection) {
         setNeedsConnection(true);
@@ -181,6 +191,7 @@ export default function EmailClientPage() {
       }
 
       if (data.error) {
+        console.error(`[Email Client] API returned error:`, data.error);
         toast.error(data.error);
         return;
       }
@@ -199,8 +210,8 @@ export default function EmailClientPage() {
         setSkip(data.emails.length);
       }
     } catch (error) {
-      console.error("Error fetching emails:", error);
-      toast.error("Failed to load emails");
+      console.error("[Email Client] Error fetching emails:", error);
+      toast.error("Failed to load emails - check console for details");
     } finally {
       setIsLoadingEmails(false);
       setIsLoadingMore(false);
@@ -293,10 +304,14 @@ export default function EmailClientPage() {
   // Handle folder change
   const changeFolder = useCallback(
     (folder: string) => {
+      console.log(`[Email Client] Changing folder to: ${folder}`);
       router.push(`/email-client?folder=${folder}`);
       setSelectedEmail(null);
       setThread([]);
       setAttachments([]);
+      setEmails([]);
+      setHasMore(true);
+      setSkip(0);
     },
     [router]
   );
@@ -672,44 +687,46 @@ export default function EmailClientPage() {
               </div>
 
               {/* Email Body */}
-              <ScrollArea className="flex-1 p-6">
-                {selectedEmail.body.contentType === "html" ? (
-                  <div
-                    className="prose prose-sm max-w-none dark:prose-invert break-words overflow-wrap-anywhere"
-                    dangerouslySetInnerHTML={{ __html: selectedEmail.body.content }}
-                  />
-                ) : (
-                  <div className="whitespace-pre-wrap break-words">{selectedEmail.body.content}</div>
-                )}
+              <div className="flex-1 overflow-hidden">
+                <ScrollArea className="h-full p-6">
+                  {selectedEmail.body.contentType === "html" ? (
+                    <div
+                      className="prose prose-sm max-w-none dark:prose-invert break-words overflow-wrap-anywhere"
+                      dangerouslySetInnerHTML={{ __html: selectedEmail.body.content }}
+                    />
+                  ) : (
+                    <div className="whitespace-pre-wrap break-words">{selectedEmail.body.content}</div>
+                  )}
 
-                {/* Thread */}
-                {thread.length > 1 && (
-                  <div className="mt-8 space-y-4">
-                    <Separator />
-                    <h3 className="font-semibold">Previous messages in this conversation</h3>
-                    {thread
-                      .filter((email) => email.id !== selectedEmail.id)
-                      .map((email) => (
-                        <div key={email.id} className="p-4 border rounded-lg">
-                          <div className="flex items-center gap-3 mb-2">
-                            <Avatar className="w-8 h-8">
-                              <AvatarFallback>
-                                {email.from.emailAddress.name[0]?.toUpperCase() || "?"}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div>
-                              <p className="font-medium text-sm">{email.from.emailAddress.name}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {format(new Date(email.receivedDateTime), "MMM d, yyyy 'at' h:mm a")}
-                              </p>
+                  {/* Thread */}
+                  {thread.length > 1 && (
+                    <div className="mt-8 space-y-4">
+                      <Separator />
+                      <h3 className="font-semibold">Previous messages in this conversation</h3>
+                      {thread
+                        .filter((email) => email.id !== selectedEmail.id)
+                        .map((email) => (
+                          <div key={email.id} className="p-4 border rounded-lg">
+                            <div className="flex items-center gap-3 mb-2">
+                              <Avatar className="w-8 h-8">
+                                <AvatarFallback>
+                                  {email.from.emailAddress.name[0]?.toUpperCase() || "?"}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <p className="font-medium text-sm">{email.from.emailAddress.name}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {format(new Date(email.receivedDateTime), "MMM d, yyyy 'at' h:mm a")}
+                                </p>
+                              </div>
                             </div>
+                            <p className="text-sm text-muted-foreground">{email.bodyPreview}</p>
                           </div>
-                          <p className="text-sm text-muted-foreground">{email.bodyPreview}</p>
-                        </div>
-                      ))}
-                  </div>
-                )}
-              </ScrollArea>
+                        ))}
+                    </div>
+                  )}
+                </ScrollArea>
+              </div>
             </>
           )}
         </div>
