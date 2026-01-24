@@ -272,6 +272,7 @@ export class GraphEmailService {
       sent: "sentitems",
       drafts: "drafts",
       trash: "deleteditems",
+      deleted_items: "deleteditems", // Support both trash and deleted_items
       archive: "archive",
       junk: "junkemail",
     };
@@ -469,7 +470,9 @@ export class GraphEmailService {
         sent: "sentitems",
         drafts: "drafts",
         trash: "deleteditems",
+        deleted_items: "deleteditems", // Support both trash and deleted_items
         archive: "archive",
+        junk: "junkemail",
       };
       const graphFolder = folderMap[folder.toLowerCase()] || folder;
       endpoint = `/me/mailFolders/${graphFolder}/messages`;
@@ -566,7 +569,9 @@ export class GraphEmailService {
       sent: "sentitems",
       drafts: "drafts",
       trash: "deleteditems",
+      deleted_items: "deleteditems", // Support both trash and deleted_items
       archive: "archive",
+      junk: "junkemail",
     };
 
     const graphFolder = folderMap[folder.toLowerCase()] || folder;
