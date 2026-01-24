@@ -111,14 +111,15 @@ export async function GET(request: NextRequest) {
         user_id: user.id,
         provider: "microsoft",
         email: microsoftUser.mail || microsoftUser.userPrincipalName,
-        display_name: microsoftUser.displayName,
         access_token: encrypt(access_token), // Encrypted with AES-256-GCM
-        refresh_token: encrypt(refresh_token), // Encrypted with AES-256-GCM
+        refresh_token: refresh_token ? encrypt(refresh_token) : null, // Encrypted with AES-256-GCM
         expires_at: expiresAt.toISOString(),
-        scopes: ["Mail.Read", "Mail.ReadWrite", "Mail.Send", "User.Read"],
+        is_active: true,
+        sync_enabled: true,
+        last_sync_at: null,
         updated_at: new Date().toISOString(),
       }, {
-        onConflict: "user_id,provider",
+        onConflict: "user_id,email",
       });
 
     if (dbError) {
@@ -141,9 +142,9 @@ export async function GET(request: NextRequest) {
       // Don't fail the callback - sync can be triggered manually later
     });
 
-    // Clear the state cookie and redirect to inbox
+    // Clear the state cookie and redirect to email client
     const response = NextResponse.redirect(
-      new URL("/my-inbox?success=Email%20connected%20successfully&syncing=true", request.url)
+      new URL("/email-client?success=Email%20connected%20successfully", request.url)
     );
     response.cookies.delete("oauth_state");
 
