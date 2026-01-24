@@ -125,6 +125,13 @@ export default function EmailClientPage() {
   const [isLoadingEmail, setIsLoadingEmail] = useState(false);
   const [showCompose, setShowCompose] = useState(false);
   const [needsConnection, setNeedsConnection] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [skip, setSkip] = useState(0);
+  const loadMoreRef = useCallback((node: HTMLDivElement | null) => {
+    if (node) observerRef.current?.observe(node);
+  }, []);
+  const observerRef = React.useRef<IntersectionObserver | null>(null);
 
   // Fetch folders
   const fetchFolders = useCallback(async () => {
@@ -153,10 +160,17 @@ export default function EmailClientPage() {
   }, []);
 
   // Fetch emails for folder
-  const fetchEmails = useCallback(async (folder: string) => {
+  const fetchEmails = useCallback(async (folder: string, append = false) => {
     try {
-      setIsLoadingEmails(true);
-      const response = await fetch(`/api/emails?folder=${folder}&top=50`);
+      if (!append) {
+        setIsLoadingEmails(true);
+        setSkip(0);
+      } else {
+        setIsLoadingMore(true);
+      }
+
+      const currentSkip = append ? skip : 0;
+      const response = await fetch(`/api/emails?folder=${folder}&top=50&skip=${currentSkip}`);
       const data = await response.json();
 
       if (data.needsConnection) {
@@ -169,14 +183,27 @@ export default function EmailClientPage() {
         return;
       }
 
-      setEmails(data.emails);
+      if (append) {
+        setEmails((prev) => [...prev, ...data.emails]);
+      } else {
+        setEmails(data.emails);
+      }
+
+      // Check if there are more emails to load
+      setHasMore(data.emails.length === 50);
+      if (append) {
+        setSkip((prev) => prev + data.emails.length);
+      } else {
+        setSkip(data.emails.length);
+      }
     } catch (error) {
       console.error("Error fetching emails:", error);
       toast.error("Failed to load emails");
     } finally {
       setIsLoadingEmails(false);
+      setIsLoadingMore(false);
     }
-  }, []);
+  }, [skip]);
 
   // Fetch single email
   const fetchEmail = useCallback(async (emailId: string) => {
@@ -272,6 +299,13 @@ export default function EmailClientPage() {
     [router]
   );
 
+  // Load more emails
+  const loadMoreEmails = useCallback(() => {
+    if (!isLoadingMore && hasMore && !isLoadingEmails) {
+      fetchEmails(selectedFolder, true);
+    }
+  }, [isLoadingMore, hasMore, isLoadingEmails, selectedFolder, fetchEmails]);
+
   // Search emails
   const searchEmails = useCallback(async () => {
     if (!searchQuery.trim()) {
@@ -292,6 +326,7 @@ export default function EmailClientPage() {
       }
 
       setEmails(data.emails);
+      setHasMore(false); // Disable infinite scroll for search results
     } catch (error) {
       console.error("Error searching emails:", error);
       toast.error("Search failed");
@@ -316,6 +351,24 @@ export default function EmailClientPage() {
       fetchEmail(selectedEmailId);
     }
   }, [selectedEmailId, fetchEmail]);
+
+  // Intersection observer for infinite scroll
+  useEffect(() => {
+    if (observerRef.current) observerRef.current.disconnect();
+
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !isLoadingMore && !isLoadingEmails) {
+          loadMoreEmails();
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    return () => {
+      if (observerRef.current) observerRef.current.disconnect();
+    };
+  }, [hasMore, isLoadingMore, isLoadingEmails, loadMoreEmails]);
 
   // Folder icon map
   const folderIcons: Record<string, React.ElementType> = {
@@ -473,6 +526,23 @@ export default function EmailClientPage() {
                     </div>
                   </button>
                 ))}
+
+                {/* Infinite scroll trigger */}
+                {hasMore && !searchQuery && (
+                  <div ref={loadMoreRef} className="p-4 text-center">
+                    {isLoadingMore ? (
+                      <Loader2 className="w-5 h-5 animate-spin text-muted-foreground mx-auto" />
+                    ) : (
+                      <p className="text-xs text-muted-foreground">Scroll for more...</p>
+                    )}
+                  </div>
+                )}
+
+                {!hasMore && emails.length > 0 && !searchQuery && (
+                  <div className="p-4 text-center">
+                    <p className="text-xs text-muted-foreground">No more emails</p>
+                  </div>
+                )}
               </div>
             )}
           </ScrollArea>
