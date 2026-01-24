@@ -94,6 +94,12 @@ const navSections: NavSection[] = [
         permission: "email:view",
       },
       {
+        title: "Email Client",
+        href: "/email-client",
+        icon: Mail,
+        permission: "email:view",
+      },
+      {
         title: "My Tasks",
         href: "/tasks",
         icon: ClipboardList,
