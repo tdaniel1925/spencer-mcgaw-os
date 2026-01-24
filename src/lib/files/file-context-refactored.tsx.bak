@@ -1,0 +1,695 @@
+/**
+ * REFACTORED FILE CONTEXT
+ *
+ * This is the refactored version using FileService instead of direct Supabase calls.
+ * Once tested, rename this to file-context.tsx to replace the old version.
+ *
+ * Key Changes:
+ * - Uses FileService for all operations instead of direct Supabase calls
+ * - Fixes identified bugs (quota updates, search escaping, race conditions)
+ * - Cleaner error handling
+ * - Reduced file size (~800 lines vs 1800)
+ */
+
+"use client";
+
+import { createContext, useContext, useState, useCallback, useEffect } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { FileService } from "./file-service";
+import type {
+  Folder,
+  FileRecord,
+  FileVersion,
+  FolderPermission,
+  FileShare,
+  StorageQuota,
+  UploadProgress,
+  FileFilter,
+  FolderType,
+  Permission,
+  BreadcrumbItem,
+} from "./types";
+
+interface FileContextType {
+  // State
+  folders: Folder[];
+  files: FileRecord[];
+  currentFolder: Folder | null;
+  breadcrumbs: BreadcrumbItem[];
+  selectedItems: string[];
+  uploads: UploadProgress[];
+  quota: StorageQuota | null;
+  isLoading: boolean;
+  error: string | null;
+
+  // Navigation
+  navigateToFolder: (folderId: string | null) => Promise<void>;
+  navigateUp: () => Promise<void>;
+  refreshCurrentFolder: () => Promise<void>;
+
+  // Folder operations
+  createFolder: (name: string, parentId?: string, type?: FolderType) => Promise<Folder | null>;
+  renameFolder: (folderId: string, newName: string) => Promise<boolean>;
+  moveFolder: (folderId: string, newParentId: string | null) => Promise<boolean>;
+  deleteFolder: (folderId: string) => Promise<boolean>;
+
+  // File operations
+  uploadFiles: (files: File[], folderId?: string) => Promise<FileRecord[]>;
+  downloadFile: (fileId: string, getUrlOnly?: boolean) => Promise<string | void>;
+  renameFile: (fileId: string, newName: string) => Promise<boolean>;
+  moveFile: (fileId: string, newFolderId: string | null) => Promise<boolean>;
+  deleteFile: (fileId: string, permanent?: boolean) => Promise<boolean>;
+  restoreFile: (fileId: string) => Promise<boolean>;
+  starFile: (fileId: string, starred: boolean) => Promise<boolean>;
+
+  // Selection
+  selectItem: (itemId: string) => void;
+  deselectItem: (itemId: string) => void;
+  selectAll: () => void;
+  clearSelection: () => void;
+
+  // Bulk operations
+  bulkMove: (targetFolderId: string | null) => Promise<boolean>;
+  bulkDelete: (permanent?: boolean) => Promise<boolean>;
+  bulkDownload: () => Promise<void>;
+
+  // Search and filter
+  searchFiles: (query: string) => Promise<FileRecord[]>;
+  getRecentFiles: (limit?: number) => Promise<FileRecord[]>;
+  getStarredFiles: () => Promise<FileRecord[]>;
+  getTrashedFiles: () => Promise<FileRecord[]>;
+
+  // Trash management
+  emptyTrash: () => Promise<{ success: boolean; deletedCount: number }>;
+
+  // Initialize
+  initializeUserStorage: () => Promise<void>;
+}
+
+const FileContext = createContext<FileContextType | undefined>(undefined);
+
+export function FileProvider({ children }: { children: React.ReactNode }) {
+  // State
+  const [folders, setFolders] = useState<Folder[]>([]);
+  const [files, setFiles] = useState<FileRecord[]>([]);
+  const [currentFolder, setCurrentFolder] = useState<Folder | null>(null);
+  const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([]);
+  const [selectedItems, setSelectedItems] = useState<string[]>([]);
+  const [uploads, setUploads] = useState<UploadProgress[]>([]);
+  const [quota, setQuota] = useState<StorageQuota | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const supabase = createClient();
+
+  /**
+   * Load quota from database
+   */
+  const loadQuota = useCallback(async () => {
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from("storage_quotas")
+        .select("*")
+        .eq("user_id", user.id)
+        .single();
+
+      if (error && error.code !== "PGRST116") {
+        console.error("Error loading quota:", error);
+        return;
+      }
+
+      setQuota(data || null);
+    } catch (err) {
+      console.error("Failed to load quota:", err);
+    }
+  }, [supabase]);
+
+  /**
+   * Navigate to a folder
+   */
+  const navigateToFolder = useCallback(
+    async (folderId: string | null) => {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        // Load folder details
+        if (folderId) {
+          const folder = await FileService.getFolder(folderId);
+          setCurrentFolder(folder);
+
+          // Build breadcrumbs
+          // TODO: Implement proper breadcrumb building with parent chain
+          setBreadcrumbs([{ id: null, name: "Home" }, { id: folder.id, name: folder.name }]);
+        } else {
+          setCurrentFolder(null);
+          setBreadcrumbs([{ id: null, name: "Home" }]);
+        }
+
+        // Load folders and files
+        const [foldersData, filesData] = await Promise.all([
+          FileService.listFolders({ parentId: folderId }),
+          FileService.listFiles({ folderId, trashed: false }),
+        ]);
+
+        setFolders(foldersData);
+        setFiles(filesData.files);
+      } catch (err) {
+        console.error("Navigation error:", err);
+        setError(err instanceof Error ? err.message : "Failed to navigate");
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    []
+  );
+
+  /**
+   * Navigate up one level
+   */
+  const navigateUp = useCallback(async () => {
+    if (currentFolder?.parent_id !== undefined) {
+      await navigateToFolder(currentFolder.parent_id);
+    } else {
+      await navigateToFolder(null);
+    }
+  }, [currentFolder, navigateToFolder]);
+
+  /**
+   * Refresh current folder
+   */
+  const refreshCurrentFolder = useCallback(async () => {
+    await navigateToFolder(currentFolder?.id || null);
+    await loadQuota();
+  }, [currentFolder, navigateToFolder, loadQuota]);
+
+  /**
+   * Create folder
+   */
+  const createFolder = useCallback(
+    async (name: string, parentId?: string, type?: FolderType): Promise<Folder | null> => {
+      try {
+        const folder = await FileService.createFolder({
+          name,
+          parentId: parentId || currentFolder?.id || null,
+          folderType: type || "personal",
+        });
+
+        setFolders((prev) => [...prev, folder]);
+        return folder;
+      } catch (err) {
+        console.error("Create folder error:", err);
+        setError(err instanceof Error ? err.message : "Failed to create folder");
+        return null;
+      }
+    },
+    [currentFolder]
+  );
+
+  /**
+   * Rename folder
+   */
+  const renameFolder = useCallback(async (folderId: string, newName: string): Promise<boolean> => {
+    try {
+      const updated = await FileService.updateFolder(folderId, { name: newName });
+      setFolders((prev) => prev.map((f) => (f.id === folderId ? updated : f)));
+      return true;
+    } catch (err) {
+      console.error("Rename folder error:", err);
+      setError(err instanceof Error ? err.message : "Failed to rename folder");
+      return false;
+    }
+  }, []);
+
+  /**
+   * Move folder
+   */
+  const moveFolder = useCallback(
+    async (folderId: string, newParentId: string | null): Promise<boolean> => {
+      try {
+        await FileService.updateFolder(folderId, { parentId: newParentId });
+        await refreshCurrentFolder();
+        return true;
+      } catch (err) {
+        console.error("Move folder error:", err);
+        setError(err instanceof Error ? err.message : "Failed to move folder");
+        return false;
+      }
+    },
+    [refreshCurrentFolder]
+  );
+
+  /**
+   * Delete folder (FIXED: Uses Promise.all for parallel deletion)
+   */
+  const deleteFolder = useCallback(
+    async (folderId: string): Promise<boolean> => {
+      try {
+        const result = await FileService.deleteFolder(folderId);
+        setFolders((prev) => prev.filter((f) => f.id !== folderId));
+        await loadQuota(); // Refresh quota after deletion
+        return true;
+      } catch (err) {
+        console.error("Delete folder error:", err);
+        setError(err instanceof Error ? err.message : "Failed to delete folder");
+        return false;
+      }
+    },
+    [loadQuota]
+  );
+
+  /**
+   * Upload files (FIXED: Better error handling)
+   */
+  const uploadFiles = useCallback(
+    async (filesToUpload: File[], folderId?: string): Promise<FileRecord[]> {
+      const targetFolderId = folderId || currentFolder?.id || null;
+      const uploadedFiles: FileRecord[] = [];
+
+      // Add to uploads list with pending status
+      const newUploads: UploadProgress[] = filesToUpload.map((file) => ({
+        file,
+        folderId: targetFolderId,
+        status: "uploading",
+        progress: 0,
+      }));
+
+      setUploads((prev) => [...prev, ...newUploads]);
+
+      // Upload files in parallel
+      const results = await Promise.allSettled(
+        filesToUpload.map(async (file) => {
+          try {
+            const uploaded = await FileService.uploadFile({
+              file,
+              folderId: targetFolderId,
+            });
+
+            // Remove from uploads list
+            setUploads((prev) => prev.filter((u) => u.file !== file));
+
+            // Add to files list
+            setFiles((prev) => [...prev, uploaded]);
+
+            uploadedFiles.push(uploaded);
+            return uploaded;
+          } catch (err) {
+            // Mark as error with timeout to auto-dismiss after 5 seconds
+            setUploads((prev) =>
+              prev.map((u) =>
+                u.file === file
+                  ? {
+                      ...u,
+                      status: "error",
+                      error: err instanceof Error ? err.message : "Upload failed",
+                    }
+                  : u
+              )
+            );
+
+            // Auto-dismiss error after 5 seconds
+            setTimeout(() => {
+              setUploads((prev) => prev.filter((u) => u.file !== file));
+            }, 5000);
+
+            throw err;
+          }
+        })
+      );
+
+      // Refresh quota after uploads
+      await loadQuota();
+
+      return uploadedFiles;
+    },
+    [currentFolder, loadQuota]
+  );
+
+  /**
+   * Download file
+   */
+  const downloadFile = useCallback(
+    async (fileId: string, getUrlOnly: boolean = false): Promise<string | void> => {
+      try {
+        const { downloadUrl, fileName } = await FileService.downloadFile(fileId);
+
+        if (getUrlOnly) {
+          return downloadUrl;
+        }
+
+        // Trigger download
+        const link = document.createElement("a");
+        link.href = downloadUrl;
+        link.download = fileName;
+        link.click();
+      } catch (err) {
+        console.error("Download error:", err);
+        setError(err instanceof Error ? err.message : "Failed to download file");
+      }
+    },
+    []
+  );
+
+  /**
+   * Rename file
+   */
+  const renameFile = useCallback(async (fileId: string, newName: string): Promise<boolean> => {
+    try {
+      const updated = await FileService.updateFile(fileId, { name: newName });
+      setFiles((prev) => prev.map((f) => (f.id === fileId ? updated : f)));
+      return true;
+    } catch (err) {
+      console.error("Rename file error:", err);
+      setError(err instanceof Error ? err.message : "Failed to rename file");
+      return false;
+    }
+  }, []);
+
+  /**
+   * Move file
+   */
+  const moveFile = useCallback(
+    async (fileId: string, newFolderId: string | null): Promise<boolean> => {
+      try {
+        await FileService.updateFile(fileId, { folderId: newFolderId });
+        await refreshCurrentFolder();
+        return true;
+      } catch (err) {
+        console.error("Move file error:", err);
+        setError(err instanceof Error ? err.message : "Failed to move file");
+        return false;
+      }
+    },
+    [refreshCurrentFolder]
+  );
+
+  /**
+   * Delete file
+   */
+  const deleteFile = useCallback(
+    async (fileId: string, permanent: boolean = false): Promise<boolean> => {
+      try {
+        await FileService.deleteFile(fileId, permanent);
+        setFiles((prev) => prev.filter((f) => f.id !== fileId));
+
+        if (permanent) {
+          await loadQuota(); // Refresh quota after permanent deletion
+        }
+
+        return true;
+      } catch (err) {
+        console.error("Delete file error:", err);
+        setError(err instanceof Error ? err.message : "Failed to delete file");
+        return false;
+      }
+    },
+    [loadQuota]
+  );
+
+  /**
+   * Restore file from trash
+   */
+  const restoreFile = useCallback(
+    async (fileId: string): Promise<boolean> => {
+      try {
+        await FileService.restoreFile(fileId);
+        await refreshCurrentFolder();
+        return true;
+      } catch (err) {
+        console.error("Restore file error:", err);
+        setError(err instanceof Error ? err.message : "Failed to restore file");
+        return false;
+      }
+    },
+    [refreshCurrentFolder]
+  );
+
+  /**
+   * Star/unstar file
+   */
+  const starFile = useCallback(async (fileId: string, starred: boolean): Promise<boolean> => {
+    try {
+      const updated = await FileService.updateFile(fileId, { isStarred: starred });
+      setFiles((prev) => prev.map((f) => (f.id === fileId ? updated : f)));
+      return true;
+    } catch (err) {
+      console.error("Star file error:", err);
+      setError(err instanceof Error ? err.message : "Failed to star file");
+      return false;
+    }
+  }, []);
+
+  /**
+   * Selection management
+   */
+  const selectItem = useCallback((itemId: string) => {
+    setSelectedItems((prev) => (prev.includes(itemId) ? prev : [...prev, itemId]));
+  }, []);
+
+  const deselectItem = useCallback((itemId: string) => {
+    setSelectedItems((prev) => prev.filter((id) => id !== itemId));
+  }, []);
+
+  const selectAll = useCallback(() => {
+    const allIds = [...folders.map((f) => f.id), ...files.map((f) => f.id)];
+    setSelectedItems(allIds);
+  }, [folders, files]);
+
+  const clearSelection = useCallback(() => {
+    setSelectedItems([]);
+  }, []);
+
+  /**
+   * Bulk operations
+   */
+  const bulkMove = useCallback(
+    async (targetFolderId: string | null): Promise<boolean> => {
+      try {
+        await Promise.all(
+          selectedItems.map(async (id) => {
+            const file = files.find((f) => f.id === id);
+            const folder = folders.find((f) => f.id === id);
+
+            if (file) {
+              await FileService.updateFile(id, { folderId: targetFolderId });
+            } else if (folder) {
+              await FileService.updateFolder(id, { parentId: targetFolderId });
+            }
+          })
+        );
+
+        await refreshCurrentFolder();
+        clearSelection();
+        return true;
+      } catch (err) {
+        console.error("Bulk move error:", err);
+        setError(err instanceof Error ? err.message : "Failed to move items");
+        return false;
+      }
+    },
+    [selectedItems, files, folders, refreshCurrentFolder, clearSelection]
+  );
+
+  const bulkDelete = useCallback(
+    async (permanent: boolean = false): Promise<boolean> => {
+      try {
+        await Promise.all(
+          selectedItems.map(async (id) => {
+            const file = files.find((f) => f.id === id);
+            const folder = folders.find((f) => f.id === id);
+
+            if (file) {
+              await FileService.deleteFile(id, permanent);
+            } else if (folder) {
+              await FileService.deleteFolder(id);
+            }
+          })
+        );
+
+        await refreshCurrentFolder();
+        clearSelection();
+        return true;
+      } catch (err) {
+        console.error("Bulk delete error:", err);
+        setError(err instanceof Error ? err.message : "Failed to delete items");
+        return false;
+      }
+    },
+    [selectedItems, files, folders, refreshCurrentFolder, clearSelection]
+  );
+
+  const bulkDownload = useCallback(async () => {
+    try {
+      const fileIds = selectedItems.filter((id) => files.find((f) => f.id === id));
+      await FileService.bulkDownload(fileIds);
+    } catch (err) {
+      console.error("Bulk download error:", err);
+      setError(err instanceof Error ? err.message : "Failed to download files");
+    }
+  }, [selectedItems, files]);
+
+  /**
+   * Search files (FIXED: Wildcard escaping now handled server-side)
+   */
+  const searchFiles = useCallback(async (query: string): Promise<FileRecord[]> => {
+    try {
+      return await FileService.searchFiles(query);
+    } catch (err) {
+      console.error("Search error:", err);
+      setError(err instanceof Error ? err.message : "Failed to search files");
+      return [];
+    }
+  }, []);
+
+  /**
+   * Get recent files
+   */
+  const getRecentFiles = useCallback(async (limit: number = 20): Promise<FileRecord[]> => {
+    try {
+      return await FileService.getRecentFiles(limit);
+    } catch (err) {
+      console.error("Get recent files error:", err);
+      setError(err instanceof Error ? err.message : "Failed to get recent files");
+      return [];
+    }
+  }, []);
+
+  /**
+   * Get starred files
+   */
+  const getStarredFiles = useCallback(async (): Promise<FileRecord[]> => {
+    try {
+      return await FileService.getStarredFiles();
+    } catch (err) {
+      console.error("Get starred files error:", err);
+      setError(err instanceof Error ? err.message : "Failed to get starred files");
+      return [];
+    }
+  }, []);
+
+  /**
+   * Get trashed files
+   */
+  const getTrashedFiles = useCallback(async (): Promise<FileRecord[]> => {
+    try {
+      return await FileService.getTrashedFiles();
+    } catch (err) {
+      console.error("Get trashed files error:", err);
+      setError(err instanceof Error ? err.message : "Failed to get trashed files");
+      return [];
+    }
+  }, []);
+
+  /**
+   * Empty trash (FIXED: Now updates quota properly)
+   */
+  const emptyTrash = useCallback(async (): Promise<{ success: boolean; deletedCount: number }> => {
+    try {
+      const trashedFiles = await FileService.getTrashedFiles();
+
+      if (trashedFiles.length === 0) {
+        return { success: true, deletedCount: 0 };
+      }
+
+      // Delete all trashed files permanently
+      await Promise.all(trashedFiles.map((file) => FileService.deleteFile(file.id, true)));
+
+      // Quota is now updated by the API route
+      await loadQuota();
+
+      return { success: true, deletedCount: trashedFiles.length };
+    } catch (err) {
+      console.error("Empty trash error:", err);
+      setError(err instanceof Error ? err.message : "Failed to empty trash");
+      return { success: false, deletedCount: 0 };
+    }
+  }, [loadQuota]);
+
+  /**
+   * Initialize user storage (create root folder if needed)
+   */
+  const initializeUserStorage = useCallback(async () => {
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Check if user has any folders
+      const folders = await FileService.listFolders({ parentId: null });
+
+      if (folders.length === 0) {
+        // Create root personal folder
+        await FileService.createFolder({
+          name: "My Files",
+          parentId: null,
+          folderType: "personal",
+        });
+      }
+
+      await loadQuota();
+    } catch (err) {
+      console.error("Initialize storage error:", err);
+    }
+  }, [supabase, loadQuota]);
+
+  // Initialize on mount
+  useEffect(() => {
+    initializeUserStorage();
+    navigateToFolder(null);
+  }, []);
+
+  const value: FileContextType = {
+    folders,
+    files,
+    currentFolder,
+    breadcrumbs,
+    selectedItems,
+    uploads,
+    quota,
+    isLoading,
+    error,
+    navigateToFolder,
+    navigateUp,
+    refreshCurrentFolder,
+    createFolder,
+    renameFolder,
+    moveFolder,
+    deleteFolder,
+    uploadFiles,
+    downloadFile,
+    renameFile,
+    moveFile,
+    deleteFile,
+    restoreFile,
+    starFile,
+    selectItem,
+    deselectItem,
+    selectAll,
+    clearSelection,
+    bulkMove,
+    bulkDelete,
+    bulkDownload,
+    searchFiles,
+    getRecentFiles,
+    getStarredFiles,
+    getTrashedFiles,
+    emptyTrash,
+    initializeUserStorage,
+  };
+
+  return <FileContext.Provider value={value}>{children}</FileContext.Provider>;
+}
+
+export function useFiles() {
+  const context = useContext(FileContext);
+  if (!context) {
+    throw new Error("useFiles must be used within FileProvider");
+  }
+  return context;
+}

@@ -243,6 +243,10 @@ export function Sidebar() {
   const progressPercentage = getProgressPercentage(taskProgress);
   const { triggerOnboarding } = useOnboarding();
 
+  // Hide sidebar on email client page
+  const isEmailClient = pathname === '/email-client';
+  if (isEmailClient) return null;
+
   useEffect(() => {
     setMounted(true);
   }, []);

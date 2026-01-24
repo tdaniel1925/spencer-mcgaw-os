@@ -29,24 +29,78 @@ import {
 interface ComposeDialogProps {
   open: boolean;
   onClose: () => void;
+  mode?: 'new' | 'reply' | 'replyAll' | 'forward';
   replyTo?: {
     id: string;
     subject: string;
-    from: { name: string; address: string };
+    from?: { name: string; address: string };
+    to?: Array<{ emailAddress: { name: string; address: string } }>;
+    cc?: Array<{ emailAddress: { name: string; address: string } }>;
+    body?: string;
+    bodyType?: 'text' | 'html';
   };
   onSent?: () => void;
 }
 
-export function ComposeDialog({ open, onClose, replyTo, onSent }: ComposeDialogProps) {
-  const [to, setTo] = useState("");
-  const [cc, setCc] = useState("");
+export function ComposeDialog({ open, onClose, mode = 'new', replyTo, onSent }: ComposeDialogProps) {
+  // Initialize fields based on mode
+  const initializeFields = () => {
+    if (!replyTo) return { to: '', cc: '', subject: '', body: '' };
+
+    if (mode === 'reply') {
+      return {
+        to: replyTo.from?.address || '',
+        cc: '',
+        subject: replyTo.subject.startsWith('Re:') ? replyTo.subject : `Re: ${replyTo.subject}`,
+        body: '',
+      };
+    }
+
+    if (mode === 'replyAll') {
+      const toAddrs = replyTo.to?.map(r => r.emailAddress.address).join(', ') || '';
+      const ccAddrs = replyTo.cc?.map(r => r.emailAddress.address).join(', ') || '';
+      return {
+        to: [replyTo.from?.address, toAddrs].filter(Boolean).join(', '),
+        cc: ccAddrs,
+        subject: replyTo.subject.startsWith('Re:') ? replyTo.subject : `Re: ${replyTo.subject}`,
+        body: '',
+      };
+    }
+
+    if (mode === 'forward') {
+      return {
+        to: '',
+        cc: '',
+        subject: replyTo.subject.startsWith('Fwd:') ? replyTo.subject : `Fwd: ${replyTo.subject}`,
+        body: `\n\n--- Forwarded message ---\n${replyTo.body || ''}`,
+      };
+    }
+
+    return { to: '', cc: '', subject: '', body: '' };
+  };
+
+  const initial = initializeFields();
+  const [to, setTo] = useState(initial.to);
+  const [cc, setCc] = useState(initial.cc);
   const [bcc, setBcc] = useState("");
-  const [subject, setSubject] = useState(replyTo ? `Re: ${replyTo.subject}` : "");
-  const [body, setBody] = useState("");
+  const [subject, setSubject] = useState(initial.subject);
+  const [body, setBody] = useState(initial.body);
   const [importance, setImportance] = useState<"low" | "normal" | "high">("normal");
   const [isSending, setIsSending] = useState(false);
-  const [showCc, setShowCc] = useState(false);
+  const [showCc, setShowCc] = useState(!!initial.cc);
   const [showBcc, setShowBcc] = useState(false);
+
+  // Update fields when replyTo changes
+  React.useEffect(() => {
+    if (open) {
+      const fields = initializeFields();
+      setTo(fields.to);
+      setCc(fields.cc);
+      setSubject(fields.subject);
+      setBody(fields.body);
+      setShowCc(!!fields.cc);
+    }
+  }, [open, mode, replyTo]);
 
   const handleSend = async () => {
     // Validation
@@ -126,11 +180,18 @@ export function ComposeDialog({ open, onClose, replyTo, onSent }: ComposeDialogP
     }
   };
 
+  const dialogTitle = {
+    new: 'New Message',
+    reply: 'Reply',
+    replyAll: 'Reply All',
+    forward: 'Forward Message',
+  }[mode];
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-3xl h-[80vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>New Message</DialogTitle>
+          <DialogTitle>{dialogTitle}</DialogTitle>
         </DialogHeader>
 
         <div className="flex-1 flex flex-col gap-4 overflow-auto">

@@ -159,6 +159,33 @@ export async function POST(request: NextRequest) {
 
     // If no conversation exists for this number, we can't process the message
     if (!conversation) {
+      logger.warn("Inbound SMS from unknown number - no conversation found", {
+        from,
+        to,
+        body: body.substring(0, 100),
+        messageSid,
+      });
+
+      // Optionally notify admins about messages from unknown numbers
+      try {
+        const supabase = await createClient();
+        await supabase.from("system_alerts").insert({
+          alert_type: "sms_unknown_sender",
+          severity: "low",
+          title: "SMS from Unknown Number",
+          message: `Received SMS from ${from} but no conversation exists`,
+          metadata: {
+            from,
+            to,
+            body: body.substring(0, 200),
+            messageSid,
+            timestamp: new Date().toISOString(),
+          },
+        });
+      } catch {
+        // Ignore alert creation errors
+      }
+
       return new NextResponse(
         `<?xml version="1.0" encoding="UTF-8"?>
         <Response></Response>`,
@@ -298,7 +325,31 @@ export async function POST(request: NextRequest) {
       }
     );
   } catch (error) {
-    logger.error("Error processing inbound SMS:", error);
+    logger.error("Error processing inbound SMS:", error, {
+      errorMessage: error instanceof Error ? error.message : "Unknown error",
+      errorStack: error instanceof Error ? error.stack : undefined,
+      headers: Object.fromEntries(request.headers.entries()),
+    });
+
+    // Send admin notification for critical SMS processing failures
+    try {
+      const supabase = await createClient();
+      await supabase.from("system_alerts").insert({
+        alert_type: "sms_webhook_failure",
+        severity: "high",
+        title: "SMS Webhook Processing Failed",
+        message: error instanceof Error ? error.message : "Unknown error occurred while processing inbound SMS",
+        metadata: {
+          error: error instanceof Error ? error.message : "Unknown error",
+          stack: error instanceof Error ? error.stack : undefined,
+          timestamp: new Date().toISOString(),
+        },
+      });
+    } catch (alertError) {
+      logger.error("Failed to create system alert for SMS webhook error:", alertError);
+    }
+
+    // Return empty TwiML response to acknowledge receipt (prevents Twilio retries)
     return new NextResponse(
       `<?xml version="1.0" encoding="UTF-8"?>
       <Response></Response>`,
@@ -351,7 +402,17 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    logger.error("Error processing status callback:", error);
-    return NextResponse.json({ error: "Failed to process status" }, { status: 500 });
+    logger.error("Error processing SMS status callback:", error, {
+      errorMessage: error instanceof Error ? error.message : "Unknown error",
+      errorStack: error instanceof Error ? error.stack : undefined,
+    });
+
+    // Log error but return success to prevent Twilio retries
+    // The message status will remain at last known state
+    return NextResponse.json({
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to process status",
+      acknowledged: true,
+    }, { status: 200 });
   }
 }

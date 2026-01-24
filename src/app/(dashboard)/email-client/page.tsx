@@ -128,6 +128,8 @@ export default function EmailClientPage() {
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [skip, setSkip] = useState(0);
+  const [composeMode, setComposeMode] = useState<'new' | 'reply' | 'replyAll' | 'forward'>('new');
+  const [composeReplyTo, setComposeReplyTo] = useState<any>(null);
   const loadMoreRef = useCallback((node: HTMLDivElement | null) => {
     if (node) observerRef.current?.observe(node);
   }, []);
@@ -306,6 +308,38 @@ export default function EmailClientPage() {
     }
   }, [isLoadingMore, hasMore, isLoadingEmails, selectedFolder, fetchEmails]);
 
+  // Handle reply
+  const handleReply = useCallback((email: Email, replyAll: boolean = false) => {
+    setComposeMode(replyAll ? 'replyAll' : 'reply');
+    setComposeReplyTo({
+      id: email.id,
+      subject: email.subject,
+      from: email.from.emailAddress,
+      to: replyAll ? email.toRecipients : undefined,
+      cc: replyAll ? email.ccRecipients : undefined,
+    });
+    setShowCompose(true);
+  }, []);
+
+  // Handle forward
+  const handleForward = useCallback((email: Email) => {
+    setComposeMode('forward');
+    setComposeReplyTo({
+      id: email.id,
+      subject: email.subject,
+      body: email.body.content,
+      bodyType: email.body.contentType,
+    });
+    setShowCompose(true);
+  }, []);
+
+  // Handle new compose
+  const handleNewCompose = useCallback(() => {
+    setComposeMode('new');
+    setComposeReplyTo(null);
+    setShowCompose(true);
+  }, []);
+
   // Search emails
   const searchEmails = useCallback(async () => {
     if (!searchQuery.trim()) {
@@ -409,7 +443,7 @@ export default function EmailClientPage() {
         {/* Sidebar - Folders */}
         <div className="w-64 border-r bg-muted/20 flex flex-col">
           <div className="p-4">
-            <Button className="w-full" onClick={() => setShowCompose(true)}>
+            <Button className="w-full" onClick={handleNewCompose}>
               <Plus className="w-4 h-4 mr-2" />
               Compose
             </Button>
@@ -622,15 +656,15 @@ export default function EmailClientPage() {
                 )}
 
                 <div className="flex items-center gap-2 mt-4">
-                  <Button variant="outline" size="sm">
+                  <Button variant="outline" size="sm" onClick={() => handleReply(selectedEmail, false)}>
                     <Reply className="w-4 h-4 mr-2" />
                     Reply
                   </Button>
-                  <Button variant="outline" size="sm">
+                  <Button variant="outline" size="sm" onClick={() => handleReply(selectedEmail, true)}>
                     <ReplyAll className="w-4 h-4 mr-2" />
                     Reply All
                   </Button>
-                  <Button variant="outline" size="sm">
+                  <Button variant="outline" size="sm" onClick={() => handleForward(selectedEmail)}>
                     <Forward className="w-4 h-4 mr-2" />
                     Forward
                   </Button>
@@ -641,11 +675,11 @@ export default function EmailClientPage() {
               <ScrollArea className="flex-1 p-6">
                 {selectedEmail.body.contentType === "html" ? (
                   <div
-                    className="prose prose-sm max-w-none dark:prose-invert"
+                    className="prose prose-sm max-w-none dark:prose-invert break-words overflow-wrap-anywhere"
                     dangerouslySetInnerHTML={{ __html: selectedEmail.body.content }}
                   />
                 ) : (
-                  <div className="whitespace-pre-wrap">{selectedEmail.body.content}</div>
+                  <div className="whitespace-pre-wrap break-words">{selectedEmail.body.content}</div>
                 )}
 
                 {/* Thread */}
@@ -685,6 +719,8 @@ export default function EmailClientPage() {
       <ComposeDialog
         open={showCompose}
         onClose={() => setShowCompose(false)}
+        mode={composeMode}
+        replyTo={composeReplyTo}
         onSent={() => {
           setShowCompose(false);
           fetchEmails(selectedFolder);

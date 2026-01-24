@@ -591,7 +591,7 @@ async function processCallReport(
                      parsedData?.analysis?.urgency === "high" ? "high" : "medium",
             source_type: "phone_call",
             source_call_id: recordId, // Use proper foreign key
-            client_id: matchedClientId,
+            client_id: matchedClientId || null, // Ensure null instead of undefined
             source_metadata: {
               conversation_space_id: conversationSpaceId,
               caller_phone: finalCallerPhone,
