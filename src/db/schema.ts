@@ -74,6 +74,7 @@ export const emailIntentEnum = pgEnum("email_intent", ["question", "request", "f
 export const emailSentimentEnum = pgEnum("email_sentiment", ["positive", "neutral", "negative", "urgent"]);
 export const syncStatusEnum = pgEnum("sync_status", ["idle", "syncing", "error", "paused"]);
 export const webhookSubStatusEnum = pgEnum("webhook_sub_status", ["active", "expired", "failed", "none"]);
+export const potentialTaskStatusEnum = pgEnum("potential_task_status", ["pending", "approved", "dismissed", "expired"]);
 
 // Users table
 export const users = pgTable("users", {
@@ -791,6 +792,48 @@ export const emailAiInsights = pgTable("email_ai_insights", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// Potential Tasks table (AI-suggested tasks from forwarded emails awaiting user approval)
+export const potentialTasks = pgTable("potential_tasks", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+
+  // Email source
+  sourceEmailFrom: varchar("source_email_from", { length: 255 }).notNull(), // Original sender
+  sourceEmailSubject: text("source_email_subject"),
+  sourceEmailBody: text("source_email_body"),
+  sourceEmailReceivedAt: timestamp("source_email_received_at").notNull(),
+  emailMessageId: uuid("email_message_id").references(() => emailMessages.id, { onDelete: "set null" }), // Link to stored email if exists
+
+  // AI-suggested task details
+  suggestedTitle: text("suggested_title").notNull(),
+  suggestedDescription: text("suggested_description"),
+  suggestedActionTypeId: uuid("suggested_action_type_id").references(() => taskActionTypes.id),
+  suggestedClientId: uuid("suggested_client_id").references(() => clients.id),
+  suggestedAssignedTo: uuid("suggested_assigned_to").references(() => users.id),
+  suggestedDueDate: timestamp("suggested_due_date"),
+  suggestedPriority: text("suggested_priority").default("medium"), // 'urgent', 'high', 'medium', 'low'
+
+  // AI metadata
+  aiConfidence: integer("ai_confidence").notNull(), // 0-100
+  aiReasoning: text("ai_reasoning"), // Why AI suggested this
+  aiExtractedData: jsonb("ai_extracted_data").$type<Record<string, unknown>>().default({}),
+
+  // Status and resolution
+  status: potentialTaskStatusEnum("status").notNull().default("pending"),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewedBy: uuid("reviewed_by").references(() => users.id),
+  dismissalReason: text("dismissal_reason"),
+
+  // If approved, link to created task
+  createdTaskId: uuid("created_task_id").references(() => tasks.id),
+
+  // Auto-expire after 7 days
+  expiresAt: timestamp("expires_at").notNull(),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   assignedClients: many(clients),
@@ -1276,6 +1319,39 @@ export const emailAiInsightsRelations = relations(emailAiInsights, ({ one }) => 
   }),
 }));
 
+export const potentialTasksRelations = relations(potentialTasks, ({ one }) => ({
+  user: one(users, {
+    fields: [potentialTasks.userId],
+    references: [users.id],
+  }),
+  emailMessage: one(emailMessages, {
+    fields: [potentialTasks.emailMessageId],
+    references: [emailMessages.id],
+  }),
+  suggestedActionType: one(taskActionTypes, {
+    fields: [potentialTasks.suggestedActionTypeId],
+    references: [taskActionTypes.id],
+  }),
+  suggestedClient: one(clients, {
+    fields: [potentialTasks.suggestedClientId],
+    references: [clients.id],
+  }),
+  suggestedAssignee: one(users, {
+    fields: [potentialTasks.suggestedAssignedTo],
+    references: [users.id],
+    relationName: "suggestedTasks",
+  }),
+  reviewedByUser: one(users, {
+    fields: [potentialTasks.reviewedBy],
+    references: [users.id],
+    relationName: "reviewedPotentialTasks",
+  }),
+  createdTask: one(tasks, {
+    fields: [potentialTasks.createdTaskId],
+    references: [tasks.id],
+  }),
+}));
+
 // Webhook Logs table (for monitoring webhook activity)
 export const webhookStatusEnum = pgEnum("webhook_status", [
   "received",
@@ -1386,3 +1462,5 @@ export type EmailSyncState = typeof emailSyncState.$inferSelect;
 export type NewEmailSyncState = typeof emailSyncState.$inferInsert;
 export type EmailAiInsight = typeof emailAiInsights.$inferSelect;
 export type NewEmailAiInsight = typeof emailAiInsights.$inferInsert;
+export type PotentialTask = typeof potentialTasks.$inferSelect;
+export type NewPotentialTask = typeof potentialTasks.$inferInsert;
