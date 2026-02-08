@@ -56,14 +56,14 @@ export async function middleware(request: NextRequest) {
   const isPublicRoute = matchesRoute(pathname, PUBLIC_ROUTES);
   const isProtectedRoute = matchesRoute(pathname, PROTECTED_ROUTES);
 
-  // If it's not a protected route, allow through early
-  if (!isProtectedRoute || isPublicRoute) {
-    return await updateSession(request);
-  }
-
   // 2. Update Supabase session and check for user
   const { supabaseResponse, user } = await updateSession(request);
   const hasSession = !!user;
+
+  // If it's not a protected route, allow through early
+  if (!isProtectedRoute || isPublicRoute) {
+    return supabaseResponse;
+  }
 
   // 3. Protect API routes
   if (pathname.startsWith('/api') && !isPublicRoute) {
