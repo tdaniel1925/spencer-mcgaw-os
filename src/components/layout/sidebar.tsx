@@ -99,6 +99,12 @@ const navSections: NavSection[] = [
     label: "My Work",
     items: [
       {
+        title: "Inbound Communications",
+        href: "/inbound",
+        icon: Mail,
+        permission: "dashboard:view",
+      },
+      {
         title: "Tasks",
         href: "/tasks",
         icon: ClipboardList,
