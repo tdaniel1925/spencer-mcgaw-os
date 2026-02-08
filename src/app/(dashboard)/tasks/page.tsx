@@ -517,7 +517,7 @@ export default function TasksPage() {
                 "text-[10px] px-2 py-0.5 flex items-center gap-1",
                 task.source_type === "email" && "bg-purple-50 text-purple-700 border-purple-300",
                 task.source_type === "phone_call" && "bg-blue-50 text-blue-700 border-blue-300",
-                task.source_type === "potential_task" && "bg-green-50 text-green-700 border-green-300"
+                task.source_type === "ai" && "bg-green-50 text-green-700 border-green-300"
               )}
             >
               <SourceIcon className="h-3 w-3 flex-shrink-0" />
