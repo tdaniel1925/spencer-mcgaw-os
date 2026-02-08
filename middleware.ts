@@ -52,23 +52,20 @@ function matchesRoute(pathname: string, routes: string[]): boolean {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // 1. Update Supabase session (refresh tokens if needed)
-  const supabaseResponse = await updateSession(request);
-
-  // 2. Check if route requires authentication
+  // 1. Check if route requires authentication
   const isPublicRoute = matchesRoute(pathname, PUBLIC_ROUTES);
   const isProtectedRoute = matchesRoute(pathname, PROTECTED_ROUTES);
 
-  // If it's not a protected route, allow through
+  // If it's not a protected route, allow through early
   if (!isProtectedRoute || isPublicRoute) {
-    return supabaseResponse;
+    return await updateSession(request);
   }
 
-  // 3. Check for authentication token
-  const token = request.cookies.get('sb-access-token')?.value;
-  const hasSession = !!token;
+  // 2. Update Supabase session and check for user
+  const { supabaseResponse, user } = await updateSession(request);
+  const hasSession = !!user;
 
-  // 4. Protect API routes
+  // 3. Protect API routes
   if (pathname.startsWith('/api') && !isPublicRoute) {
     if (!hasSession) {
       return NextResponse.json(
@@ -80,19 +77,19 @@ export async function middleware(request: NextRequest) {
     return supabaseResponse;
   }
 
-  // 5. Protect page routes (redirect to login)
+  // 4. Protect page routes (redirect to login)
   if (isProtectedRoute && !hasSession) {
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('redirect', pathname);
     return NextResponse.redirect(loginUrl);
   }
 
-  // 6. Redirect authenticated users away from auth pages
+  // 5. Redirect authenticated users away from auth pages
   if (hasSession && ['/login', '/signup'].includes(pathname)) {
     return NextResponse.redirect(new URL('/dashboard', request.url));
   }
 
-  // 7. Handle root path redirect
+  // 6. Handle root path redirect
   if (pathname === '/') {
     const redirectUrl = hasSession ? '/dashboard' : '/login';
     return NextResponse.redirect(new URL(redirectUrl, request.url));
