@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Card, CardContent } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Collapsible,
   CollapsibleContent,
@@ -175,54 +176,59 @@ export default function InboundPage() {
   };
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <div>
-            <Header title="Inbound Communications" />
-            <p className="text-sm text-muted-foreground mt-1">
-              Unified timeline of all incoming phone calls and emails
-            </p>
+    <>
+      <Header title="Inbound Communications" />
+      <main className="flex flex-col h-[calc(100vh-64px)] overflow-hidden">
+        {/* Top Bar */}
+        <div className="border-b bg-card flex-shrink-0">
+          <div className="h-12 flex items-center px-4 gap-4">
+            {/* Filter Tabs */}
+            <div className="flex items-center gap-2">
+              <Button
+                variant={filterType === "all" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setFilterType("all")}
+                className="h-8"
+              >
+                All
+                <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-[10px]">
+                  {communications.length}
+                </Badge>
+              </Button>
+              <Button
+                variant={filterType === "phone" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setFilterType("phone")}
+                className="h-8"
+              >
+                <Phone className="h-4 w-4 mr-2" />
+                Phone Calls
+              </Button>
+              <Button
+                variant={filterType === "email" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setFilterType("email")}
+                className="h-8"
+              >
+                <Mail className="h-4 w-4 mr-2" />
+                Emails
+              </Button>
+            </div>
+
+            {/* Spacer */}
+            <div className="flex-1" />
+
+            {/* Refresh Button */}
+            <Button variant="outline" size="sm" onClick={fetchCommunications} disabled={isLoading} className="h-8">
+              <RefreshCw className={cn("h-4 w-4 mr-2", isLoading && "animate-spin")} />
+              Refresh
+            </Button>
           </div>
-          <Button variant="outline" size="sm" onClick={fetchCommunications} disabled={isLoading}>
-            <RefreshCw className={cn("h-4 w-4 mr-2", isLoading && "animate-spin")} />
-            Refresh
-          </Button>
         </div>
-      </div>
 
-      {/* Filter Tabs */}
-      <div className="flex items-center gap-2 border-b">
-        <Button
-          variant={filterType === "all" ? "default" : "ghost"}
-          size="sm"
-          onClick={() => setFilterType("all")}
-          className="rounded-b-none"
-        >
-          All
-        </Button>
-        <Button
-          variant={filterType === "phone" ? "default" : "ghost"}
-          size="sm"
-          onClick={() => setFilterType("phone")}
-          className="rounded-b-none"
-        >
-          <Phone className="h-4 w-4 mr-2" />
-          Phone Calls
-        </Button>
-        <Button
-          variant={filterType === "email" ? "default" : "ghost"}
-          size="sm"
-          onClick={() => setFilterType("email")}
-          className="rounded-b-none"
-        >
-          <Mail className="h-4 w-4 mr-2" />
-          Emails
-        </Button>
-      </div>
-
-      {/* Timeline */}
-      <div className="space-y-4">
+        {/* Timeline Content */}
+        <div className="flex-1 overflow-auto">
+          <div className="container mx-auto p-6 space-y-4">
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -477,7 +483,9 @@ export default function InboundPage() {
             );
           })
         )}
-      </div>
+          </div>
+        </div>
+      </main>
 
       {/* Assignment Dialog */}
       <AssignmentDialog
@@ -491,6 +499,6 @@ export default function InboundPage() {
 
       {/* Delete Confirmation */}
       <ConfirmationDialog {...deleteState} onOpenChange={setDeleteOpen} />
-    </div>
+    </>
   );
 }
