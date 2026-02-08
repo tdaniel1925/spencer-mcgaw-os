@@ -500,34 +500,32 @@ const articles: Article[] = [
   // Email
   {
     id: "email-integration",
-    title: "Email Integration Setup",
-    description: "How to connect your email accounts",
+    title: "Shared Inbox Setup",
+    description: "How to use the shared inbox for AI-powered task suggestions",
     category: "email",
-    tags: ["email", "integration", "microsoft", "google"],
+    tags: ["email", "shared inbox", "forwarding", "ai"],
     readTime: 5,
-    lastUpdated: "2024-12-27",
+    lastUpdated: "2026-02-07",
     featured: true,
     content: [
-      { type: "paragraph", content: "Spencer McGaw Hub can connect to Microsoft 365 and Google Workspace to sync your emails." },
-      { type: "heading", content: "Connecting an Email Account" },
-      { type: "paragraph", content: "Email integration is configured by administrators in Admin > System Settings > Integrations." },
+      { type: "paragraph", content: "Spencer McGaw Hub uses a shared inbox to receive and process emails with AI-powered task suggestions." },
+      { type: "heading", content: "How It Works" },
+      { type: "paragraph", content: "Simply forward emails to your organization's shared inbox address, and AI will analyze them to create task suggestions." },
       { type: "steps", content: [
-        "Go to Admin > System Settings > Integrations",
-        "Find the Email Integration section",
-        "Click 'Connect Account'",
-        "Choose Microsoft 365 or Google Workspace",
-        "Sign in with your email credentials",
-        "Grant the necessary permissions",
-        "Your emails will start syncing"
+        "Forward any email to your shared inbox address",
+        "AI automatically analyzes the email content",
+        "Task suggestions appear on your dashboard",
+        "Review and approve or dismiss suggestions",
+        "Approved suggestions become real tasks"
       ]},
-      { type: "heading", content: "What Gets Synced" },
+      { type: "heading", content: "What Gets Processed" },
       { type: "list", content: [
-        "Incoming emails are synced and processed by AI",
+        "Incoming emails are analyzed by AI",
         "Emails are categorized and prioritized automatically",
         "Client matching is attempted for each email",
-        "Action items are extracted when relevant"
+        "Action items are extracted and suggested as tasks"
       ]},
-      { type: "warning", content: "Email integration requires admin permissions. Contact your administrator if you need access." },
+      { type: "tip", content: "Set up email forwarding rules to automatically send specific emails to the shared inbox for processing." },
     ],
   },
   {
@@ -1057,8 +1055,8 @@ const faqs: FAQ[] = [
     category: "email",
   },
   {
-    question: "How do I connect my email account?",
-    answer: "Email integration is set up by administrators. Go to Admin > System Settings > Integrations and follow the prompts to connect Microsoft 365 or Google Workspace.",
+    question: "How do I get AI task suggestions from emails?",
+    answer: "Forward emails to your organization's shared inbox address. AI will automatically analyze them and create task suggestions that appear on your dashboard for review.",
     category: "email",
   },
   {

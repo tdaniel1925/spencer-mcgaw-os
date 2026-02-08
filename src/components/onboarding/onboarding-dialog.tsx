@@ -89,41 +89,6 @@ export function OnboardingDialog({
       ),
     },
     {
-      id: "email",
-      title: "Connect Your Email",
-      description: "AI-powered email intelligence at your fingertips",
-      icon: <Mail className="h-8 w-8 text-blue-500" />,
-      content: (
-        <div className="space-y-4">
-          <p className="text-muted-foreground">
-            Connect your Microsoft 365 email to unlock powerful AI features:
-          </p>
-          <ul className="space-y-3">
-            <FeatureListItem
-              title="Smart Classification"
-              description="AI automatically categorizes and prioritizes emails"
-            />
-            <FeatureListItem
-              title="Action Extraction"
-              description="Important tasks and deadlines are automatically detected"
-            />
-            <FeatureListItem
-              title="Client Matching"
-              description="Emails are linked to the right clients automatically"
-            />
-          </ul>
-          <div className="bg-blue-50 dark:bg-blue-950 rounded-lg p-4 mt-4">
-            <p className="text-sm font-medium text-blue-700 dark:text-blue-300">
-              How to connect:
-            </p>
-            <p className="text-sm text-blue-600 dark:text-blue-400 mt-1">
-              Go to <strong>Settings → Email Accounts</strong> and click "Connect Microsoft Account"
-            </p>
-          </div>
-        </div>
-      ),
-    },
-    {
       id: "tasks",
       title: "Task Management",
       description: "Two views to organize your work",
@@ -253,9 +218,9 @@ export function OnboardingDialog({
             You're ready to go, {firstName}! Here are some next steps:
           </p>
           <div className="grid gap-2 text-left mt-6">
-            <NextStepItem step="1" text="Connect your email account in Settings" />
-            <NextStepItem step="2" text="Check out the Dashboard for an overview" />
-            <NextStepItem step="3" text="Explore the Task Pool to see open work" />
+            <NextStepItem step="1" text="Check out the Dashboard for an overview" />
+            <NextStepItem step="2" text="Explore the Task Pool to see open work" />
+            <NextStepItem step="3" text="Forward emails to your shared inbox for AI analysis" />
           </div>
           <p className="text-sm text-muted-foreground mt-6">
             You can revisit this guide anytime from <strong>Help → Getting Started</strong> in the menu.

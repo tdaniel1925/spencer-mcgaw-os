@@ -217,13 +217,13 @@ const appKnowledge = {
       name: "System Settings",
       description: "Configure system-wide settings. Admin only.",
       features: [
-        "Connect email accounts (Microsoft 365, Outlook)",
         "Configure AI settings",
         "Manage integrations",
         "View system status",
+        "Set up shared inbox forwarding",
       ],
       tips: [
-        "Email connection requires Microsoft 365 admin consent for your organization",
+        "Forward emails to your shared inbox for AI-powered task suggestions",
       ],
     },
   },
@@ -235,8 +235,8 @@ const appKnowledge = {
       answer: "To add a new client or contact, go to the Clients page from the sidebar and click the 'Add Client' button in the top right. Fill in their name, email, phone, and any other relevant information, then click Save.",
     },
     {
-      keywords: ["connect", "email", "microsoft", "outlook"],
-      answer: "To connect your email, go to System Settings (you need admin access) and click 'Connect Email' under the Email Integration section. You will be redirected to Microsoft to sign in and authorize the connection.",
+      keywords: ["connect", "email", "forward", "inbox", "shared"],
+      answer: "To get AI-powered task suggestions from emails, forward them to your organization's shared inbox address. The system will automatically analyze incoming emails and create task suggestions on your dashboard.",
     },
     {
       keywords: ["task", "create", "add", "new"],
@@ -345,7 +345,7 @@ function generateResponse(question: string, currentPage: string): string {
   }
 
   // Default fallback
-  return "I am not sure I understand that question. Try asking things like:\n- What can I do on this page?\n- How do I add a client?\n- What does the Approve button do?\n- How do I connect my email?\n\nI am here to help you learn the app!";
+  return "I am not sure I understand that question. Try asking things like:\n- What can I do on this page?\n- How do I add a client?\n- What does the Approve button do?\n- How do AI task suggestions work?\n\nI am here to help you learn the app!";
 }
 
 export function AIAssistant() {
