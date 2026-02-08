@@ -11,10 +11,6 @@ import {
   type CallContext,
 } from "@/lib/ai/task-suggestion-engine";
 
-// Store processed webhook IDs to prevent replay (in production, use Redis or database)
-const processedWebhooks = new Set<string>();
-const MAX_PROCESSED_WEBHOOKS = 10000;
-
 /**
  * VAPI Webhook Endpoint
  *
@@ -63,7 +59,7 @@ export async function POST(request: NextRequest) {
           userAgent,
         });
       } catch (logError) {
-        logger.error("[VAPI Webhook] Failed to log webhook error:", logError);
+        logger.error("[VAPI Webhook] Failed to log webhook error:", { error: logError });
       }
 
       logger.error("[VAPI Webhook] Failed to parse JSON payload");
@@ -80,25 +76,36 @@ export async function POST(request: NextRequest) {
 
     // Generate unique event ID for idempotency
     // VAPI can send call ID in various locations
-    const callId = (message?.call as Record<string, unknown>)?.id as string ||
-                   (data.call as Record<string, unknown>)?.id as string ||
-                   data.callId as string ||
-                   data.id as string ||
-                   `vapi-${Date.now()}`;
+    const eventId = (message?.call as Record<string, unknown>)?.id as string ||
+                    (data.call as Record<string, unknown>)?.id as string ||
+                    data.callId as string ||
+                    data.id as string ||
+                    `vapi-${Date.now()}-${Math.random().toString(36).substring(7)}`;
 
-    // Check for duplicate processing BEFORE creating log entry
-    if (processedWebhooks.has(callId)) {
-      // Don't create a log entry for duplicates - just return success
-      return NextResponse.json({
-        success: true,
-        message: "Webhook already processed",
-        duplicate: true,
-      });
+    // Check for duplicate processing via database (persistent deduplication)
+    try {
+      const [existingLog] = await db
+        .select({ id: webhookLogs.id })
+        .from(webhookLogs)
+        .where(eq(webhookLogs.eventId, eventId))
+        .limit(1);
+
+      if (existingLog) {
+        return NextResponse.json({
+          success: true,
+          message: "Webhook already processed",
+          duplicate: true,
+        });
+      }
+    } catch (checkError) {
+      // Log but continue - better to risk duplicate than reject valid webhook
+      logger.warn("[VAPI Webhook] Error checking for duplicate", { error: checkError instanceof Error ? checkError.message : "Unknown error" });
     }
 
-    // Create webhook log entry only for non-duplicates
+    // Create webhook log entry with eventId for deduplication
     try {
       const [webhookLog] = await db.insert(webhookLogs).values({
+        eventId, // Store eventId for future deduplication checks
         endpoint: "/api/webhooks/vapi",
         source: "vapi",
         status: "received",
@@ -110,17 +117,8 @@ export async function POST(request: NextRequest) {
       }).returning({ id: webhookLogs.id });
       webhookLogId = webhookLog?.id || null;
     } catch (logError) {
-      logger.error("[VAPI Webhook] Failed to create webhook log:", logError);
+      logger.error("[VAPI Webhook] Failed to create webhook log:", { error: logError });
       // Continue processing even if logging fails
-    }
-
-    // Add to processed set (with cleanup)
-    processedWebhooks.add(callId);
-    if (processedWebhooks.size > MAX_PROCESSED_WEBHOOKS) {
-      const firstItem = processedWebhooks.values().next().value;
-      if (firstItem) {
-        processedWebhooks.delete(firstItem);
-      }
     }
 
     // Update status to parsing
@@ -279,7 +277,7 @@ export async function POST(request: NextRequest) {
 
     // Store call record
     const [insertedCall] = await db.insert(calls).values({
-      vapiCallId: callId,
+      vapiCallId: eventId,
       callerPhone,
       callerName,
       status: "completed",
@@ -320,7 +318,7 @@ export async function POST(request: NextRequest) {
       description: `${direction === "inbound" ? "Inbound" : "Outbound"} VAPI call${callerPhone ? ` from ${callerPhone}` : ""} - ${summary}`,
       metadata: {
         callId: recordId,
-        vapiCallId: callId,
+        vapiCallId: eventId,
         category: parsedData?.analysis.category || null,
         urgency: parsedData?.analysis.urgency || null,
         webhookLogId,
@@ -331,7 +329,7 @@ export async function POST(request: NextRequest) {
     let suggestionIds: string[] = [];
     try {
       const callContext: CallContext = {
-        callId: recordId || callId,
+        callId: recordId || eventId,
         callerPhone: callerPhone || undefined,
         callerName: callerName || undefined,
         transcript: transcript || undefined,
@@ -350,9 +348,9 @@ export async function POST(request: NextRequest) {
         suggestionIds = await storeTaskSuggestions(
           suggestions,
           "phone_call",
-          recordId || callId,
+          recordId || eventId,
           {
-            vapiCallId: callId,
+            vapiCallId: eventId,
             callerPhone,
             callerName,
             category: parsedData?.analysis?.category,
@@ -362,14 +360,14 @@ export async function POST(request: NextRequest) {
       }
     } catch (suggestionError) {
       // Don't fail the webhook if suggestion generation fails
-      logger.error("[VAPI Webhook] Error generating task suggestions:", suggestionError);
+      logger.error("[VAPI Webhook] Error generating task suggestions:", { error: suggestionError });
     }
 
     return NextResponse.json({
       success: true,
       message: "VAPI webhook processed successfully",
       recordId,
-      callId,
+      eventId,
       webhookLogId,
       aiParsed: !!parsedData,
       summary,
@@ -378,7 +376,7 @@ export async function POST(request: NextRequest) {
       processingTimeMs: Date.now() - startTime,
     });
   } catch (error) {
-    logger.error("[VAPI Webhook] Error processing webhook:", error);
+    logger.error("[VAPI Webhook] Error processing webhook:", { error: error });
 
     // Update webhook log with error
     if (webhookLogId) {

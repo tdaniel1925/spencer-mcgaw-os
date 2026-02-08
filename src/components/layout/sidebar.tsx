@@ -39,6 +39,12 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Sheet,
   SheetContent,
   SheetTrigger,
@@ -61,7 +67,12 @@ interface NavItem {
   href: string;
   icon: React.ElementType;
   badge?: number;
-  children?: { title: string; href: string; permission?: Permission }[];
+  children?: {
+    title: string;
+    href: string;
+    permission?: Permission;
+    description?: string; // Tooltip description
+  }[];
   permission?: Permission; // Required permission to view this nav item
   adminOnly?: boolean; // Only show to admin/owner
 }
@@ -88,22 +99,36 @@ const navSections: NavSection[] = [
     label: "My Work",
     items: [
       {
-        title: "My Inbox",
-        href: "/my-inbox",
-        icon: Mail,
+        title: "Email Intelligence",
+        href: "/email-intelligence",
+        icon: Sparkles,
         permission: "email:view",
       },
       {
-        title: "Email Client",
-        href: "/email-client",
-        icon: Mail,
-        permission: "email:view",
-      },
-      {
-        title: "My Tasks",
+        title: "Tasks",
         href: "/tasks",
         icon: ClipboardList,
         permission: "tasks:view",
+        children: [
+          {
+            title: "My Tasks",
+            href: "/tasks",
+            permission: "tasks:view",
+            description: "Tasks assigned to you",
+          },
+          {
+            title: "Team Tasks",
+            href: "/team-tasks",
+            permission: "tasks:view_all",
+            description: "All tasks assigned to your team members",
+          },
+          {
+            title: "Unassigned",
+            href: "/org-tasks",
+            permission: "tasks:view",
+            description: "Available tasks in the pool that anyone can claim",
+          },
+        ],
       },
       {
         title: "My Calendar",
@@ -121,19 +146,6 @@ const navSections: NavSection[] = [
         href: "/org-feed",
         icon: Activity,
         permission: "dashboard:view",
-      },
-      {
-        title: "Task Pool",
-        href: "/org-tasks",
-        icon: Kanban,
-        permission: "tasks:view",
-      },
-      {
-        title: "Team Tasks",
-        href: "/team-tasks",
-        icon: Users,
-        permission: "tasks:view_all",
-        adminOnly: false, // Will check permission instead
       },
       {
         title: "Chat",
@@ -394,20 +406,40 @@ export function Sidebar() {
             aria-label={`${item.title} submenu`}
             className="ml-4 mt-1 space-y-1 border-l border-sidebar-border pl-4"
           >
-            {item.children?.map((child) => (
-              <Link
-                key={child.href}
-                href={child.href}
-                className={cn(
-                  "block px-3 py-2 rounded-lg text-sm transition-colors",
-                  pathname === child.href
-                    ? "text-sidebar-primary font-medium"
-                    : "text-sidebar-foreground/70 hover:text-sidebar-foreground"
-                )}
-              >
-                {child.title}
-              </Link>
-            ))}
+            {item.children?.map((child) => {
+              const childContent = (
+                <Link
+                  key={child.href}
+                  href={child.href}
+                  className={cn(
+                    "block px-3 py-2 rounded-lg text-sm transition-colors",
+                    pathname === child.href
+                      ? "text-sidebar-primary font-medium"
+                      : "text-sidebar-foreground/70 hover:text-sidebar-foreground"
+                  )}
+                >
+                  {child.title}
+                </Link>
+              );
+
+              // Wrap with tooltip if description exists
+              if (child.description) {
+                return (
+                  <TooltipProvider key={child.href} delayDuration={300}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        {childContent}
+                      </TooltipTrigger>
+                      <TooltipContent side="right" className="max-w-xs">
+                        <p className="text-xs">{child.description}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                );
+              }
+
+              return childContent;
+            })}
           </div>
         )}
       </div>

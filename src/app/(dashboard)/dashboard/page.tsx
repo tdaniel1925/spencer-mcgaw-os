@@ -3,9 +3,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/layout/header";
+import { useKeyboardNavigation } from "@/hooks/use-keyboard-navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -26,26 +26,23 @@ import {
 import { useAuth } from "@/lib/supabase/auth-context";
 import { TaskDetailPanel } from "@/components/tasks/task-detail-panel";
 import { Task, useTaskContext } from "@/lib/tasks/task-context";
+import { DashboardMetrics } from "@/components/dashboard/DashboardMetrics";
+import { AITaskSuggestions } from "@/components/dashboard/AITaskSuggestions";
+import { TasksNeedingAttention } from "@/components/dashboard/TasksNeedingAttention";
+import { ActivityFeed } from "@/components/dashboard/ActivityFeed";
+import { RecentlyCompleted } from "@/components/dashboard/RecentlyCompleted";
+import { QuickActions } from "@/components/dashboard/QuickActions";
 import {
   LayoutDashboard,
   AlertTriangle,
   Clock,
   CheckCircle2,
-  ChevronRight,
   Loader2,
-  ArrowRight,
   Bot,
-  Phone,
-  Mail,
-  ListTodo,
   Plus,
-  Activity,
-  User,
-  FileText,
-  MessageSquare,
 } from "lucide-react";
-import { cn, safeFormatDistanceToNow, safeFormatDate, isValidDate } from "@/lib/utils";
-import { format, isToday, isPast } from "date-fns";
+import { cn } from "@/lib/utils";
+import { format, isPast, isToday } from "date-fns";
 import { toast } from "sonner";
 
 interface DashboardTask {
@@ -86,22 +83,6 @@ interface ActivityItem {
   resource_name: string | null;
   created_at: string;
 }
-
-const priorityColors = {
-  urgent: "bg-red-500",
-  high: "bg-orange-500",
-  medium: "bg-blue-500",
-  low: "bg-slate-400",
-};
-
-const activityIcons: Record<string, React.ReactNode> = {
-  task: <ListTodo className="h-3.5 w-3.5" />,
-  client: <User className="h-3.5 w-3.5" />,
-  email: <Mail className="h-3.5 w-3.5" />,
-  call: <Phone className="h-3.5 w-3.5" />,
-  document: <FileText className="h-3.5 w-3.5" />,
-  message: <MessageSquare className="h-3.5 w-3.5" />,
-};
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -210,6 +191,22 @@ export default function DashboardPage() {
     fixEmailTasks();
   }, []);
 
+  // Keyboard navigation for create dialog
+  useKeyboardNavigation({
+    onEscape: () => {
+      if (createDialogOpen) {
+        setCreateDialogOpen(false);
+      }
+    },
+    onEnter: () => {
+      if (createDialogOpen && newTask.title.trim()) {
+        handleCreateTask();
+      }
+    },
+    enabled: createDialogOpen,
+    preventDefault: false,
+  });
+
   // Get greeting based on time
   const getGreeting = () => {
     const hour = currentTime.getHours();
@@ -279,15 +276,38 @@ export default function DashboardPage() {
         }),
       });
 
-      if (!res.ok) throw new Error("Failed to create task");
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to create task");
+      }
 
-      toast.success("Task created");
+      const data = await res.json();
+      const taskTitle = newTask.title.length > 50
+        ? newTask.title.substring(0, 50) + "..."
+        : newTask.title;
+
+      toast.success(`Task created: ${taskTitle}`, {
+        description: "Task has been added to your work queue",
+        action: data.task?.id ? {
+          label: "View Task",
+          onClick: () => router.push(`/tasks?id=${data.task.id}`)
+        } : undefined,
+        duration: 6000,
+      });
       setCreateDialogOpen(false);
       setNewTask({ title: "", description: "", priority: "medium", due_date: "" });
       // Refresh both tasks (via context) and stats
       await Promise.all([refreshTasks(), fetchStatsAndActivity()]);
     } catch (error) {
-      toast.error("Failed to create task");
+      const errorMsg = error instanceof Error ? error.message : "Failed to create task";
+      toast.error(errorMsg, {
+        description: "Please check your information and try again",
+        action: {
+          label: "Retry",
+          onClick: () => handleCreateTask()
+        },
+        duration: 7000,
+      });
     } finally {
       setCreating(false);
     }
@@ -428,286 +448,52 @@ export default function DashboardPage() {
               </Card>
 
               {/* Three key metrics */}
-              <div className="grid grid-cols-3 gap-3">
-                <Card
-                  className={cn(
-                    "cursor-pointer transition-all border-border/50 hover:shadow-md",
-                    overdueCount > 0 && "border-red-200 bg-red-50/50"
-                  )}
-                  onClick={() => router.push("/taskpool?view=overdue")}
-                >
-                  <CardContent className="p-3">
-                    <div className="flex items-center gap-2 mb-1">
-                      <AlertTriangle className={cn("h-4 w-4", overdueCount > 0 ? "text-red-600" : "text-muted-foreground")} />
-                      <span className={cn("text-[10px] font-medium uppercase tracking-wide", overdueCount > 0 ? "text-red-600" : "text-muted-foreground")}>
-                        Overdue
-                      </span>
-                    </div>
-                    <p className={cn("text-2xl font-bold", overdueCount > 0 ? "text-red-700" : "text-foreground")}>
-                      {overdueCount}
-                    </p>
-                  </CardContent>
-                </Card>
+              <DashboardMetrics
+                stats={{
+                  overdue: overdueCount,
+                  dueToday: dueTodayCount,
+                  inProgress: stats?.inProgress || 0,
+                }}
+                loading={statsLoading}
+              />
 
-                <Card
-                  className={cn(
-                    "cursor-pointer transition-all border-border/50 hover:shadow-md",
-                    dueTodayCount > 0 && "border-amber-200 bg-amber-50/50"
-                  )}
-                  onClick={() => router.push("/tasks")}
-                >
-                  <CardContent className="p-3">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Clock className={cn("h-4 w-4", dueTodayCount > 0 ? "text-amber-600" : "text-muted-foreground")} />
-                      <span className={cn("text-[10px] font-medium uppercase tracking-wide", dueTodayCount > 0 ? "text-amber-600" : "text-muted-foreground")}>
-                        Due Today
-                      </span>
-                    </div>
-                    <p className={cn("text-2xl font-bold", dueTodayCount > 0 ? "text-amber-700" : "text-foreground")}>
-                      {dueTodayCount}
-                    </p>
-                  </CardContent>
-                </Card>
-
-                <Card
-                  className="cursor-pointer transition-all border-border/50 hover:shadow-md"
-                  onClick={() => router.push("/tasks")}
-                >
-                  <CardContent className="p-3">
-                    <div className="flex items-center gap-2 mb-1">
-                      <CheckCircle2 className="h-4 w-4 text-green-600" />
-                      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                        Done Today
-                      </span>
-                    </div>
-                    <p className="text-2xl font-bold text-foreground">{completedTodayCount}</p>
-                  </CardContent>
-                </Card>
-              </div>
+              {/* AI Task Suggestions */}
+              <AITaskSuggestions
+                onTaskApproved={async () => {
+                  // Refresh both tasks (via context) and stats
+                  await Promise.all([refreshTasks(), fetchStatsAndActivity()]);
+                }}
+              />
 
               {/* Two-column layout for tasks and activity */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                {/* Tasks needing attention - takes 2 columns */}
-                <Card className="border-border/50 lg:col-span-2">
-                  <CardContent className="p-0">
-                    <div className="flex items-center justify-between p-3 border-b">
-                      <div className="flex items-center gap-2">
-                        <ListTodo className="h-4 w-4 text-primary" />
-                        <h2 className="font-medium text-sm">Needs Attention</h2>
-                        <Badge variant="secondary" className="text-[10px]">{needsAttention.length}</Badge>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => router.push("/tasks")}
-                        className="h-7 text-xs text-muted-foreground hover:text-foreground"
-                      >
-                        View all
-                        <ChevronRight className="h-3 w-3 ml-1" />
-                      </Button>
-                    </div>
+                <TasksNeedingAttention
+                  tasks={needsAttention}
+                  loading={loading}
+                  onTaskClick={handleTaskClick}
+                  onViewAll={() => router.push("/tasks")}
+                />
 
-                    {loading ? (
-                      <div className="p-3 space-y-2">
-                        {[1, 2, 3, 4].map((i) => (
-                          <div key={i} className="h-14 bg-muted animate-pulse rounded-lg" />
-                        ))}
-                      </div>
-                    ) : needsAttention.length === 0 ? (
-                      <div className="py-12 text-center">
-                        <CheckCircle2 className="h-10 w-10 text-green-500 mx-auto mb-3" />
-                        <p className="font-medium text-foreground">You're all caught up</p>
-                        <p className="text-sm text-muted-foreground mt-1">No urgent tasks at the moment</p>
-                      </div>
-                    ) : (
-                      <div className="divide-y">
-                        {needsAttention.map((task) => {
-                          const isOverdue = task.due_date && isPast(new Date(task.due_date)) && !isToday(new Date(task.due_date));
-                          const isDueToday = task.due_date && isToday(new Date(task.due_date));
-
-                          return (
-                            <button
-                              key={task.id}
-                              onClick={() => handleTaskClick(task)}
-                              className={cn(
-                                "w-full p-3 text-left transition-colors group hover:bg-muted/50",
-                                isOverdue && "bg-red-50/30",
-                                isDueToday && !isOverdue && "bg-amber-50/30"
-                              )}
-                            >
-                              <div className="flex items-start gap-3">
-                                {/* Priority indicator */}
-                                <div className={cn("w-1 self-stretch rounded-full flex-shrink-0", priorityColors[task.priority])} />
-
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-start justify-between gap-2">
-                                    <p className="font-medium text-sm text-foreground truncate">{task.title}</p>
-                                    <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
-                                  </div>
-
-                                  <div className="flex items-center gap-2 mt-1 text-xs">
-                                    {task.due_date && (
-                                      <span className={cn(
-                                        "flex items-center gap-1",
-                                        isOverdue && "text-red-600 font-medium",
-                                        isDueToday && !isOverdue && "text-amber-600"
-                                      )}>
-                                        <Clock className="h-3 w-3" />
-                                        {isOverdue
-                                          ? `${safeFormatDistanceToNow(task.due_date)} overdue`
-                                          : isDueToday
-                                            ? "Due today"
-                                            : safeFormatDate(task.due_date, "MMM d") || "Unknown"
-                                        }
-                                      </span>
-                                    )}
-
-                                    {task.priority === "urgent" && (
-                                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-red-100 text-red-700 border-red-200">
-                                        Urgent
-                                      </Badge>
-                                    )}
-                                    {task.priority === "high" && (
-                                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-orange-100 text-orange-700 border-orange-200">
-                                        High
-                                      </Badge>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                {/* Team Activity Feed - takes 1 column */}
-                <Card className="border-border/50">
-                  <CardContent className="p-0">
-                    <div className="flex items-center justify-between p-3 border-b">
-                      <div className="flex items-center gap-2">
-                        <Activity className="h-4 w-4 text-primary" />
-                        <h2 className="font-medium text-sm">Team Activity</h2>
-                      </div>
-                    </div>
-
-                    {activities.length === 0 ? (
-                      <div className="py-8 text-center">
-                        <Activity className="h-8 w-8 text-muted-foreground/50 mx-auto mb-2" />
-                        <p className="text-sm text-muted-foreground">No recent activity</p>
-                      </div>
-                    ) : (
-                      <div className="divide-y max-h-[300px] overflow-y-auto">
-                        {activities.map((activity) => (
-                          <div key={activity.id} className="p-2.5 text-xs">
-                            <div className="flex items-start gap-2">
-                              <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
-                                {activityIcons[activity.resource_type] || <Activity className="h-3.5 w-3.5" />}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-muted-foreground">
-                                  <span className="font-medium text-foreground">
-                                    {activity.user_email?.split("@")[0]}
-                                  </span>
-                                  {" "}
-                                  {activity.action}
-                                  {activity.resource_name && (
-                                    <>
-                                      {" "}
-                                      <span className="font-medium text-foreground truncate">
-                                        {activity.resource_name}
-                                      </span>
-                                    </>
-                                  )}
-                                </p>
-                                <p className="text-muted-foreground/70 mt-0.5">
-                                  {safeFormatDistanceToNow(activity.created_at, { addSuffix: true })}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+                <ActivityFeed
+                  activities={activities.map(a => ({
+                    id: a.id,
+                    type: a.resource_type === "task" ? "task_created" : "note_added",
+                    description: `${a.action} ${a.resource_name || ""}`,
+                    user_name: a.user_email?.split("@")[0],
+                    created_at: a.created_at,
+                  }))}
+                  loading={statsLoading}
+                />
               </div>
 
               {/* Recently Completed */}
-              {recentlyCompleted.length > 0 && (
-                <Card className="border-border/50">
-                  <CardContent className="p-0">
-                    <div className="flex items-center justify-between p-3 border-b">
-                      <div className="flex items-center gap-2">
-                        <CheckCircle2 className="h-4 w-4 text-green-600" />
-                        <h2 className="font-medium text-sm">Recently Completed</h2>
-                      </div>
-                    </div>
-                    <div className="p-3 flex flex-wrap gap-2">
-                      {recentlyCompleted.map((task) => (
-                        <button
-                          key={task.id}
-                          onClick={() => handleTaskClick(task)}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-green-50 text-green-700 rounded-md text-xs hover:bg-green-100 transition-colors"
-                        >
-                          <CheckCircle2 className="h-3 w-3" />
-                          <span className="truncate max-w-[200px]">{task.title}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
+              <RecentlyCompleted
+                tasks={recentlyCompleted}
+                onTaskClick={handleTaskClick}
+              />
 
               {/* Quick Actions */}
-              <div className="grid grid-cols-3 gap-3">
-                <Card
-                  className="cursor-pointer transition-all border-border/50 hover:shadow-md hover:border-primary/30"
-                  onClick={() => router.push("/calls")}
-                >
-                  <CardContent className="p-3 flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
-                      <Phone className="h-4 w-4 text-primary" />
-                    </div>
-                    <div>
-                      <p className="font-medium text-sm">Phone Agent</p>
-                      <p className="text-xs text-muted-foreground">View calls</p>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card
-                  className="cursor-pointer transition-all border-border/50 hover:shadow-md hover:border-primary/30"
-                  onClick={() => router.push("/email")}
-                >
-                  <CardContent className="p-3 flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
-                      <Mail className="h-4 w-4 text-primary" />
-                    </div>
-                    <div>
-                      <p className="font-medium text-sm">Email Kanban</p>
-                      <p className="text-xs text-muted-foreground">Process emails</p>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card
-                  className="cursor-pointer transition-all border-border/50 hover:shadow-md hover:border-primary/30"
-                  onClick={() => router.push("/tasks")}
-                >
-                  <CardContent className="p-3 flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
-                      <ListTodo className="h-4 w-4 text-primary" />
-                    </div>
-                    <div>
-                      <p className="font-medium text-sm">My Tasks</p>
-                      <p className="text-xs text-muted-foreground">Kanban board</p>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
+              <QuickActions onCreateTask={() => setCreateDialogOpen(true)} />
             </div>
           </ScrollArea>
         </div>
