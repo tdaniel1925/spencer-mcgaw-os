@@ -21,6 +21,7 @@ const PUBLIC_ROUTES = [
   '/privacy',
   '/api/auth',
   '/api/webhooks',
+  '/api/email/webhook', // Resend inbound webhook
   '/api/health',
   '/api/files/share', // Public file sharing
 ];
