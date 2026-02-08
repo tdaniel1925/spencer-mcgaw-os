@@ -42,6 +42,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
+import { EmptyState } from "@/components/ui/empty-state";
+import { TaskListSkeleton } from "@/components/ui/loading-skeleton";
 import {
   ClipboardList,
   Clock,
@@ -343,9 +345,24 @@ export default function TasksPage() {
   const handleClaimTask = async (task: Task) => {
     const success = await claimTask(task.id);
     if (success) {
-      toast.success("Task claimed! It's now in your work queue.");
+      const taskTitle = task.title.length > 40 ? task.title.substring(0, 40) + "..." : task.title;
+      toast.success(`Task claimed: ${taskTitle}`, {
+        description: "The task is now in your work queue and visible in 'My Tasks'",
+        action: {
+          label: "View My Tasks",
+          onClick: () => setCurrentView("my-work")
+        },
+        duration: 5000,
+      });
     } else {
-      toast.error("Failed to claim task");
+      toast.error("Failed to claim task", {
+        description: "The task may have been claimed by someone else. Try refreshing the page.",
+        action: {
+          label: "Refresh",
+          onClick: () => refreshTasks()
+        },
+        duration: 6000,
+      });
     }
   };
 
@@ -355,30 +372,52 @@ export default function TasksPage() {
 
     const success = await assignTask(selectedTask.id, newAssigneeId);
     if (success) {
-      toast.success(`Task assigned to ${newAssigneeName}`);
+      const taskTitle = selectedTask.title.length > 40 ? selectedTask.title.substring(0, 40) + "..." : selectedTask.title;
+      toast.success(`Assigned to ${newAssigneeName}`, {
+        description: `Task "${taskTitle}" has been reassigned`,
+        duration: 4000,
+      });
       setReassignDialogOpen(false);
       setSelectedTask(null);
     } else {
-      toast.error("Failed to assign task");
+      toast.error("Failed to assign task", {
+        description: "The task may have been deleted or you don't have permission",
+        action: {
+          label: "Refresh",
+          onClick: () => refreshTasks()
+        },
+        duration: 6000,
+      });
     }
   };
 
   // Handle task deletion
   const handleDeleteTask = async () => {
     if (!selectedTask) return;
+    const taskTitle = selectedTask.title;
     try {
       const response = await fetch(`/api/tasks/${selectedTask.id}`, { method: "DELETE" });
       if (response.ok) {
-        toast.success("Task deleted");
+        toast.success("Task deleted", {
+          description: `"${taskTitle.length > 50 ? taskTitle.substring(0, 50) + "..." : taskTitle}" has been removed`,
+          duration: 4000,
+        });
         setDeleteDialogOpen(false);
         setSelectedTask(null);
         refreshTasks();
       } else {
-        toast.error("Failed to delete task");
+        const errorData = await response.json();
+        toast.error("Failed to delete task", {
+          description: errorData.error || "You may not have permission to delete this task",
+          duration: 6000,
+        });
       }
     } catch (error) {
       console.error("Error deleting task:", error);
-      toast.error("Failed to delete task");
+      toast.error("Network error", {
+        description: "Could not connect to server. Check your connection and try again",
+        duration: 6000,
+      });
     }
   };
 
@@ -469,16 +508,25 @@ export default function TasksPage() {
           contain: 'inline-size'
         }}
       >
-        {/* Source breadcrumb */}
+        {/* AI Source Badge - more prominent for email/call tasks */}
         {task.source_type && task.source_type !== "manual" && (
-          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mb-2 pb-2 border-b border-dashed">
-            <SourceIcon className="h-3 w-3 flex-shrink-0" />
-            <span className="truncate">Created from {task.source_type.replace(/_/g, " ")}</span>
+          <div className="flex items-center gap-2 mb-2 pb-2 border-b border-dashed">
+            <Badge
+              variant="outline"
+              className={cn(
+                "text-[10px] px-2 py-0.5 flex items-center gap-1",
+                task.source_type === "email" && "bg-purple-50 text-purple-700 border-purple-300",
+                task.source_type === "phone_call" && "bg-blue-50 text-blue-700 border-blue-300",
+                task.source_type === "potential_task" && "bg-green-50 text-green-700 border-green-300"
+              )}
+            >
+              <SourceIcon className="h-3 w-3 flex-shrink-0" />
+              <span className="truncate">🤖 AI from {task.source_type.replace(/_/g, " ")}</span>
+            </Badge>
             {task.created_at && (
-              <>
-                <span className="flex-shrink-0">•</span>
-                <span className="flex-shrink-0">{format(new Date(task.created_at), "MMM d, h:mm a")}</span>
-              </>
+              <span className="text-[10px] text-muted-foreground flex-shrink-0">
+                {format(new Date(task.created_at), "MMM d, h:mm a")}
+              </span>
             )}
           </div>
         )}
@@ -755,35 +803,36 @@ export default function TasksPage() {
         {/* Content Area */}
         <div className="flex-1 overflow-auto p-4 bg-background">
           {loading ? (
-            <div className="flex items-center justify-center h-full">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            <div className="p-4">
+              <TaskListSkeleton count={8} />
             </div>
           ) : currentTasks.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center">
+            <div className="flex items-center justify-center h-full">
               {currentView === "my-work" ? (
-                <>
-                  <ClipboardList className="h-12 w-12 text-muted-foreground mb-4" />
-                  <h3 className="text-lg font-medium">No tasks assigned to you</h3>
-                  <p className="text-sm text-muted-foreground mt-2 max-w-md">
-                    Tasks will appear here when assigned to you from calls, emails, or manually.
-                  </p>
-                  <Button
-                    variant="outline"
-                    className="mt-4"
-                    onClick={() => setCurrentView("all")}
-                  >
-                    <LayoutList className="h-4 w-4 mr-2" />
-                    View All Tasks
-                  </Button>
-                </>
+                <EmptyState
+                  icon={ClipboardList}
+                  title="No tasks assigned to you"
+                  description="Tasks will appear here when assigned to you from calls, emails, or manually created"
+                  action={
+                    <Button
+                      variant="outline"
+                      onClick={() => setCurrentView("all")}
+                    >
+                      <LayoutList className="h-4 w-4 mr-2" />
+                      View All Tasks
+                    </Button>
+                  }
+                  tip="💡 Tasks can be created from emails, calls, or the quick create menu"
+                  showCard={false}
+                />
               ) : (
-                <>
-                  <LayoutList className="h-12 w-12 text-muted-foreground mb-4" />
-                  <h3 className="text-lg font-medium">No tasks found</h3>
-                  <p className="text-sm text-muted-foreground mt-2 max-w-md">
-                    Tasks will appear here as they are created from calls, emails, or manually.
-                  </p>
-                </>
+                <EmptyState
+                  icon={LayoutList}
+                  title="No tasks found"
+                  description="Tasks will appear here as they are created from calls, emails, or manually"
+                  tip="💡 Use the filters above to find specific tasks, or check the 'My Work' view"
+                  showCard={false}
+                />
               )}
             </div>
           ) : (

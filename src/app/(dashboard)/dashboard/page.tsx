@@ -465,6 +465,39 @@ export default function DashboardPage() {
                 }}
               />
 
+              {/* Workflow Info Card */}
+              <Card className="border-blue-200 bg-blue-50/50 dark:bg-blue-950/20 dark:border-blue-900">
+                <CardContent className="pt-6">
+                  <div className="flex items-start gap-4">
+                    <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900">
+                      <Bot className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-blue-900 dark:text-blue-100 mb-2">
+                        💡 How AI Task Suggestions Work
+                      </h3>
+                      <div className="space-y-2 text-sm text-blue-800 dark:text-blue-200">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900 text-blue-900 dark:text-blue-100">
+                            📧 crm@hmcgaw.com
+                          </span>
+                          <span>Forward emails to this address</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span>📞 Phone calls are automatically logged</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span>✨ AI analyzes and creates task suggestions above</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span>✅ Approve suggestions to create real tasks</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
               {/* Two-column layout for tasks and activity */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <TasksNeedingAttention
