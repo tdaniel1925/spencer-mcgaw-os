@@ -479,7 +479,7 @@ export default function DashboardPage() {
                       <div className="space-y-2 text-sm text-blue-800 dark:text-blue-200">
                         <div className="flex items-center gap-2">
                           <span className="font-mono px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900 text-blue-900 dark:text-blue-100">
-                            📧 crm@hmcgaw.com
+                            📧 hmcgaw@shwunde745.resend.app
                           </span>
                           <span>Forward emails to this address</span>
                         </div>

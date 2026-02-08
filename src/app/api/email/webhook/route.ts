@@ -2,7 +2,7 @@
  * Email Webhook Handler
  * POST /api/email/webhook
  *
- * Receives forwarded emails from Resend (crm@hmcgaw.com)
+ * Receives forwarded emails from Resend (hmcgaw@shwunde745.resend.app)
  * and creates potential tasks for users based on AI analysis.
  */
 
