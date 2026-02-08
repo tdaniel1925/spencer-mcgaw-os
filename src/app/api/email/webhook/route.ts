@@ -326,7 +326,7 @@ async function createUnassignedPotentialTask(
   originalFrom: string
 ): Promise<void> {
   const emailBody = email.text || stripHtml(email.html || '');
-  const receivedAt = email.received_at ? new Date(email.received_at) : new Date();
+  const receivedAt = new Date(email.created_at);
 
   // Get first admin user to assign to
   const { data: adminUser } = await supabase
