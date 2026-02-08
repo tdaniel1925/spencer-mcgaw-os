@@ -402,6 +402,11 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
         setBreadcrumbs(newBreadcrumbs);
       }
     } catch (err: unknown) {
+      // Ignore AbortError - happens when navigating away before request completes
+      if (err instanceof Error && err.name === 'AbortError') {
+        return; // Silent return, this is expected behavior
+      }
+
       // Better error logging for Supabase errors
       const errorMessage = err instanceof Error
         ? err.message
