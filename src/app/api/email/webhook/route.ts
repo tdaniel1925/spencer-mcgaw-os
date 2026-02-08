@@ -37,6 +37,20 @@ export async function POST(request: NextRequest) {
   const startTime = Date.now();
 
   try {
+    // Verify webhook signature (security)
+    const signature = request.headers.get('svix-signature');
+    const webhookSecret = process.env.RESEND_WEBHOOK_SECRET;
+
+    if (webhookSecret && signature) {
+      // TODO: Implement proper Svix signature verification
+      // For now, we'll just log that we received a signature
+      logger.info('[Email Webhook] Received signed webhook', {
+        hasSignature: true,
+      });
+    } else if (webhookSecret) {
+      logger.warn('[Email Webhook] No signature provided but secret configured');
+    }
+
     // Parse request body
     const body = await request.json();
 
