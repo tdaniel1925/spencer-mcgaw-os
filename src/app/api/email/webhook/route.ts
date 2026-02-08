@@ -16,18 +16,26 @@ import { z } from 'zod';
 // RESEND WEBHOOK TYPES
 // ============================================================================
 
-const ResendEmailSchema = z.object({
-  from: z.string(),
-  to: z.array(z.string()),
-  subject: z.string(),
-  html: z.string().optional(),
-  text: z.string().optional(),
-  reply_to: z.string().optional(),
-  headers: z.record(z.string(), z.string()).optional(),
-  received_at: z.string().optional(),
+// Resend inbound webhook payload structure
+const ResendWebhookSchema = z.object({
+  type: z.literal('email.received'),
+  created_at: z.string(),
+  data: z.object({
+    from: z.string(),
+    to: z.array(z.string()),
+    subject: z.string(),
+    html: z.string().optional(),
+    text: z.string().optional(),
+    reply_to: z.string().optional(),
+    headers: z.record(z.string(), z.string()).optional(),
+    created_at: z.string(),
+    email_id: z.string(),
+    message_id: z.string().optional(),
+  }),
 });
 
-type ResendEmail = z.infer<typeof ResendEmailSchema>;
+type ResendWebhook = z.infer<typeof ResendWebhookSchema>;
+type ResendEmail = ResendWebhook['data'];
 
 // ============================================================================
 // POST /api/email/webhook
@@ -54,16 +62,15 @@ export async function POST(request: NextRequest) {
     // Parse request body
     const body = await request.json();
 
-    logger.info('[Email Webhook] Received email', {
-      from: body.from,
-      to: body.to,
-      subject: body.subject,
+    logger.info('[Email Webhook] Received webhook', {
+      type: body.type,
+      hasData: !!body.data,
     });
 
     // Validate webhook payload
-    let email: ResendEmail;
+    let webhook: ResendWebhook;
     try {
-      email = ResendEmailSchema.parse(body);
+      webhook = ResendWebhookSchema.parse(body);
     } catch (error) {
       if (error instanceof z.ZodError) {
         logger.error('[Email Webhook] Invalid payload', { error: error.issues });
@@ -80,6 +87,15 @@ export async function POST(request: NextRequest) {
       }
       throw error;
     }
+
+    // Extract email data from webhook
+    const email = webhook.data;
+
+    logger.info('[Email Webhook] Email data extracted', {
+      from: email.from,
+      to: email.to,
+      subject: email.subject,
+    });
 
     // Extract original sender email (from forwarded email)
     const originalFrom = extractOriginalSender(email);
@@ -133,9 +149,7 @@ export async function POST(request: NextRequest) {
 
     // Store email message (optional - for reference)
     const emailBody = email.text || stripHtml(email.html || '');
-    const receivedAt = email.received_at
-      ? new Date(email.received_at)
-      : new Date();
+    const receivedAt = new Date(email.created_at);
 
     // Analyze email with AI
     const analysis = await analyzeEmailForTask({
