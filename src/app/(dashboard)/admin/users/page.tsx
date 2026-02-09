@@ -77,6 +77,7 @@ import {
   Lock,
   Send,
   KeyRound,
+  UserCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow } from "date-fns";
@@ -158,6 +159,7 @@ export default function UserManagementPage() {
   const [adminNewPassword, setAdminNewPassword] = useState("");
   const [adminPasswordErrors, setAdminPasswordErrors] = useState<string[]>([]);
   const [showAdminPassword, setShowAdminPassword] = useState(false);
+  const [impersonating, setImpersonating] = useState<string | null>(null);
 
   // New user form state
   const [newUser, setNewUser] = useState({
@@ -580,6 +582,37 @@ export default function UserManagementPage() {
     }
   };
 
+  const handleImpersonate = async (userId: string, userName: string) => {
+    setImpersonating(userId);
+    try {
+      const response = await fetch("/api/admin/impersonate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to start impersonation");
+      }
+
+      toast.success(`Now impersonating ${userName}`);
+
+      // Redirect to dashboard as the impersonated user
+      router.push("/dashboard");
+
+      // Reload to apply impersonation
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
+    } catch (error) {
+      console.error("Error starting impersonation:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to start impersonation");
+    } finally {
+      setImpersonating(null);
+    }
+  };
+
   const getWelcomeEmailHtml = () => {
     const loginUrl = process.env.NEXT_PUBLIC_APP_URL || "https://spencermcgaw.app";
     const appName = "Spencer McGaw Hub";
@@ -863,6 +896,27 @@ export default function UserManagementPage() {
                           <Eye className="h-4 w-4 mr-2" />
                           View Details
                         </DropdownMenuItem>
+                        {/* Impersonate Option */}
+                        {member.is_active && (
+                          (isOwner && member.role !== "owner") ||
+                          (isAdmin && member.role !== "admin" && member.role !== "owner")
+                        ) && (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={() => handleImpersonate(member.id, member.full_name)}
+                              disabled={impersonating === member.id}
+                              className="text-amber-600"
+                            >
+                              {impersonating === member.id ? (
+                                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                              ) : (
+                                <UserCircle className="h-4 w-4 mr-2" />
+                              )}
+                              Impersonate
+                            </DropdownMenuItem>
+                          </>
+                        )}
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           onClick={() => handleResendInvite(member.id)}
