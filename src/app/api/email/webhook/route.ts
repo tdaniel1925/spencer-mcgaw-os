@@ -89,12 +89,60 @@ export async function POST(request: NextRequest) {
     }
 
     // Extract email data from webhook
-    const email = webhook.data;
+    let email = webhook.data;
+
+    // If email body is not included in webhook, fetch it from Resend API
+    if (!email.text && !email.html && email.email_id) {
+      logger.info('[Email Webhook] Fetching email content from Resend API', {
+        emailId: email.email_id,
+      });
+
+      try {
+        const resendApiKey = process.env.RESEND_API_KEY;
+        if (!resendApiKey) {
+          throw new Error('RESEND_API_KEY not configured');
+        }
+
+        const response = await fetch(`https://api.resend.com/emails/${email.email_id}`, {
+          headers: {
+            'Authorization': `Bearer ${resendApiKey}`,
+          },
+        });
+
+        if (response.ok) {
+          const fullEmail = await response.json();
+
+          // Update email data with fetched content
+          email = {
+            ...email,
+            html: fullEmail.html || email.html,
+            text: fullEmail.text || email.text,
+          };
+
+          logger.info('[Email Webhook] Successfully fetched email content', {
+            emailId: email.email_id,
+            hasHtml: !!email.html,
+            hasText: !!email.text,
+          });
+        } else {
+          logger.warn('[Email Webhook] Failed to fetch email from Resend API', {
+            emailId: email.email_id,
+            status: response.status,
+          });
+        }
+      } catch (fetchError) {
+        logger.error('[Email Webhook] Error fetching email from Resend API', {
+          error: fetchError,
+          emailId: email.email_id,
+        });
+      }
+    }
 
     logger.info('[Email Webhook] Email data extracted', {
       from: email.from,
       to: email.to,
       subject: email.subject,
+      hasContent: !!(email.text || email.html),
     });
 
     // Use the forwarder's email address directly (who sent it to the system)
