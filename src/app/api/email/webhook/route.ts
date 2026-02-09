@@ -197,7 +197,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Store email message (optional - for reference)
-    const emailBody = email.text || stripHtml(email.html || '');
+    const emailBody = email.text || stripHtml(email.html || '') || '';
     const receivedAt = new Date(email.created_at);
 
     // Warn if email body is missing
@@ -257,8 +257,8 @@ export async function POST(request: NextRequest) {
         from_email: forwarderEmail,
         from_name: user.full_name,
         to_recipients: email.to.map((to) => ({ email: to, name: '' })),
-        body_preview: emailBody.substring(0, 500),
-        body_html: email.html,
+        body_preview: emailBody ? emailBody.substring(0, 500) : '',
+        body_html: email.html || null,
         body_text: email.text,
         received_at: receivedAt.toISOString(),
         sent_at: receivedAt.toISOString(),
@@ -277,10 +277,28 @@ export async function POST(request: NextRequest) {
       logger.error('[Email Webhook] Failed to create email message', {
         userId: user.id,
         error: emailError,
+        errorDetails: {
+          code: emailError.code,
+          message: emailError.message,
+          details: emailError.details,
+          hint: emailError.hint,
+        },
+        insertData: {
+          user_id: user.id,
+          message_id: email.message_id || email.email_id,
+          from_email: forwarderEmail,
+          subject: email.subject,
+          hasEmailBody: !!emailBody,
+          emailBodyLength: emailBody?.length || 0,
+        },
       });
 
       return NextResponse.json(
-        { error: 'Failed to create email message' },
+        {
+          error: 'Failed to create email message',
+          details: emailError.message,
+          code: emailError.code,
+        },
         { status: 500 }
       );
     }
@@ -429,7 +447,7 @@ async function createUnassignedEmailAndTask(
   email: ResendEmail,
   senderEmail: string
 ): Promise<void> {
-  const emailBody = email.text || stripHtml(email.html || '');
+  const emailBody = email.text || stripHtml(email.html || '') || '';
   const receivedAt = new Date(email.created_at);
 
   // Create unassigned email_message (user_id = NULL means visible to all)
@@ -444,9 +462,9 @@ async function createUnassignedEmailAndTask(
       from_email: senderEmail,
       from_name: senderEmail,
       to_recipients: email.to.map((to: string) => ({ email: to, name: '' })),
-      body_preview: emailBody.substring(0, 500),
-      body_html: email.html,
-      body_text: email.text,
+      body_preview: emailBody ? emailBody.substring(0, 500) : '',
+      body_html: email.html || null,
+      body_text: email.text || null,
       received_at: receivedAt.toISOString(),
       sent_at: receivedAt.toISOString(),
       importance: 'high', // Mark unassigned as high importance
@@ -464,6 +482,19 @@ async function createUnassignedEmailAndTask(
     logger.error('[Email Webhook] Failed to create unassigned email message', {
       senderEmail,
       error: emailError,
+      errorDetails: {
+        code: emailError.code,
+        message: emailError.message,
+        details: emailError.details,
+        hint: emailError.hint,
+      },
+      insertData: {
+        message_id: email.message_id || email.email_id,
+        from_email: senderEmail,
+        subject: email.subject,
+        hasEmailBody: !!emailBody,
+        emailBodyLength: emailBody?.length || 0,
+      },
     });
     return;
   }
