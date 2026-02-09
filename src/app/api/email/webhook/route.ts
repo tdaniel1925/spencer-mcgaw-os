@@ -152,6 +152,17 @@ export async function POST(request: NextRequest) {
     const emailBody = email.text || stripHtml(email.html || '');
     const receivedAt = new Date(email.created_at);
 
+    // Warn if email body is missing
+    if (!emailBody || emailBody.trim().length === 0) {
+      logger.warn('[Email Webhook] Email body is missing from webhook payload', {
+        from: forwarderEmail,
+        subject: email.subject,
+        hasText: !!email.text,
+        hasHtml: !!email.html,
+        note: 'Enable "Include Email Content" in Resend webhook settings to receive full email body',
+      });
+    }
+
     // Analyze email with AI
     const analysis = await analyzeEmailForTask({
       from: forwarderEmail,

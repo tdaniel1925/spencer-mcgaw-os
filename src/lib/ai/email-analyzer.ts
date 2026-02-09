@@ -16,7 +16,7 @@ import { z } from 'zod';
 export const EmailAnalysisSchema = z.object({
   from: z.string().email('Valid email address required'),
   subject: z.string().min(1, 'Subject is required'),
-  body: z.string().min(1, 'Body is required'),
+  body: z.string().optional().default(''), // Body might not be included in webhook
   receivedAt: z.date(),
 });
 
@@ -118,6 +118,34 @@ export async function analyzeEmailForTask(
     // Validate input
     const validated = EmailAnalysisSchema.parse(input);
 
+    // Check if body is empty (Resend webhook might not include it)
+    if (!validated.body || validated.body.trim().length === 0) {
+      logger.warn('[AI Email Analyzer] Email body is empty - webhook may not include content', {
+        from: validated.from,
+        subject: validated.subject,
+      });
+
+      // Return a default result asking for manual review
+      return {
+        success: true,
+        shouldCreateTask: true,
+        suggestion: {
+          title: `Review email: ${validated.subject}`,
+          description: `Email received from ${validated.from}. Body content was not available in webhook - please review the original email.\n\nSubject: ${validated.subject}`,
+          priority: 'medium',
+          dueDate: null,
+          actionType: 'review',
+          confidence: 30,
+          reasoning: 'Email body was not provided in the webhook payload. Created task for manual review.',
+          extractedData: {
+            originalFrom: validated.from,
+            originalSubject: validated.subject,
+            note: 'Email body not available - enable content in Resend webhook settings or fetch via API',
+          },
+        },
+      };
+    }
+
     // Prepare email content for analysis
     const emailContent = `
 From: ${validated.from}
@@ -131,6 +159,7 @@ ${validated.body}
     logger.info('[AI Email Analyzer] Analyzing email', {
       from: validated.from,
       subject: validated.subject,
+      bodyLength: validated.body.length,
     });
 
     // Call OpenAI
