@@ -35,6 +35,15 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import {
+  Breadcrumb,
+  BreadcrumbList,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
+import Link from "next/link";
+import {
   ArrowLeft,
   Mail,
   Phone,
@@ -54,6 +63,7 @@ import {
   Activity,
   Key,
   AlertTriangle,
+  UserCircle,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import {
@@ -136,6 +146,7 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [impersonating, setImpersonating] = useState(false);
   const [activeTab, setActiveTab] = useState("details");
 
   // Edit form state
@@ -287,6 +298,40 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
     }
   };
 
+  // Handle impersonation
+  const handleImpersonate = async () => {
+    if (!user) return;
+
+    setImpersonating(true);
+    try {
+      const response = await fetch("/api/admin/impersonate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to start impersonation");
+      }
+
+      toast.success(`Now impersonating ${user.full_name}`);
+
+      // Redirect to dashboard as the impersonated user
+      router.push("/dashboard");
+
+      // Reload to apply impersonation
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
+    } catch (error) {
+      console.error("Error starting impersonation:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to start impersonation");
+    } finally {
+      setImpersonating(false);
+    }
+  };
+
   // Handle permission toggle
   const handlePermissionToggle = async (permission: Permission, currentlyGranted: boolean, hasOverride: boolean) => {
     setSavingPermission(permission);
@@ -418,7 +463,8 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
   }
 
   const canEdit = can("users:edit");
-  const canDelete = can("users:delete") && user.role !== "owner";
+  const canDelete = can("users:delete");
+  const canImpersonate = isAdmin && user.is_active && user.role !== "admin";
   const effectivePermissions = getUserPermissions(user.role, permissionOverrides);
 
   return (
@@ -426,15 +472,20 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
       <Header title="User Details" />
       <main className="p-6">
         <div className="max-w-4xl mx-auto space-y-6">
-          {/* Back button */}
-          <Button
-            variant="ghost"
-            onClick={() => router.push("/admin/users")}
-            className="gap-2"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to Users
-          </Button>
+          {/* Breadcrumb */}
+          <Breadcrumb>
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink asChild>
+                  <Link href="/admin/users">Users</Link>
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage>{user.full_name || "Loading..."}</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
 
           {/* User Profile Card */}
           <Card>
@@ -468,6 +519,21 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  {canImpersonate && !editMode && (
+                    <Button
+                      variant="outline"
+                      onClick={handleImpersonate}
+                      disabled={impersonating}
+                      className="text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                    >
+                      {impersonating ? (
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <UserCircle className="h-4 w-4 mr-2" />
+                      )}
+                      Impersonate
+                    </Button>
+                  )}
                   {canEdit && !editMode && (
                     <Button variant="outline" onClick={() => {
                       setEditMode(true);
