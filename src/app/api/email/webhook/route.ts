@@ -112,6 +112,13 @@ export async function POST(request: NextRequest) {
         if (response.ok) {
           const fullEmail = await response.json();
 
+          logger.info('[Email Webhook] Resend API response', {
+            emailId: email.email_id,
+            hasHtmlInResponse: !!fullEmail.html,
+            hasTextInResponse: !!fullEmail.text,
+            responseKeys: Object.keys(fullEmail),
+          });
+
           // Update email data with fetched content
           email = {
             ...email,
@@ -125,14 +132,18 @@ export async function POST(request: NextRequest) {
             hasText: !!email.text,
           });
         } else {
+          const errorText = await response.text();
           logger.warn('[Email Webhook] Failed to fetch email from Resend API', {
             emailId: email.email_id,
             status: response.status,
+            statusText: response.statusText,
+            errorBody: errorText,
           });
         }
       } catch (fetchError) {
         logger.error('[Email Webhook] Error fetching email from Resend API', {
           error: fetchError,
+          errorMessage: fetchError instanceof Error ? fetchError.message : String(fetchError),
           emailId: email.email_id,
         });
       }
