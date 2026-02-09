@@ -109,6 +109,65 @@ Output: {
 Now analyze this email:`;
 
 /**
+ * Analyze email subject line to determine if task is needed
+ * Used when email body is not available
+ */
+function analyzeSubjectLine(subject: string, from: string): {
+  shouldCreateTask: boolean;
+  title: string;
+  description: string;
+  priority: 'urgent' | 'high' | 'medium' | 'low';
+  actionType: string | null;
+} {
+  const subjectLower = subject.toLowerCase();
+
+  // Keywords that indicate action needed
+  const actionKeywords = ['urgent', 'asap', 'deadline', 'due', 'action required', 'please', 'need', 'request'];
+  const hasActionKeyword = actionKeywords.some(keyword => subjectLower.includes(keyword));
+
+  // Keywords that indicate FYI/no action
+  const fyiKeywords = ['fyi', 'fwd:', 're:', 'newsletter', 'update', 'notification', 'receipt', 'confirmation'];
+  const hasFyiKeyword = fyiKeywords.some(keyword => subjectLower.includes(keyword));
+
+  // Determine priority based on keywords
+  let priority: 'urgent' | 'high' | 'medium' | 'low' = 'medium';
+  if (subjectLower.includes('urgent') || subjectLower.includes('asap')) {
+    priority = 'urgent';
+  } else if (subjectLower.includes('important') || subjectLower.includes('deadline')) {
+    priority = 'high';
+  } else if (hasFyiKeyword) {
+    priority = 'low';
+  }
+
+  // Determine if task should be created
+  const shouldCreateTask = hasActionKeyword || (!hasFyiKeyword && priority !== 'low');
+
+  // Determine action type
+  let actionType: string | null = null;
+  if (subjectLower.includes('tax') || subjectLower.includes('return')) {
+    actionType = 'tax_preparation';
+  } else if (subjectLower.includes('meeting') || subjectLower.includes('schedule')) {
+    actionType = 'client_meeting';
+  } else if (subjectLower.includes('document') || subjectLower.includes('upload')) {
+    actionType = 'document_request';
+  } else if (subjectLower.includes('review')) {
+    actionType = 'review';
+  } else {
+    actionType = 'follow_up';
+  }
+
+  return {
+    shouldCreateTask,
+    title: subject,
+    description: shouldCreateTask
+      ? `Please review this email and take appropriate action.\n\n💡 Note: This suggestion is based on the subject line only. Open the email to see full details.`
+      : `Email received for your information. No immediate action appears necessary based on the subject line.`,
+    priority,
+    actionType: shouldCreateTask ? actionType : null,
+  };
+}
+
+/**
  * Analyze an email and extract potential task information
  */
 export async function analyzeEmailForTask(
@@ -120,27 +179,29 @@ export async function analyzeEmailForTask(
 
     // Check if body is empty (Resend webhook might not include it)
     if (!validated.body || validated.body.trim().length === 0) {
-      logger.warn('[AI Email Analyzer] Email body is empty - webhook may not include content', {
+      logger.info('[AI Email Analyzer] Email body is empty - analyzing subject line only', {
         from: validated.from,
         subject: validated.subject,
       });
 
-      // Return a default result asking for manual review
+      // Analyze based on subject line only
+      const subjectAnalysis = analyzeSubjectLine(validated.subject, validated.from);
+
       return {
         success: true,
-        shouldCreateTask: true,
+        shouldCreateTask: subjectAnalysis.shouldCreateTask,
         suggestion: {
-          title: `Review email: ${validated.subject}`,
-          description: `Email received from ${validated.from}. Body content was not available in webhook - please review the original email.\n\nSubject: ${validated.subject}`,
-          priority: 'medium',
+          title: subjectAnalysis.title || validated.subject,
+          description: `📧 Email from ${validated.from}\n📋 Subject: ${validated.subject}\n\n${subjectAnalysis.description}`,
+          priority: subjectAnalysis.priority,
           dueDate: null,
-          actionType: 'review',
-          confidence: 30,
-          reasoning: 'Email body was not provided in the webhook payload. Created task for manual review.',
+          actionType: subjectAnalysis.actionType,
+          confidence: 20, // Lower confidence without body
+          reasoning: 'Analyzed subject line only (email body not available from provider). Email record saved for reference.',
           extractedData: {
             originalFrom: validated.from,
             originalSubject: validated.subject,
-            note: 'Email body not available - enable content in Resend webhook settings or fetch via API',
+            hasBody: false,
           },
         },
       };

@@ -211,14 +211,13 @@ export async function POST(request: NextRequest) {
     const emailBody = email.text || stripHtml(email.html || '') || '';
     const receivedAt = new Date(email.created_at);
 
-    // Warn if email body is missing
+    // Log if email body is missing (info level - this is expected with Resend inbound)
     if (!emailBody || emailBody.trim().length === 0) {
-      logger.warn('[Email Webhook] Email body is missing from webhook payload', {
+      logger.info('[Email Webhook] Email body not included in webhook - will analyze subject line', {
         from: forwarderEmail,
         subject: email.subject,
         hasText: !!email.text,
         hasHtml: !!email.html,
-        note: 'Enable "Include Email Content" in Resend webhook settings to receive full email body',
       });
     }
 
@@ -242,21 +241,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // If AI determines no task is needed, just acknowledge receipt
-    if (!analysis.shouldCreateTask) {
-      logger.info('[Email Webhook] No task needed', {
-        userId: user.id,
-        reasoning: analysis.suggestion?.reasoning,
-      });
-
-      return NextResponse.json({
-        success: true,
-        message: 'Email received - no task needed',
-        reasoning: analysis.suggestion?.reasoning,
-      });
-    }
-
-    // Create email_message record first (for Inbound Communications)
+    // ALWAYS create email_message record first (so users can see all emails)
     // Use upsert to handle Resend webhook retries (message_id is unique)
     const messageId = email.message_id || email.email_id;
 
@@ -321,64 +306,82 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create potential task linked to email message
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7); // Expire in 7 days
-
-    const { data: potentialTask, error: taskError } = await supabase
-      .from('potential_tasks')
-      .insert({
-        user_id: user.id,
-        email_message_id: emailMessage.id, // Link to email message
-        source_email_from: forwarderEmail,
-        source_email_subject: email.subject,
-        source_email_body: emailBody,
-        source_email_received_at: receivedAt.toISOString(),
-        suggested_title: analysis.suggestion!.title,
-        suggested_description: analysis.suggestion!.description,
-        suggested_priority: analysis.suggestion!.priority,
-        suggested_due_date: analysis.suggestion!.dueDate
-          ? new Date(analysis.suggestion!.dueDate).toISOString()
-          : null,
-        ai_confidence: analysis.suggestion!.confidence,
-        ai_reasoning: analysis.suggestion!.reasoning,
-        ai_extracted_data: analysis.suggestion!.extractedData || {},
-        expires_at: expiresAt.toISOString(),
-        status: 'pending',
-      })
-      .select('id')
-      .single();
-
-    if (taskError) {
-      logger.error('[Email Webhook] Failed to create potential task', {
-        userId: user.id,
-        error: taskError,
-      });
-
-      return NextResponse.json(
-        { error: 'Failed to create potential task' },
-        { status: 500 }
-      );
-    }
-
     const duration = Date.now() - startTime;
 
-    logger.info('[Email Webhook] Email message and potential task created', {
-      userId: user.id,
-      emailMessageId: emailMessage.id,
-      potentialTaskId: potentialTask.id,
-      confidence: analysis.suggestion!.confidence,
-      duration,
-    });
+    // Only create potential task if AI determined one is needed
+    if (analysis.shouldCreateTask) {
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 7); // Expire in 7 days
 
-    return NextResponse.json({
-      success: true,
-      message: 'Email and potential task created successfully',
-      emailMessageId: emailMessage.id,
-      potentialTaskId: potentialTask.id,
-      confidence: analysis.suggestion!.confidence,
-      duration,
-    });
+      const { data: potentialTask, error: taskError } = await supabase
+        .from('potential_tasks')
+        .insert({
+          user_id: user.id,
+          email_message_id: emailMessage.id, // Link to email message
+          source_email_from: forwarderEmail,
+          source_email_subject: email.subject,
+          source_email_body: emailBody,
+          source_email_received_at: receivedAt.toISOString(),
+          suggested_title: analysis.suggestion!.title,
+          suggested_description: analysis.suggestion!.description,
+          suggested_priority: analysis.suggestion!.priority,
+          suggested_due_date: analysis.suggestion!.dueDate
+            ? new Date(analysis.suggestion!.dueDate).toISOString()
+            : null,
+          ai_confidence: analysis.suggestion!.confidence,
+          ai_reasoning: analysis.suggestion!.reasoning,
+          ai_extracted_data: analysis.suggestion!.extractedData || {},
+          expires_at: expiresAt.toISOString(),
+          status: 'pending',
+        })
+        .select('id')
+        .single();
+
+      if (taskError) {
+        logger.error('[Email Webhook] Failed to create potential task', {
+          userId: user.id,
+          error: taskError,
+        });
+
+        return NextResponse.json(
+          { error: 'Failed to create potential task' },
+          { status: 500 }
+        );
+      }
+
+      logger.info('[Email Webhook] Email message and potential task created', {
+        userId: user.id,
+        emailMessageId: emailMessage.id,
+        potentialTaskId: potentialTask.id,
+        confidence: analysis.suggestion!.confidence,
+        duration,
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: 'Email and potential task created successfully',
+        emailMessageId: emailMessage.id,
+        potentialTaskId: potentialTask.id,
+        confidence: analysis.suggestion!.confidence,
+        duration,
+      });
+    } else {
+      // Email saved but no task needed
+      logger.info('[Email Webhook] Email message created (no task needed)', {
+        userId: user.id,
+        emailMessageId: emailMessage.id,
+        reasoning: analysis.suggestion?.reasoning,
+        duration,
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: 'Email received and saved - no task needed',
+        emailMessageId: emailMessage.id,
+        reasoning: analysis.suggestion?.reasoning,
+        duration,
+      });
+    }
   } catch (error) {
     const duration = Date.now() - startTime;
 
