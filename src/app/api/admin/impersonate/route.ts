@@ -40,12 +40,16 @@ export async function POST(request: NextRequest) {
 
     // Get admin profile to check role
     const [adminProfile] = await db
-      .select({ role: users.role, fullName: users.fullName })
+      .select({ role: users.role, fullName: users.fullName, email: users.email })
       .from(users)
       .where(eq(users.id, adminUser.id))
       .limit(1);
 
-    if (!adminProfile || adminProfile.role !== 'admin') {
+    const isOwner = adminProfile?.role === 'owner';
+    const isAdmin = adminProfile?.role === 'admin';
+    const isSuperUser = adminProfile?.email === 'tdaniel@botmakers.ai';
+
+    if (!adminProfile || (!isOwner && !isAdmin && !isSuperUser)) {
       logger.warn('[Impersonation] Non-admin attempted to impersonate', {
         adminId: adminUser.id,
         role: adminProfile?.role,
@@ -83,14 +87,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Cannot impersonate inactive user' }, { status: 400 });
     }
 
-    // Prevent impersonating other admins
-    if (targetUser.role === 'admin') {
+    // Prevent impersonating other admins (unless you're owner or super user)
+    if (targetUser.role === 'admin' && !isOwner && !isSuperUser) {
       logger.warn('[Impersonation] Admin attempted to impersonate another admin', {
         adminId: adminUser.id,
+        adminRole: adminProfile.role,
         targetUserId,
       });
       return NextResponse.json(
-        { error: 'Forbidden: Cannot impersonate other admins' },
+        { error: 'Forbidden: Only owners can impersonate admins' },
+        { status: 403 }
+      );
+    }
+
+    // Prevent impersonating owners (even super user can't impersonate owners for security)
+    if (targetUser.role === 'owner' && !isSuperUser) {
+      logger.warn('[Impersonation] Attempted to impersonate owner', {
+        adminId: adminUser.id,
+        adminRole: adminProfile.role,
+        targetUserId,
+      });
+      return NextResponse.json(
+        { error: 'Forbidden: Cannot impersonate owners' },
         { status: 403 }
       );
     }

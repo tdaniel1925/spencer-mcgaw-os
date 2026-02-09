@@ -464,7 +464,15 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
 
   const canEdit = can("users:edit");
   const canDelete = can("users:delete");
-  const canImpersonate = isAdmin && user.is_active && user.role !== "admin";
+
+  // Super user (tdaniel@botmakers.ai) can impersonate anyone except owners
+  // Owners can impersonate admins and below
+  // Regular admins can only impersonate non-admins
+  const canImpersonate = user.is_active && (
+    (isOwner && user.role !== "owner") || // Owners can impersonate admins and below
+    (isAdmin && user.role !== "admin" && user.role !== "owner") // Regular admins cannot impersonate admins/owners
+  );
+
   const effectivePermissions = getUserPermissions(user.role, permissionOverrides);
 
   return (
