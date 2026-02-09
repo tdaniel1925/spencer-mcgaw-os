@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
   try {
     // Simple query without join - more reliable
     let query = supabase
-      .from("activity_log")
+      .from("activity_logs")
       .select("*", needsCount ? { count: "exact" } : undefined)
       .order("created_at", { ascending: false })
       .range(parseInt(offset), parseInt(offset) + limitNum - 1);
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { data: activity, error } = await supabase
-      .from("activity_log")
+      .from("activity_logs")
       .insert({
         user_id: user.id,
         action,

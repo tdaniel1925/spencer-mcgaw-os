@@ -41,17 +41,21 @@ export const documentStatusEnum = pgEnum("document_status", [
 export const activityTypeEnum = pgEnum("activity_type", [
   "call_received",
   "call_made",
+  "call_viewed",
   "email_received",
   "email_sent",
+  "email_viewed",
   "document_received",
   "document_sent",
   "task_created",
+  "task_updated",
   "task_completed",
   "client_created",
   "client_updated",
   "note_added",
   "form_submission",
   "webhook_received",
+  "recording_played",
 ]);
 export const folderTypeEnum = pgEnum("folder_type", ["personal", "team", "repository", "client"]);
 export const permissionEnum = pgEnum("permission", ["view", "edit", "admin"]);
@@ -440,6 +444,8 @@ export const calls = pgTable("calls", {
   transferredToId: uuid("transferred_to_id").references(() => users.id),
   recordingUrl: text("recording_url"),
   metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+  firstViewedAt: timestamp("first_viewed_at"),
+  firstViewedBy: uuid("first_viewed_by").references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -474,6 +480,7 @@ export const activityLogs = pgTable("activity_logs", {
   taskId: uuid("task_id").references(() => tasks.id),
   callId: uuid("call_id").references(() => calls.id),
   documentId: uuid("document_id").references(() => documents.id),
+  emailId: uuid("email_id").references(() => emailMessages.id),
   metadata: jsonb("metadata").$type<Record<string, unknown>>(),
   ipAddress: varchar("ip_address", { length: 45 }),
   userAgent: text("user_agent"),
@@ -667,8 +674,8 @@ export const emailThreads = pgTable("email_threads", {
 // Email Messages table
 export const emailMessages = pgTable("email_messages", {
   id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
-  connectionId: uuid("connection_id").references(() => emailConnections.id, { onDelete: "cascade" }).notNull(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }), // NULL = unassigned email
+  connectionId: uuid("connection_id").references(() => emailConnections.id, { onDelete: "cascade" }), // NULL = from Resend forwarding
   threadId: uuid("thread_id").references(() => emailThreads.id, { onDelete: "cascade" }),
   messageId: varchar("message_id", { length: 500 }).notNull().unique(), // Microsoft's unique ID
   conversationId: varchar("conversation_id", { length: 500 }), // Microsoft's conversation grouping
@@ -709,6 +716,9 @@ export const emailMessages = pgTable("email_messages", {
   // Relations
   clientId: uuid("client_id").references(() => clients.id), // Auto-matched or manually linked
   relatedTaskIds: jsonb("related_task_ids").$type<string[]>().default([]), // Tasks created from this email
+  // View tracking
+  firstViewedAt: timestamp("first_viewed_at"),
+  firstViewedBy: uuid("first_viewed_by").references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -795,7 +805,7 @@ export const emailAiInsights = pgTable("email_ai_insights", {
 // Potential Tasks table (AI-suggested tasks from forwarded emails awaiting user approval)
 export const potentialTasks = pgTable("potential_tasks", {
   id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }), // NULL = unassigned potential task
 
   // Email source
   sourceEmailFrom: varchar("source_email_from", { length: 255 }).notNull(), // Original sender
@@ -1117,6 +1127,10 @@ export const activityLogsRelations = relations(activityLogs, ({ one }) => ({
   document: one(documents, {
     fields: [activityLogs.documentId],
     references: [documents.id],
+  }),
+  email: one(emailMessages, {
+    fields: [activityLogs.emailId],
+    references: [emailMessages.id],
   }),
 }));
 

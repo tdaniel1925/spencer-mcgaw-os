@@ -284,7 +284,7 @@ export async function POST(request: NextRequest) {
       tasks.push(task);
 
       // Log the event
-      await supabase.from("activity_log").insert({
+      await supabase.from("activity_logs").insert({
         user_id: user.id,
         user_email: user.email,
         action: "test_task_created",
@@ -341,7 +341,7 @@ export async function DELETE(request: NextRequest) {
     const deletedCount = deletedTasks?.length || 0;
 
     // Log the cleanup event
-    await supabase.from("activity_log").insert({
+    await supabase.from("activity_logs").insert({
       user_id: user.id,
       user_email: user.email,
       action: "test_tasks_cleared",

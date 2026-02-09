@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
           );
 
           if (!response.ok) {
-            logger.error(`[Backfill] Failed to fetch email ${email.email_message_id}:`, new Error(await response.text()));
+            logger.error(`[Backfill] Failed to fetch email ${email.email_message_id}`, { error: new Error(await response.text()) });
             totalFailed++;
             continue;
           }
@@ -97,13 +97,13 @@ export async function POST(request: NextRequest) {
             .eq("id", email.id);
 
           if (updateError) {
-            logger.error(`[Backfill] Failed to update email ${email.id}:`, updateError);
+            logger.error(`[Backfill] Failed to update email ${email.id}:`, { error: updateError });
             totalFailed++;
           } else {
             totalUpdated++;
           }
         } catch (error) {
-          logger.error(`[Backfill] Error processing email ${email.email_message_id}:`, error);
+          logger.error(`[Backfill] Error processing email ${email.email_message_id}:`, { error: error });
           totalFailed++;
         }
       }
@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
       failed: totalFailed,
     });
   } catch (error) {
-    logger.error("[Backfill] Error:", error);
+    logger.error("[Backfill] Error:", { error: error });
     return NextResponse.json({ error: "Backfill failed" }, { status: 500 });
   }
 }

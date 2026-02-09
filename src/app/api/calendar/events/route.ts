@@ -171,7 +171,7 @@ export async function POST(request: NextRequest) {
     const createdEvent = await response.json();
 
     // Log activity
-    await supabase.from("activity_log").insert({
+    await supabase.from("activity_logs").insert({
       user_id: user.id,
       type: "calendar_event_created",
       description: `Created calendar event: ${subject}`,

@@ -69,7 +69,7 @@ export async function GET() {
       })),
     });
   } catch (error) {
-    logger.error("Error fetching calls missing transcripts:", error);
+    logger.error("Error fetching calls missing transcripts:", { error: error });
     return NextResponse.json(
       { error: "Failed to fetch calls" },
       { status: 500 }
@@ -171,7 +171,7 @@ export async function POST(request: Request) {
             break;
           }
         } catch (error) {
-          logger.error("[Retry Transcripts] Error for recording:", error, { recordingId });
+          logger.error("[Retry Transcripts] Error for recording", { error, recordingId });
         }
       }
 
@@ -201,7 +201,7 @@ export async function POST(request: Request) {
       results,
     });
   } catch (error) {
-    logger.error("Error retrying transcripts:", error);
+    logger.error("Error retrying transcripts:", { error: error });
     return NextResponse.json(
       { error: "Failed to retry transcripts" },
       { status: 500 }

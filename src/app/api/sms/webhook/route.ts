@@ -215,7 +215,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (msgError) {
-      logger.error("Error saving inbound message:", msgError);
+      logger.error("Error saving inbound message:", { error: msgError });
     }
 
     // Update conversation
@@ -325,7 +325,8 @@ export async function POST(request: NextRequest) {
       }
     );
   } catch (error) {
-    logger.error("Error processing inbound SMS:", error, {
+    logger.error("Error processing inbound SMS:", {
+      error,
       errorMessage: error instanceof Error ? error.message : "Unknown error",
       errorStack: error instanceof Error ? error.stack : undefined,
       headers: Object.fromEntries(request.headers.entries()),
@@ -346,7 +347,7 @@ export async function POST(request: NextRequest) {
         },
       });
     } catch (alertError) {
-      logger.error("Failed to create system alert for SMS webhook error:", alertError);
+      logger.error("Failed to create system alert for SMS webhook error:", { error: alertError });
     }
 
     // Return empty TwiML response to acknowledge receipt (prevents Twilio retries)
@@ -402,7 +403,8 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    logger.error("Error processing SMS status callback:", error, {
+    logger.error("Error processing SMS status callback:", {
+      error,
       errorMessage: error instanceof Error ? error.message : "Unknown error",
       errorStack: error instanceof Error ? error.stack : undefined,
     });

@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
     const verification = verifyCallWebhookSignature(rawBody, signature);
 
     if (!verification.valid) {
-      logger.error("[Webhook] Signature verification failed", verification.error);
+      logger.error("[Webhook] Signature verification failed", { error: verification.error });
       return NextResponse.json(
         { error: "Invalid webhook signature" },
         { status: 401 }
@@ -227,7 +227,7 @@ export async function POST(request: NextRequest) {
       analysis: parsedData?.analysis || null,
     });
   } catch (error) {
-    logger.error("[Webhook] Error processing webhook:", error);
+    logger.error("[Webhook] Error processing webhook:", { error: error });
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

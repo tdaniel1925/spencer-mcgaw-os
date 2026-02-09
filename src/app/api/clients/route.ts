@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Log activity
-    await supabase.from("activity_log").insert({
+    await supabase.from("activity_logs").insert({
       user_id: apiUser.id,
       user_email: apiUser.email,
       action: "created",

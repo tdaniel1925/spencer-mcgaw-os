@@ -97,7 +97,7 @@ export async function PUT(
     }
 
     // Log activity
-    await supabase.from("activity_log").insert({
+    await supabase.from("activity_logs").insert({
       user_id: user.id,
       user_email: user.email,
       action: "updated",
@@ -154,7 +154,7 @@ export async function DELETE(
   }
 
   // Log activity
-  await supabase.from("activity_log").insert({
+  await supabase.from("activity_logs").insert({
     user_id: apiUser.id,
     user_email: apiUser.email,
     action: "deleted",

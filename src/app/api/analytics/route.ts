@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
 
       // Activity for calls and documents
       supabase
-        .from("activity_log")
+        .from("activity_logs")
         .select("id, action, resource_type, created_at")
         .gte("created_at", startDateStr),
     ]);

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { FormField, validators, composeValidators } from "@/components/ui/form-field";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
@@ -72,6 +73,8 @@ export default function NewClientPage() {
     assignee: "",
     notes: "",
   });
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string | null>>({});
+  const [touchedFields, setTouchedFields] = useState<Record<string, boolean>>({});
   const { currentStep, nextStep, prevStep, isFirstStep, isLastStep } = useFormProgress({
     totalSteps: formSteps.length,
   });
@@ -129,15 +132,36 @@ export default function NewClientPage() {
       });
 
       if (response.ok) {
-        toast.success("Client created successfully");
-        router.push("/clients");
+        const data = await response.json();
+        const clientName = `${formData.firstName} ${formData.lastName}`.trim();
+        toast.success(`Client created: ${clientName}`, {
+          description: "You can now add tasks, track interactions, and manage their information",
+          action: data.client?.id ? {
+            label: "View Client",
+            onClick: () => router.push(`/clients/${data.client.id}`)
+          } : undefined,
+          duration: 6000,
+        });
+        // Small delay before redirect to allow toast to be seen
+        setTimeout(() => router.push("/clients"), 500);
       } else {
         const data = await response.json();
-        toast.error(data.error || "Failed to create client");
+        const errorMessage = data.error || "Failed to create client";
+        toast.error(errorMessage, {
+          description: "Please check your information and try again",
+          action: {
+            label: "Retry",
+            onClick: () => handleSubmit(new Event("submit") as any)
+          },
+          duration: 8000,
+        });
       }
     } catch (error) {
       console.error("Error creating client:", error);
-      toast.error("Failed to create client");
+      toast.error("Network error", {
+        description: "Could not connect to server. Please check your connection and try again",
+        duration: 8000,
+      });
     } finally {
       setSaving(false);
     }
@@ -151,9 +175,101 @@ export default function NewClientPage() {
     }
   }, [currentStep]);
 
+  // Validate a specific field
+  const validateField = (field: keyof FormData, value: string): string | null => {
+    switch (field) {
+      case "firstName":
+      case "lastName":
+        return validators.required(value);
+      case "email":
+        return composeValidators(validators.required, validators.email)(value);
+      case "phone":
+        if (!value) return null; // Optional field
+        return validators.phone(value);
+      case "zip":
+        if (!value) return null; // Optional field
+        return validators.zipCode(value);
+      case "companyName":
+        if (formData.clientType === "business") {
+          return validators.required(value);
+        }
+        return null;
+      default:
+        return null;
+    }
+  };
+
+  // Validate current step before moving forward
+  const validateCurrentStep = (): boolean => {
+    const errors: Record<string, string | null> = {};
+    let hasErrors = false;
+
+    switch (currentStep) {
+      case 0: // Client Type
+        // No validation needed for client type step
+        break;
+      case 1: // Basic Information
+        const firstNameError = validateField("firstName", formData.firstName);
+        const lastNameError = validateField("lastName", formData.lastName);
+        const emailError = validateField("email", formData.email);
+        const phoneError = validateField("phone", formData.phone);
+        const companyNameError = validateField("companyName", formData.companyName);
+
+        if (firstNameError) {
+          errors.firstName = firstNameError;
+          hasErrors = true;
+        }
+        if (lastNameError) {
+          errors.lastName = lastNameError;
+          hasErrors = true;
+        }
+        if (emailError) {
+          errors.email = emailError;
+          hasErrors = true;
+        }
+        if (phoneError) {
+          errors.phone = phoneError;
+          hasErrors = true;
+        }
+        if (companyNameError) {
+          errors.companyName = companyNameError;
+          hasErrors = true;
+        }
+        break;
+      case 2: // Address
+        const zipError = validateField("zip", formData.zip);
+        if (zipError) {
+          errors.zip = zipError;
+          hasErrors = true;
+        }
+        break;
+      case 3: // Services
+      case 4: // Assignment
+        // No required fields
+        break;
+    }
+
+    if (hasErrors) {
+      setFieldErrors(errors);
+      setTouchedFields({
+        firstName: true,
+        lastName: true,
+        email: true,
+        phone: true,
+        zip: true,
+        companyName: true,
+      });
+      toast.error("Please fix the errors before continuing");
+      return false;
+    }
+
+    return true;
+  };
+
   const handleNextStep = () => {
-    // TODO: Add validation before moving to next step
-    nextStep();
+    if (validateCurrentStep()) {
+      nextStep();
+    }
   };
 
   return (
@@ -224,71 +340,121 @@ export default function NewClientPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               {formData.clientType === "business" && (
-                <div className="space-y-2">
-                  <Label htmlFor="companyName">Company Name *</Label>
-                  <Input
-                    id="companyName"
-                    placeholder="Enter company name"
-                    value={formData.companyName}
-                    onChange={(e) => updateField("companyName", e.target.value)}
-                    required
-                  />
-                </div>
+                <FormField
+                  label="Company Name"
+                  name="companyName"
+                  value={formData.companyName}
+                  onChange={(value) => {
+                    updateField("companyName", value);
+                    if (touchedFields.companyName) {
+                      const error = validateField("companyName", value);
+                      setFieldErrors((prev) => ({ ...prev, companyName: error }));
+                    }
+                  }}
+                  onBlur={() => {
+                    setTouchedFields((prev) => ({ ...prev, companyName: true }));
+                    const error = validateField("companyName", formData.companyName);
+                    setFieldErrors((prev) => ({ ...prev, companyName: error }));
+                  }}
+                  error={touchedFields.companyName ? fieldErrors.companyName || undefined : undefined}
+                  required
+                  showSuccess={touchedFields.companyName && !fieldErrors.companyName && formData.companyName.length > 0}
+                  placeholder="Enter company name"
+                />
               )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="firstName">First Name *</Label>
-                  <Input
-                    id="firstName"
-                    placeholder="Enter first name"
-                    value={formData.firstName}
-                    onChange={(e) => updateField("firstName", e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="lastName">Last Name *</Label>
-                  <Input
-                    id="lastName"
-                    placeholder="Enter last name"
-                    value={formData.lastName}
-                    onChange={(e) => updateField("lastName", e.target.value)}
-                    required
-                  />
-                </div>
+                <FormField
+                  label="First Name"
+                  name="firstName"
+                  value={formData.firstName}
+                  onChange={(value) => {
+                    updateField("firstName", value);
+                    if (touchedFields.firstName) {
+                      const error = validateField("firstName", value);
+                      setFieldErrors((prev) => ({ ...prev, firstName: error }));
+                    }
+                  }}
+                  onBlur={() => {
+                    setTouchedFields((prev) => ({ ...prev, firstName: true }));
+                    const error = validateField("firstName", formData.firstName);
+                    setFieldErrors((prev) => ({ ...prev, firstName: error }));
+                  }}
+                  error={touchedFields.firstName ? fieldErrors.firstName || undefined : undefined}
+                  required
+                  showSuccess={touchedFields.firstName && !fieldErrors.firstName && formData.firstName.length > 0}
+                  placeholder="Enter first name"
+                />
+
+                <FormField
+                  label="Last Name"
+                  name="lastName"
+                  value={formData.lastName}
+                  onChange={(value) => {
+                    updateField("lastName", value);
+                    if (touchedFields.lastName) {
+                      const error = validateField("lastName", value);
+                      setFieldErrors((prev) => ({ ...prev, lastName: error }));
+                    }
+                  }}
+                  onBlur={() => {
+                    setTouchedFields((prev) => ({ ...prev, lastName: true }));
+                    const error = validateField("lastName", formData.lastName);
+                    setFieldErrors((prev) => ({ ...prev, lastName: error }));
+                  }}
+                  error={touchedFields.lastName ? fieldErrors.lastName || undefined : undefined}
+                  required
+                  showSuccess={touchedFields.lastName && !fieldErrors.lastName && formData.lastName.length > 0}
+                  placeholder="Enter last name"
+                />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email *</Label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="email"
-                      type="email"
-                      placeholder="Enter email address"
-                      className="pl-10"
-                      value={formData.email}
-                      onChange={(e) => updateField("email", e.target.value)}
-                      required
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Phone Number</Label>
-                  <div className="relative">
-                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="phone"
-                      type="tel"
-                      placeholder="Enter phone number"
-                      className="pl-10"
-                      value={formData.phone}
-                      onChange={(e) => updateField("phone", e.target.value)}
-                    />
-                  </div>
-                </div>
+                <FormField
+                  label="Email"
+                  name="email"
+                  type="email"
+                  value={formData.email}
+                  onChange={(value) => {
+                    updateField("email", value);
+                    if (touchedFields.email) {
+                      const error = validateField("email", value);
+                      setFieldErrors((prev) => ({ ...prev, email: error }));
+                    }
+                  }}
+                  onBlur={() => {
+                    setTouchedFields((prev) => ({ ...prev, email: true }));
+                    const error = validateField("email", formData.email);
+                    setFieldErrors((prev) => ({ ...prev, email: error }));
+                  }}
+                  error={touchedFields.email ? fieldErrors.email || undefined : undefined}
+                  required
+                  showSuccess={touchedFields.email && !fieldErrors.email && formData.email.length > 0}
+                  placeholder="Enter email address"
+                />
+
+                <FormField
+                  label="Phone Number"
+                  name="phone"
+                  type="tel"
+                  value={formData.phone}
+                  onChange={(value) => {
+                    updateField("phone", value);
+                    if (touchedFields.phone) {
+                      const error = validateField("phone", value);
+                      setFieldErrors((prev) => ({ ...prev, phone: error }));
+                    }
+                  }}
+                  onBlur={() => {
+                    setTouchedFields((prev) => ({ ...prev, phone: true }));
+                    const error = validateField("phone", formData.phone);
+                    setFieldErrors((prev) => ({ ...prev, phone: error }));
+                  }}
+                  error={touchedFields.phone ? fieldErrors.phone || undefined : undefined}
+                  showSuccess={touchedFields.phone && !fieldErrors.phone && formData.phone.length > 0}
+                  placeholder="Enter phone number"
+                  tooltipContent="Optional. Format: (555) 555-5555"
+                />
               </div>
             </CardContent>
           </Card>
@@ -342,13 +508,27 @@ export default function NewClientPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="zip">ZIP Code</Label>
-                  <Input
-                    id="zip"
-                    placeholder="ZIP Code"
+                <div>
+                  <FormField
+                    label="ZIP Code"
+                    name="zip"
                     value={formData.zip}
-                    onChange={(e) => updateField("zip", e.target.value)}
+                    onChange={(value) => {
+                      updateField("zip", value);
+                      if (touchedFields.zip) {
+                        const error = validateField("zip", value);
+                        setFieldErrors((prev) => ({ ...prev, zip: error }));
+                      }
+                    }}
+                    onBlur={() => {
+                      setTouchedFields((prev) => ({ ...prev, zip: true }));
+                      const error = validateField("zip", formData.zip);
+                      setFieldErrors((prev) => ({ ...prev, zip: error }));
+                    }}
+                    error={touchedFields.zip ? fieldErrors.zip || undefined : undefined}
+                    showSuccess={touchedFields.zip && !fieldErrors.zip && formData.zip.length > 0}
+                    placeholder="Enter ZIP code"
+                    tooltipContent="5-digit ZIP code"
                   />
                 </div>
               </div>

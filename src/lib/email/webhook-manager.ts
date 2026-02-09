@@ -189,7 +189,7 @@ export async function createEmailWebhookSubscription(
       expiresAt: new Date(subscription.expirationDateTime),
     };
   } catch (error) {
-    logger.error("Error creating webhook subscription", error);
+    logger.error("Error creating webhook subscription", { error: error });
 
     // Update sync state with error
     const supabase = await createClient();
@@ -269,7 +269,7 @@ export async function renewWebhookSubscription(
       expiresAt: new Date(subscription.expirationDateTime),
     };
   } catch (error) {
-    logger.error("Error renewing webhook subscription", error);
+    logger.error("Error renewing webhook subscription", { error: error });
 
     // Update sync state with error
     const supabase = await createClient();
@@ -330,7 +330,7 @@ export async function deleteWebhookSubscription(
 
     logger.info("Webhook subscription deleted successfully", { subscriptionId });
   } catch (error) {
-    logger.error("Error deleting webhook subscription", error);
+    logger.error("Error deleting webhook subscription", { error: error });
     throw error;
   }
 }

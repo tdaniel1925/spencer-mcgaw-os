@@ -190,7 +190,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Log activity
-    await supabase.from("activity_log").insert({
+    await supabase.from("activity_logs").insert({
       user_id: apiUser.id,
       user_email: apiUser.email,
       action: "created",
@@ -203,7 +203,7 @@ export async function POST(request: NextRequest) {
     // Send email notification if task is assigned to someone else
     if (assigneeValue && assigneeValue !== apiUser.id) {
       emailTaskAssigned(assigneeValue, task.id, title, apiUser.email).catch((err) =>
-        logger.error("Failed to send task assigned email", err)
+        logger.error("Failed to send task assigned email", { error: err })
       );
     }
 

@@ -61,6 +61,7 @@ interface Communication {
   isFlagged?: boolean;
   bodyHtml?: string;
   bodyText?: string;
+  userId?: string | null; // NULL = unassigned email
   // Common AI fields
   aiSummary?: string | null;
   sentiment?: string | null;
@@ -73,6 +74,7 @@ export default function InboundPage() {
   const [communications, setCommunications] = useState<Communication[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [filterType, setFilterType] = useState<"all" | "phone" | "email">("all");
+  const [ownershipFilter, setOwnershipFilter] = useState<"all" | "mine" | "unassigned">("all");
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
 
   // Assignment dialog state
@@ -95,8 +97,12 @@ export default function InboundPage() {
   const fetchCommunications = useCallback(async () => {
     setIsLoading(true);
     try {
-      const typeParam = filterType !== "all" ? `?type=${filterType}` : "";
-      const response = await fetch(`/api/inbound${typeParam}`);
+      const params = new URLSearchParams();
+      if (filterType !== "all") params.append("type", filterType);
+      if (ownershipFilter !== "all") params.append("ownership", ownershipFilter);
+
+      const queryString = params.toString();
+      const response = await fetch(`/api/inbound${queryString ? `?${queryString}` : ""}`);
 
       if (!response.ok) throw new Error("Failed to fetch communications");
 
@@ -108,23 +114,54 @@ export default function InboundPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [filterType]);
+  }, [filterType, ownershipFilter]);
 
   useEffect(() => {
     fetchCommunications();
   }, [fetchCommunications]);
 
-  // Toggle card expansion
+  // Toggle card expansion and log view
   const toggleCard = (id: string) => {
+    const comm = communications.find((c) => c.id === id);
+
     setExpandedCards((prev) => {
       const newSet = new Set(prev);
+      const isExpanding = !newSet.has(id);
+
       if (newSet.has(id)) {
         newSet.delete(id);
       } else {
         newSet.add(id);
+
+        // Log view when expanding (only if not already logged)
+        if (isExpanding && comm) {
+          logCommunicationView(comm);
+        }
       }
       return newSet;
     });
+  };
+
+  // Log communication view for audit trail
+  const logCommunicationView = async (comm: Communication) => {
+    try {
+      if (comm.type === "email") {
+        await fetch("/api/audit/log-email-view", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ emailId: comm.id }),
+        });
+      } else if (comm.type === "phone") {
+        await fetch("/api/audit/log-call-view", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ callId: comm.id }),
+        });
+      }
+    } catch (error) {
+      // Silent fail - don't block UX for audit logging
+      console.error("Failed to log communication view:", error);
+    }
   };
 
   // Open assignment dialog
@@ -212,6 +249,35 @@ export default function InboundPage() {
               >
                 <Mail className="h-4 w-4 mr-2" />
                 Emails
+              </Button>
+
+              {/* Divider */}
+              <div className="h-6 w-px bg-border" />
+
+              {/* Email Ownership Filters */}
+              <Button
+                variant={ownershipFilter === "all" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setOwnershipFilter("all")}
+                className="h-8"
+              >
+                All Emails
+              </Button>
+              <Button
+                variant={ownershipFilter === "mine" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setOwnershipFilter("mine")}
+                className="h-8"
+              >
+                My Emails
+              </Button>
+              <Button
+                variant={ownershipFilter === "unassigned" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setOwnershipFilter("unassigned")}
+                className="h-8 text-amber-600 hover:text-amber-700"
+              >
+                Unassigned
               </Button>
             </div>
 
@@ -308,6 +374,11 @@ export default function InboundPage() {
                               )}
 
                               {/* Email indicators */}
+                              {comm.type === "email" && comm.userId === null && (
+                                <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-300">
+                                  Unassigned
+                                </Badge>
+                              )}
                               {comm.type === "email" && comm.isFlagged && (
                                 <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />
                               )}

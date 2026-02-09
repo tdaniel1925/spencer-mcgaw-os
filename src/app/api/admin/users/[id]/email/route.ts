@@ -70,7 +70,7 @@ export async function POST(
         logger.info(`[Admin] Resent invite email to ${targetUser.email}`);
 
         // Log to activity feed
-        await supabase.from("activity_log").insert({
+        await supabase.from("activity_logs").insert({
           user_id: authUser.id,
           action: "sent welcome email",
           resource_type: "email",
@@ -101,7 +101,7 @@ export async function POST(
         });
 
       if (resetError) {
-        logger.error("[Admin] Failed to generate password reset link", resetError);
+        logger.error("[Admin] Failed to generate password reset link", { error: resetError });
         return NextResponse.json(
           { error: "Failed to generate password reset link" },
           { status: 500 }
@@ -121,7 +121,7 @@ export async function POST(
           logger.info(`[Admin] Sent password reset email to ${targetUser.email}`);
 
           // Log to activity feed
-          await supabase.from("activity_log").insert({
+          await supabase.from("activity_logs").insert({
             user_id: authUser.id,
             action: "sent password reset email",
             resource_type: "email",
@@ -141,7 +141,7 @@ export async function POST(
       logger.info(`[Admin] Password reset link generated for ${targetUser.email}`);
 
       // Log to activity feed even for fallback
-      await supabase.from("activity_log").insert({
+      await supabase.from("activity_logs").insert({
         user_id: authUser.id,
         action: "sent password reset email",
         resource_type: "email",
@@ -158,7 +158,7 @@ export async function POST(
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (error) {
-    logger.error("[Admin] Email action failed", error);
+    logger.error("[Admin] Email action failed", { error });
     return NextResponse.json(
       { error: "Failed to send email" },
       { status: 500 }

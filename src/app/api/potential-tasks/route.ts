@@ -52,12 +52,13 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = parseInt(searchParams.get('offset') || '0');
 
-    // Query potential tasks
+    // Query potential tasks (user's tasks + unassigned tasks)
     let query = supabase
       .from('potential_tasks')
       .select(
         `
         id,
+        user_id,
         source_email_from,
         source_email_subject,
         source_email_received_at,
@@ -72,7 +73,7 @@ export async function GET(request: NextRequest) {
         expires_at
       `
       )
-      .eq('user_id', user.id)
+      .or(`user_id.eq.${user.id},user_id.is.null`) // User's tasks OR unassigned (NULL)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 

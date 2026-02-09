@@ -196,7 +196,7 @@ export async function POST(request: NextRequest) {
     const createdContact = await response.json();
 
     // Log activity
-    await supabase.from("activity_log").insert({
+    await supabase.from("activity_logs").insert({
       user_id: user.id,
       type: "contact_created",
       description: `Created contact: ${firstName || ''} ${lastName || ''}`.trim() || email,

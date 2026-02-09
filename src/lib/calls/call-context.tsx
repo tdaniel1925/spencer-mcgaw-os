@@ -438,7 +438,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
           setInitialLoadDone(true);
         }
       } catch (error) {
-        logger.error("Failed to fetch initial calls", error);
+        logger.error("Failed to fetch initial calls", { error: error });
         setInitialLoadDone(true);
       }
     }

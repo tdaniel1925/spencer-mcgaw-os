@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
 
   try {
     let query = supabase
-      .from("activity_log")
+      .from("activity_logs")
       .select("*")
       .order("created_at", { ascending: false })
       .limit(limit);
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { data: event, error } = await supabase
-      .from("activity_log")
+      .from("activity_logs")
       .insert({
         user_id: user.id,
         user_email: user.email,
@@ -110,7 +110,7 @@ export async function DELETE(request: NextRequest) {
   try {
     // Delete events where details contains test_mode: true
     const { data: deletedEvents, error } = await supabase
-      .from("activity_log")
+      .from("activity_logs")
       .delete()
       .contains("details", { test_mode: true })
       .select("id");

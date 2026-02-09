@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAccessToken } from "@/lib/goto";
 import { createClient } from "@/lib/supabase/server";
 import logger from "@/lib/logger";
+import { logRecordingPlay, extractRequestMetadata } from "@/lib/audit/view-tracking";
+import { db } from "@/db";
+import { calls } from "@/db/schema";
+import { eq } from "drizzle-orm";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -68,7 +72,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     if (!contentResponse.ok) {
       const errorText = await contentResponse.text();
-      logger.error("[Recording Proxy] Failed to get content token", undefined, { status: contentResponse.status, error: errorText });
+      logger.error("[Recording Proxy] Failed to get content token", { status: contentResponse.status, error: errorText });
 
       // If 404, the recording might not exist or might be from a different service
       if (contentResponse.status === 404) {
@@ -102,7 +106,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     if (!contentData.token?.token) {
-      logger.error("[Recording Proxy] No token in response", undefined, { status: contentData.status });
+      logger.error("[Recording Proxy] No token in response", { status: contentData.status });
       return NextResponse.json(
         { error: "No recording token available" },
         { status: 404 }
@@ -137,7 +141,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
       if (!altResponse.ok) {
         const errorText = await altResponse.text();
-        logger.error("[Recording Proxy] Failed to fetch recording", undefined, { status: altResponse.status, error: errorText });
+        logger.error("[Recording Proxy] Failed to fetch recording", { status: altResponse.status, error: errorText });
         return NextResponse.json(
           { error: `Failed to fetch recording: ${altResponse.status}` },
           { status: altResponse.status }
@@ -147,6 +151,28 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       // Stream the response
       const audioData = await altResponse.arrayBuffer();
       logger.debug("[Recording Proxy] Got audio data from media endpoint", { bytes: audioData.byteLength });
+
+      // Log recording access for audit trail
+      try {
+        const mediaUrl = `https://api.goto.com/recording/v1/recordings/${recordingId}/media`;
+        const [call] = await db
+          .select({ id: calls.id })
+          .from(calls)
+          .where(eq(calls.recordingUrl, mediaUrl))
+          .limit(1);
+
+        if (call) {
+          await logRecordingPlay(call.id, mediaUrl, {
+            userId: user.id,
+            userEmail: user.email,
+            ...extractRequestMetadata(request),
+          });
+        }
+      } catch (auditError) {
+        logger.error("[Recording Proxy] Failed to log recording access", { error: auditError });
+        // Continue - don't block recording playback for audit logging failure
+      }
+
       return new NextResponse(audioData, {
         headers: {
           "Content-Type": altResponse.headers.get("Content-Type") || "audio/mpeg",
@@ -159,6 +185,27 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     // Stream the recording response
     const audioData = await recordingResponse.arrayBuffer();
     logger.debug("[Recording Proxy] Got audio data", { bytes: audioData.byteLength });
+
+    // Log recording access for audit trail (find call by recording ID pattern in metadata/URL)
+    try {
+      const [call] = await db
+        .select({ id: calls.id })
+        .from(calls)
+        .where(eq(calls.recordingUrl, downloadUrl))
+        .limit(1);
+
+      if (call) {
+        await logRecordingPlay(call.id, downloadUrl, {
+          userId: user.id,
+          userEmail: user.email,
+          ...extractRequestMetadata(request),
+        });
+      }
+    } catch (auditError) {
+      logger.error("[Recording Proxy] Failed to log recording access", { error: auditError });
+      // Continue - don't block recording playback for audit logging failure
+    }
+
     return new NextResponse(audioData, {
       headers: {
         "Content-Type": recordingResponse.headers.get("Content-Type") || "audio/mpeg",
@@ -167,7 +214,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       },
     });
   } catch (error) {
-    logger.error("[Recording Proxy] Error", error);
+    logger.error("[Recording Proxy] Error", { error: error });
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Internal server error" },
       { status: 500 }

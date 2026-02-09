@@ -13,8 +13,15 @@ import logger from "@/lib/logger";
 
 /**
  * Try to match a phone number to an existing client
+ * DISABLED per user requirement: manual linking only
+ * To enable: set environment variable AUTO_LINK_CLIENTS=true
  */
 async function matchPhoneToClient(phone: string | null): Promise<string | null> {
+  // Check if auto-linking is enabled
+  if (process.env.AUTO_LINK_CLIENTS !== "true") {
+    return null; // Manual linking only
+  }
+
   if (!phone) return null;
 
   // Normalize phone number (remove non-digits) and validate
@@ -44,10 +51,14 @@ async function matchPhoneToClient(phone: string | null): Promise<string | null> 
       .limit(1);
 
     if (matchedClients.length > 0) {
+      logger.info("[GoTo Webhook] Auto-linked call to client", {
+        phone,
+        clientId: matchedClients[0].id,
+      });
       return matchedClients[0].id;
     }
   } catch (error) {
-    logger.error("[GoTo Webhook] Error matching phone to client:", error);
+    logger.error("[GoTo Webhook] Error matching phone to client:", { error: error });
   }
 
   return null;
@@ -204,7 +215,7 @@ export async function POST(request: NextRequest) {
         .returning({ id: webhookLogs.id });
       webhookLogId = webhookLog?.id || null;
     } catch (logError) {
-      logger.error("[GoTo Webhook] Failed to create webhook log:", logError);
+      logger.error("[GoTo Webhook] Failed to create webhook log:", { error: logError });
     }
 
     // Update status to parsing
@@ -279,7 +290,7 @@ export async function POST(request: NextRequest) {
       processingTimeMs: Date.now() - startTime,
     });
   } catch (error) {
-    logger.error("[GoTo Webhook] Error processing webhook:", error);
+    logger.error("[GoTo Webhook] Error processing webhook:", { error: error });
 
     // Update webhook log with error
     if (webhookLogId) {
@@ -418,7 +429,7 @@ async function processCallReport(
     try {
       recordingUrl = await getRecordingUrl(recordingId);
     } catch (error) {
-      logger.error("[GoTo Webhook] Failed to get recording URL:", error, { recordingId });
+      logger.error("[GoTo Webhook] Failed to get recording URL:", { error: error, recordingId });
     }
 
     // Try to get transcription for this recording
@@ -427,7 +438,7 @@ async function processCallReport(
         const transcriptData = await getTranscription(recordingId);
         transcript = transcriptData.text;
       } catch (error) {
-        logger.error("[GoTo Webhook] Failed to get transcription:", error, { recordingId });
+        logger.error("[GoTo Webhook] Failed to get transcription:", { error: error, recordingId });
       }
     }
   }
@@ -611,12 +622,12 @@ async function processCallReport(
           .single();
 
         if (taskError) {
-          logger.error("[GoTo Webhook] Failed to create task:", taskError, { action: action.substring(0, 50) });
+          logger.error("[GoTo Webhook] Failed to create task:", { error: taskError, action: action.substring(0, 50) });
         } else {
           tasksCreated++;
         }
       } catch (taskError) {
-        logger.error("[GoTo Webhook] Exception creating task:", taskError, { action: action.substring(0, 50) });
+        logger.error("[GoTo Webhook] Exception creating task:", { error: taskError, action: action.substring(0, 50) });
       }
     }
   }
@@ -921,7 +932,7 @@ async function processRecordingNotification(
         })
         .where(eq(calls.id, callToUpdate.id));
     } catch (error) {
-      logger.error("[GoTo Webhook] Failed to get recording URL:", error);
+      logger.error("[GoTo Webhook] Failed to get recording URL:", { error: error });
     }
   }
 
@@ -942,7 +953,7 @@ async function processRecordingNotification(
             .where(eq(calls.id, callToUpdate.id));
         }
       } catch (error) {
-        logger.error("[GoTo Webhook] Failed to get transcription:", error);
+        logger.error("[GoTo Webhook] Failed to get transcription:", { error: error });
       }
     }
   }

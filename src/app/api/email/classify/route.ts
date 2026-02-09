@@ -144,7 +144,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<Classific
       try {
         aiResult = await classifyEmailWithAI(email);
       } catch (error) {
-        logger.error("[Classify API] AI classification failed:", error);
+        logger.error("[Classify API] AI classification failed:", { error: error });
         useAI = false;
       }
     }
@@ -314,7 +314,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<Classific
               },
             });
           } catch (taskError) {
-            logger.error("[Email Classify] Failed to create task:", taskError, { title: item.title });
+            logger.error("[Email Classify] Failed to create task:", { error: taskError, title: item.title });
           }
         }
       }
@@ -376,7 +376,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<Classific
 
     return NextResponse.json(response);
   } catch (error) {
-    logger.error("[Classify API] Error:", error);
+    logger.error("[Classify API] Error:", { error: error });
     return NextResponse.json(
       {
         success: false,
@@ -431,7 +431,7 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    logger.error("[Classify API] Error recording action:", error);
+    logger.error("[Classify API] Error recording action:", { error: error });
     return NextResponse.json(
       { error: "Failed to record action" },
       { status: 500 }

@@ -211,7 +211,7 @@ export async function POST(request: NextRequest) {
       emailSent = await emailWelcome(email.toLowerCase(), full_name, password);
       if (emailSent) {
         // Log to activity feed
-        await supabase.from("activity_log").insert({
+        await supabase.from("activity_logs").insert({
           user_id: user.id,
           action: "sent welcome email to new user",
           resource_type: "email",

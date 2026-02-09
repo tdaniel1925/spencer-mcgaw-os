@@ -328,7 +328,7 @@ ${context.transcript ? `Transcript excerpt (first 2000 chars):\n${context.transc
       confidence: (s.confidence as number) || 0.5,
     }));
   } catch (error) {
-    logger.error("[Task Suggestion] AI suggestion error", error);
+    logger.error("[Task Suggestion] AI suggestion error", { error: error });
     return [];
   }
 }
@@ -485,7 +485,7 @@ export async function storeTaskSuggestions(
     if (!error && data) {
       insertedIds.push(data.id);
     } else if (error) {
-      logger.error("[Task Suggestion] Failed to store suggestion", error);
+      logger.error("[Task Suggestion] Failed to store suggestion", { error: error });
     }
   }
 

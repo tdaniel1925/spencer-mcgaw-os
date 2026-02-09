@@ -132,7 +132,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Log the activity
-    await supabase.from("activity_log").insert({
+    await supabase.from("activity_logs").insert({
       user_id: user.id,
       type: "email_sent",
       description: `Sent email: ${subject}`,

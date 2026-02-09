@@ -104,7 +104,7 @@ async function saveTokensToDatabase(tokens: TokenData, channelId?: string, webho
       WHERE provider = 'goto'
     `);
   } catch (error) {
-    logger.error("[GoTo Client] Failed to save tokens to database", error);
+    logger.error("[GoTo Client] Failed to save tokens to database", { error: error });
     throw error;
   }
 }
@@ -142,7 +142,7 @@ async function loadTokensFromDatabase(): Promise<TokenData | null> {
       accountKey: row.account_key || "",
     };
   } catch (error) {
-    logger.error("[GoTo Client] Failed to load tokens from database", error);
+    logger.error("[GoTo Client] Failed to load tokens from database", { error: error });
     return null;
   }
 }
@@ -736,7 +736,7 @@ export async function getIntegrationStatus(): Promise<{
       errorMessage: tokenExpired ? "Token expired, please reconnect" : row.error_message,
     };
   } catch (error) {
-    logger.error("[GoTo Client] Failed to get integration status", error);
+    logger.error("[GoTo Client] Failed to get integration status", { error: error });
     return {
       isConnected: false,
       accountKey: null,

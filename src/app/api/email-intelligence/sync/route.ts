@@ -89,7 +89,7 @@ export async function POST(_request: NextRequest) {
         const decryptedRefreshToken = decrypt(connection.refresh_token);
         const newTokens = await refreshAccessToken(decryptedRefreshToken);
         if (!newTokens) {
-          logger.error("Failed to refresh token for connection", undefined, { connectionId: connection.id });
+          logger.error("Failed to refresh token for connection", { error: undefined, connectionId: connection.id });
           continue;
         }
 
@@ -118,7 +118,7 @@ export async function POST(_request: NextRequest) {
       );
 
       if (!response.ok) {
-        logger.error("Failed to fetch emails", new Error(await response.text()));
+        logger.error("Failed to fetch emails", { error: new Error(await response.text()) });
         continue;
       }
 
@@ -356,7 +356,7 @@ export async function POST(_request: NextRequest) {
               .single();
 
             if (taskError) {
-              logger.error("[Email Sync] Failed to create task:", taskError);
+              logger.error("[Email Sync] Failed to create task:", { error: taskError });
             } else if (newTask) {
               // Log activity for the new task
               try {
@@ -380,7 +380,7 @@ export async function POST(_request: NextRequest) {
 
           totalProcessed++;
         } catch (error) {
-          logger.error("Error processing email:", error, { emailId: email.id });
+          logger.error("Error processing email:", { error: error, emailId: email.id });
           totalFailed++;
         }
       }
@@ -393,7 +393,7 @@ export async function POST(_request: NextRequest) {
       tasksCreated: totalTasksCreated,
     });
   } catch (error) {
-    logger.error("Error in sync:", error);
+    logger.error("Error in sync:", { error: error });
     return NextResponse.json({ error: "Sync failed" }, { status: 500 });
   }
 }

@@ -73,7 +73,7 @@ export async function POST(
     );
 
     if (updateError) {
-      logger.error("[Admin] Failed to update user password", updateError);
+      logger.error("[Admin] Failed to update user password", { error: updateError });
       return NextResponse.json(
         { error: "Failed to update password" },
         { status: 500 }
@@ -83,7 +83,7 @@ export async function POST(
     logger.info(`[Admin] Password changed for user ${targetUser.email} by ${authUser.id}`);
 
     // Log to activity feed
-    await supabase.from("activity_log").insert({
+    await supabase.from("activity_logs").insert({
       user_id: authUser.id,
       action: "changed user password",
       resource_type: "user",
@@ -97,7 +97,7 @@ export async function POST(
       message: "Password updated successfully",
     });
   } catch (error) {
-    logger.error("[Admin] Password change failed", error);
+    logger.error("[Admin] Password change failed", { error });
     return NextResponse.json(
       { error: "Failed to change password" },
       { status: 500 }

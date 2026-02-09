@@ -10,6 +10,7 @@ import {
 } from "@/lib/api-utils";
 import logger from "@/lib/logger";
 import { emailTaskAssigned, emailTaskCompleted } from "@/lib/email/email-service";
+import { logTaskChanges, detectTaskChanges, getActionName } from "@/lib/audit/task-change-tracking";
 
 // Validation schemas
 const taskUpdateSchema = z.object({
@@ -71,6 +72,17 @@ export async function PUT(
 
     const body = await parseBody(request, taskUpdateSchema);
 
+    // Get old task state for change tracking
+    const { data: oldTask } = await supabase
+      .from("tasks")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (!oldTask) {
+      return errorResponse("Task not found", ErrorCodes.NOT_FOUND, 404);
+    }
+
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
     if (body.title !== undefined) updates.title = body.title;
@@ -106,12 +118,12 @@ export async function PUT(
       .single();
 
     if (error) {
-      logger.error("Failed to update task", error, { taskId: id });
+      logger.error("Failed to update task", { error: error, taskId: id });
       return errorResponse("Failed to update task", ErrorCodes.DATABASE_ERROR, 500);
     }
 
-    // Log activity
-    await supabase.from("activity_log").insert({
+    // Log activity (basic activity log)
+    await supabase.from("activity_logs").insert({
       user_id: user.id,
       user_email: user.email,
       action: body.status === "completed" ? "completed" : "updated",
@@ -121,6 +133,22 @@ export async function PUT(
       details: { changes: Object.keys(updates).filter(k => k !== "updated_at") },
     });
 
+    // Log detailed field-level changes for audit trail
+    const changes = detectTaskChanges(oldTask, updates);
+    if (changes.length > 0) {
+      const actionName = getActionName(changes);
+      await logTaskChanges({
+        taskId: id,
+        userId: user.id,
+        action: actionName,
+        changes,
+        details: {
+          changedBy: user.email,
+          changedAt: new Date().toISOString(),
+        },
+      });
+    }
+
     // Send email notifications (non-blocking)
     const assigneeId = task.assigned_to;
     const assignerName = user.user_metadata?.full_name || user.email || "Someone";
@@ -128,7 +156,7 @@ export async function PUT(
     // Notify assignee when task is assigned to them
     if (assigneeValue && assigneeValue !== user.id) {
       emailTaskAssigned(assigneeValue, id, task.title, assignerName).catch((err) =>
-        logger.error("Failed to send task assigned email", err)
+        logger.error("Failed to send task assigned email", { error: err })
       );
     }
 
@@ -136,7 +164,7 @@ export async function PUT(
     if (body.status === "completed" && task.created_by && task.created_by !== user.id) {
       const completerName = user.user_metadata?.full_name || user.email || "Someone";
       emailTaskCompleted(task.created_by, id, task.title, completerName).catch((err) =>
-        logger.error("Failed to send task completed email", err)
+        logger.error("Failed to send task completed email", { error: err })
       );
     }
 
@@ -180,12 +208,12 @@ export async function DELETE(
       .eq("id", id);
 
     if (error) {
-      logger.error("Failed to delete task", error, { taskId: id });
+      logger.error("Failed to delete task", { error: error, taskId: id });
       return errorResponse("Failed to delete task", ErrorCodes.DATABASE_ERROR, 500);
     }
 
     // Log activity
-    await supabase.from("activity_log").insert({
+    await supabase.from("activity_logs").insert({
       user_id: user.id,
       user_email: user.email,
       action: "deleted",

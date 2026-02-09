@@ -205,7 +205,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Log activity
-    await supabase.from("activity_log").insert({
+    await supabase.from("activity_logs").insert({
       user_id: user.id,
       type: "email_processed",
       description: `Processed email: ${email.subject}`,

@@ -197,7 +197,7 @@ export async function lookupCallerName(
       fromCache: false,
     };
   } catch (error) {
-    logger.error(`[Twilio Lookup] Error looking up ${normalized}`, error);
+    logger.error(`[Twilio Lookup] Error looking up ${normalized}`, { error });
 
     // Cache null result to avoid repeated failed lookups
     cacheLookup(normalized, null, null);

@@ -66,7 +66,7 @@ export async function DELETE(
       .eq("created_by", user.id);
 
     if (senderRulesError) {
-      logger.error("[Email Cleanup] Error deleting sender rules:", senderRulesError);
+      logger.error("[Email Cleanup] Error deleting sender rules:", { error: senderRulesError });
     }
 
     // 2. Delete email_training_feedback for this user (AI training data)
@@ -76,7 +76,7 @@ export async function DELETE(
       .eq("created_by", user.id);
 
     if (trainingError) {
-      logger.error("[Email Cleanup] Error deleting training feedback:", trainingError);
+      logger.error("[Email Cleanup] Error deleting training feedback:", { error: trainingError });
     }
 
     // 3. Delete email_classifications and email_action_items for this account
@@ -87,7 +87,7 @@ export async function DELETE(
       .eq("account_id", id);
 
     if (classError) {
-      logger.error("[Email Cleanup] Error deleting classifications:", classError);
+      logger.error("[Email Cleanup] Error deleting classifications:", { error: classError });
     }
 
     const { error: actionError } = await supabase
@@ -96,7 +96,7 @@ export async function DELETE(
       .eq("account_id", id);
 
     if (actionError) {
-      logger.error("[Email Cleanup] Error deleting action items:", actionError);
+      logger.error("[Email Cleanup] Error deleting action items:", { error: actionError });
     }
 
     // 4. Finally, delete the email_connections record
@@ -106,7 +106,7 @@ export async function DELETE(
       .eq("id", id);
 
     if (deleteError) {
-      logger.error("[Email Cleanup] Error deleting connection:", deleteError);
+      logger.error("[Email Cleanup] Error deleting connection:", { error: deleteError });
       return NextResponse.json(
         { error: "Failed to delete email connection" },
         { status: 500 }
@@ -123,7 +123,7 @@ export async function DELETE(
       },
     });
   } catch (error) {
-    logger.error("[Email Cleanup] Error:", error);
+    logger.error("[Email Cleanup] Error:", { error: error });
     return NextResponse.json(
       { error: "Failed to disconnect email account" },
       { status: 500 }
@@ -260,7 +260,7 @@ export async function PUT(
       .single();
 
     if (updateError) {
-      logger.error("[Email Account Update] Error:", updateError);
+      logger.error("[Email Account Update] Error:", { error: updateError });
       return NextResponse.json(
         { error: "Failed to update email account" },
         { status: 500 }
@@ -279,7 +279,7 @@ export async function PUT(
       },
     });
   } catch (error) {
-    logger.error("[Email Account Update] Error:", error);
+    logger.error("[Email Account Update] Error:", { error: error });
     return NextResponse.json(
       { error: "Invalid request body" },
       { status: 400 }

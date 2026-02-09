@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Log activity
-    await supabase.from("activity_log").insert({
+    await supabase.from("activity_logs").insert({
       user_id: user.id,
       user_email: user.email,
       action: "created",
@@ -226,7 +226,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Log activity
-    await supabase.from("activity_log").insert({
+    await supabase.from("activity_logs").insert({
       user_id: user.id,
       user_email: user.email,
       action: "deleted",

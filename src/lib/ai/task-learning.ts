@@ -95,7 +95,7 @@ export async function logAITaskFeedback(feedback: AITaskFeedback): Promise<void>
       .single();
 
     if (taskError || !task) {
-      logger.error("[AI Learning] Task not found", taskError, { taskId: feedback.taskId });
+      logger.error("[AI Learning] Task not found", { error: taskError, taskId: feedback.taskId });
       return;
     }
 
@@ -145,7 +145,7 @@ export async function logAITaskFeedback(feedback: AITaskFeedback): Promise<void>
       });
 
     if (feedbackError) {
-      logger.error("[AI Learning] Failed to log feedback", feedbackError);
+      logger.error("[AI Learning] Failed to log feedback", { error: feedbackError });
       return;
     }
 
@@ -154,7 +154,7 @@ export async function logAITaskFeedback(feedback: AITaskFeedback): Promise<void>
       await logAssignmentPattern(supabase, task, feedback.details.assignedTo, feedback.userId);
     }
   } catch (error) {
-    logger.error("[AI Learning] Error logging feedback", error);
+    logger.error("[AI Learning] Error logging feedback", { error: error });
   }
 }
 
@@ -260,7 +260,7 @@ export async function getSuggestedAssignee(
 
     return { userId: topUserId, confidence };
   } catch (error) {
-    logger.error("[AI Learning] Error getting suggested assignee", error);
+    logger.error("[AI Learning] Error getting suggested assignee", { error: error });
     return null;
   }
 }
@@ -367,7 +367,7 @@ export async function getAITaskStats(): Promise<{
       recentFeedback: feedback || [],
     };
   } catch (error) {
-    logger.error("[AI Learning] Error getting stats", error);
+    logger.error("[AI Learning] Error getting stats", { error: error });
     return {
       totalAITasks: 0,
       completedTasks: 0,

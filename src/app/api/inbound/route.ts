@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { calls, emailMessages } from '@/db/schema';
-import { desc, and, eq, not, inArray } from 'drizzle-orm';
+import { desc, and, eq, not, inArray, or, isNull } from 'drizzle-orm';
 import logger from '@/lib/logger';
 
 // Filter out these call categories
@@ -34,6 +34,7 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const limit = parseInt(searchParams.get('limit') || '50', 10);
     const type = searchParams.get('type'); // 'phone' | 'email' | undefined (all)
+    const ownership = searchParams.get('ownership'); // 'mine' | 'unassigned' | 'all' | undefined (all)
 
     // Fetch calls (excluding voicemail, wrong numbers, spam)
     let callsData: any[] = [];
@@ -74,6 +75,22 @@ export async function GET(request: NextRequest) {
     // Fetch emails
     let emailsData: any[] = [];
     if (!type || type === 'email') {
+      // Build ownership filter
+      let ownershipFilter;
+      if (ownership === 'mine') {
+        // Only user's emails
+        ownershipFilter = eq(emailMessages.userId, user.id);
+      } else if (ownership === 'unassigned') {
+        // Only unassigned emails (NULL user_id)
+        ownershipFilter = isNull(emailMessages.userId);
+      } else {
+        // Default: all (user's emails + unassigned)
+        ownershipFilter = or(
+          eq(emailMessages.userId, user.id),
+          isNull(emailMessages.userId)
+        );
+      }
+
       emailsData = await db
         .select({
           id: emailMessages.id,
@@ -108,7 +125,7 @@ export async function GET(request: NextRequest) {
         .from(emailMessages)
         .where(
           and(
-            eq(emailMessages.userId, user.id),
+            ownershipFilter,
             not(eq(emailMessages.isDeleted, true)),
             not(eq(emailMessages.isArchived, true))
           )
@@ -162,6 +179,7 @@ export async function GET(request: NextRequest) {
         relatedTaskIds: email.relatedTaskIds,
         bodyHtml: email.bodyHtml,
         bodyText: email.bodyText,
+        userId: email.userId, // Include userId to detect unassigned emails (NULL)
       })),
     ];
 
@@ -177,6 +195,8 @@ export async function GET(request: NextRequest) {
 
     logger.info('[Inbound API] Fetched communications', {
       userId: user.id,
+      type: type || 'all',
+      ownership: ownership || 'all',
       callsCount: callsData.length,
       emailsCount: emailsData.length,
       totalCount: limitedCommunications.length,

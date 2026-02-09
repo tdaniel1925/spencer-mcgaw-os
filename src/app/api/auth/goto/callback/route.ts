@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
 
   // Handle OAuth errors
   if (error) {
-    logger.error("[GoTo Callback] OAuth error", new Error(errorDescription || error), { error, errorDescription });
+    logger.error("[GoTo Callback] OAuth error", { error, errorDescription, errorObj: new Error(errorDescription || error) });
     const redirectUrl = new URL("/calls", request.url);
     redirectUrl.searchParams.set("goto_error", "true");
     redirectUrl.searchParams.set("error_message", errorDescription || error);
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
 
   // Verify authorization code
   if (!code) {
-    logger.error("[GoTo Callback] Missing authorization code");
+    logger.error("[GoTo Callback] Missing authorization code", {});
     const redirectUrl = new URL("/calls", request.url);
     redirectUrl.searchParams.set("goto_error", "true");
     redirectUrl.searchParams.set("error_message", "Missing authorization code");
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.redirect(redirectUrl);
   } catch (err) {
-    logger.error("[GoTo Callback] Error processing callback:", err);
+    logger.error("[GoTo Callback] Error processing callback", { error: err });
     const redirectUrl = new URL("/calls", request.url);
     redirectUrl.searchParams.set("goto_error", "true");
     redirectUrl.searchParams.set(

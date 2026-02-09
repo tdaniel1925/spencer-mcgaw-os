@@ -42,6 +42,15 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
+  Breadcrumb,
+  BreadcrumbList,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
+import Link from "next/link";
+import {
   ArrowLeft,
   Building2,
   Calendar,
@@ -469,12 +478,21 @@ export default function ProjectDetailPage() {
     <>
       <Header title={project.name} />
       <main className="p-6 space-y-6">
-        {/* Back button and actions */}
+        {/* Breadcrumb and actions */}
         <div className="flex items-center justify-between">
-          <Button variant="ghost" size="sm" onClick={() => router.push("/projects")}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Projects
-          </Button>
+          <Breadcrumb>
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink asChild>
+                  <Link href="/projects">Projects</Link>
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage>{project.name || "Loading..."}</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
 
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={fetchProject}>

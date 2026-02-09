@@ -63,11 +63,11 @@ export async function createNotification(
     });
 
     if (error) {
-      logger.error("[Notifications] Failed to create notification", error);
+      logger.error("[Notifications] Failed to create notification", { error: error });
       return;
     }
   } catch (error) {
-    logger.error("[Notifications] Error creating notification", error);
+    logger.error("[Notifications] Error creating notification", { error: error });
   }
 }
 
@@ -118,11 +118,11 @@ export async function createNotifications(
     );
 
     if (error) {
-      logger.error("[Notifications] Failed to create batch notifications", error);
+      logger.error("[Notifications] Failed to create batch notifications", { error: error });
       return;
     }
   } catch (error) {
-    logger.error("[Notifications] Error creating batch notifications", error);
+    logger.error("[Notifications] Error creating batch notifications", { error: error });
   }
 }
 
@@ -166,7 +166,7 @@ export async function notifyTaskAssigned(
     taskId,
     taskTitle,
     assigner?.full_name || "Someone"
-  ).catch((err) => logger.error("[Email] Error sending task assigned email", err));
+  ).catch((err) => logger.error("[Email] Error sending task assigned email", { error: err }));
 }
 
 /**

@@ -37,7 +37,7 @@ export async function POST() {
       .is("account_id", null);
 
     if (actionItemsError) {
-      logger.error("[Email Cleanup] Error deleting action items:", actionItemsError);
+      logger.error("[Email Cleanup] Error deleting action items:", { error: actionItemsError });
     }
 
     // 2. Delete orphaned email_classifications (no account_id)
@@ -47,7 +47,7 @@ export async function POST() {
       .is("account_id", null);
 
     if (classError) {
-      logger.error("[Email Cleanup] Error deleting classifications:", classError);
+      logger.error("[Email Cleanup] Error deleting classifications:", { error: classError });
     }
 
     // 3. Delete tasks from TaskPool that came from email (source_type = 'email')
@@ -58,7 +58,7 @@ export async function POST() {
       .eq("created_by", user.id);
 
     if (tasksError) {
-      logger.error("[Email Cleanup] Error deleting tasks:", tasksError);
+      logger.error("[Email Cleanup] Error deleting tasks:", { error: tasksError });
     }
 
     // 4. Delete sender_rules associated with user
@@ -68,7 +68,7 @@ export async function POST() {
       .eq("user_id", user.id);
 
     if (senderRulesError) {
-      logger.error("[Email Cleanup] Error deleting sender rules:", senderRulesError);
+      logger.error("[Email Cleanup] Error deleting sender rules:", { error: senderRulesError });
     }
 
     // 5. Delete email_training_samples
@@ -78,7 +78,7 @@ export async function POST() {
       .eq("user_id", user.id);
 
     if (trainingError) {
-      logger.error("[Email Cleanup] Error deleting training samples:", trainingError);
+      logger.error("[Email Cleanup] Error deleting training samples:", { error: trainingError });
     }
 
     return NextResponse.json({
@@ -91,7 +91,7 @@ export async function POST() {
       },
     });
   } catch (error) {
-    logger.error("[Email Cleanup] Error:", error);
+    logger.error("[Email Cleanup] Error:", { error: error });
     return NextResponse.json(
       { error: "Failed to cleanup email data" },
       { status: 500 }

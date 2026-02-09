@@ -97,47 +97,48 @@ export async function POST(request: NextRequest) {
       subject: email.subject,
     });
 
-    // Extract original sender email (from forwarded email)
-    const originalFrom = extractOriginalSender(email);
+    // Use the forwarder's email address directly (who sent it to the system)
+    const forwarderEmail = extractEmailAddress(email.from);
 
-    if (!originalFrom) {
-      logger.warn('[Email Webhook] Could not extract original sender', {
+    if (!forwarderEmail) {
+      logger.warn('[Email Webhook] Could not extract forwarder email', {
         from: email.from,
         subject: email.subject,
       });
 
       return NextResponse.json(
-        { error: 'Could not identify original sender' },
+        { error: 'Could not identify forwarder email' },
         { status: 400 }
       );
     }
 
-    logger.info('[Email Webhook] Extracted original sender', {
-      originalFrom,
-      forwardedFrom: email.from,
+    logger.info('[Email Webhook] Processing email from forwarder', {
+      forwarderEmail,
+      from: email.from,
+      subject: email.subject,
     });
 
-    // Find user by email
+    // Find user by forwarder's email
     const supabase = await createClient();
     const { data: user, error: userError } = await supabase
       .from('users')
       .select('id, email, full_name, is_active')
-      .eq('email', originalFrom)
+      .eq('email', forwarderEmail)
       .eq('is_active', true)
       .single();
 
     if (userError || !user) {
-      logger.warn('[Email Webhook] User not found', {
-        originalFrom,
+      logger.warn('[Email Webhook] User not found - creating unassigned records', {
+        forwarderEmail,
         error: userError,
       });
 
-      // Create potential task as "unassigned" for admin review
-      await createUnassignedPotentialTask(supabase, email, originalFrom);
+      // Create unassigned email_message and potential_task (visible to all users)
+      await createUnassignedEmailAndTask(supabase, email, forwarderEmail);
 
       return NextResponse.json({
         success: true,
-        message: 'Email received but user not found - created unassigned task',
+        message: 'Email received from unknown sender - created unassigned records for all users',
       });
     }
 
@@ -153,7 +154,7 @@ export async function POST(request: NextRequest) {
 
     // Analyze email with AI
     const analysis = await analyzeEmailForTask({
-      from: originalFrom,
+      from: forwarderEmail,
       subject: email.subject,
       body: emailBody,
       receivedAt,
@@ -185,7 +186,47 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Create potential task
+    // Create email_message record first (for Inbound Communications)
+    const { data: emailMessage, error: emailError } = await supabase
+      .from('email_messages')
+      .insert({
+        user_id: user.id,
+        connection_id: null, // Not from OAuth connection
+        message_id: email.message_id || email.email_id, // Resend's unique ID
+        internet_message_id: email.message_id,
+        subject: email.subject,
+        from_email: forwarderEmail,
+        from_name: user.full_name,
+        to_recipients: email.to.map((to) => ({ email: to, name: '' })),
+        body_preview: emailBody.substring(0, 500),
+        body_html: email.html,
+        body_text: email.text,
+        received_at: receivedAt.toISOString(),
+        sent_at: receivedAt.toISOString(),
+        importance: 'normal',
+        is_read: false,
+        is_flagged: false,
+        is_draft: false,
+        has_attachments: false,
+        attachment_count: 0,
+        folder: 'inbox',
+      })
+      .select('id')
+      .single();
+
+    if (emailError) {
+      logger.error('[Email Webhook] Failed to create email message', {
+        userId: user.id,
+        error: emailError,
+      });
+
+      return NextResponse.json(
+        { error: 'Failed to create email message' },
+        { status: 500 }
+      );
+    }
+
+    // Create potential task linked to email message
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7); // Expire in 7 days
 
@@ -193,7 +234,8 @@ export async function POST(request: NextRequest) {
       .from('potential_tasks')
       .insert({
         user_id: user.id,
-        source_email_from: originalFrom,
+        email_message_id: emailMessage.id, // Link to email message
+        source_email_from: forwarderEmail,
         source_email_subject: email.subject,
         source_email_body: emailBody,
         source_email_received_at: receivedAt.toISOString(),
@@ -226,8 +268,9 @@ export async function POST(request: NextRequest) {
 
     const duration = Date.now() - startTime;
 
-    logger.info('[Email Webhook] Potential task created', {
+    logger.info('[Email Webhook] Email message and potential task created', {
       userId: user.id,
+      emailMessageId: emailMessage.id,
       potentialTaskId: potentialTask.id,
       confidence: analysis.suggestion!.confidence,
       duration,
@@ -235,7 +278,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: 'Potential task created successfully',
+      message: 'Email and potential task created successfully',
+      emailMessageId: emailMessage.id,
       potentialTaskId: potentialTask.id,
       confidence: analysis.suggestion!.confidence,
       duration,
@@ -318,51 +362,76 @@ function stripHtml(html: string): string {
 }
 
 /**
- * Create potential task for unassigned/unknown sender
+ * Create unassigned email and task for unknown sender
+ * Creates ONE record with user_id = NULL that all users can see
  */
-async function createUnassignedPotentialTask(
+async function createUnassignedEmailAndTask(
   supabase: any,
   email: ResendEmail,
-  originalFrom: string
+  senderEmail: string
 ): Promise<void> {
   const emailBody = email.text || stripHtml(email.html || '');
   const receivedAt = new Date(email.created_at);
 
-  // Get first admin user to assign to
-  const { data: adminUser } = await supabase
-    .from('users')
+  // Create unassigned email_message (user_id = NULL means visible to all)
+  const { data: emailMessage, error: emailError } = await supabase
+    .from('email_messages')
+    .insert({
+      user_id: null, // NULL = unassigned, visible to all users
+      connection_id: null,
+      message_id: email.message_id || email.email_id,
+      internet_message_id: email.message_id,
+      subject: email.subject,
+      from_email: senderEmail,
+      from_name: senderEmail,
+      to_recipients: email.to.map((to: string) => ({ email: to, name: '' })),
+      body_preview: emailBody.substring(0, 500),
+      body_html: email.html,
+      body_text: email.text,
+      received_at: receivedAt.toISOString(),
+      sent_at: receivedAt.toISOString(),
+      importance: 'high', // Mark unassigned as high importance
+      is_read: false,
+      is_flagged: true, // Flag unassigned emails
+      is_draft: false,
+      has_attachments: false,
+      attachment_count: 0,
+      folder: 'inbox',
+    })
     .select('id')
-    .eq('role', 'admin')
-    .eq('is_active', true)
-    .limit(1)
     .single();
 
-  if (!adminUser) {
-    logger.error('[Email Webhook] No admin user found for unassigned task');
+  if (emailError) {
+    logger.error('[Email Webhook] Failed to create unassigned email message', {
+      senderEmail,
+      error: emailError,
+    });
     return;
   }
 
+  // Create unassigned potential task
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + 7);
 
   await supabase.from('potential_tasks').insert({
-    user_id: adminUser.id, // Assign to admin
-    source_email_from: originalFrom,
+    user_id: null, // NULL = unassigned, visible to all users
+    email_message_id: emailMessage.id,
+    source_email_from: senderEmail,
     source_email_subject: email.subject,
     source_email_body: emailBody,
     source_email_received_at: receivedAt.toISOString(),
-    suggested_title: `Unassigned: ${email.subject}`,
-    suggested_description: `Email from unknown sender: ${originalFrom}\n\n${emailBody}`,
-    suggested_priority: 'medium',
+    suggested_title: `⚠️ Unassigned: ${email.subject}`,
+    suggested_description: `Email from unknown sender: ${senderEmail}\n\n${emailBody}`,
+    suggested_priority: 'high',
     ai_confidence: 0, // No AI analysis for unassigned
-    ai_reasoning: 'User not found - assigned to admin for review',
+    ai_reasoning: 'Email from non-user address - needs assignment',
     expires_at: expiresAt.toISOString(),
     status: 'pending',
   });
 
-  logger.info('[Email Webhook] Created unassigned task for admin', {
-    originalFrom,
-    adminUserId: adminUser.id,
+  logger.info('[Email Webhook] Created unassigned email and task for all users', {
+    senderEmail,
+    emailMessageId: emailMessage.id,
   });
 }
 

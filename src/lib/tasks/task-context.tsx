@@ -125,7 +125,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
         setTasks(data.tasks || []);
       }
     } catch (error) {
-      logger.error("[TaskContext] Error fetching tasks", error);
+      logger.error("[TaskContext] Error fetching tasks", { error: error });
     } finally {
       setLoading(false);
     }
@@ -207,7 +207,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       }
       return false;
     } catch (error) {
-      logger.error("[TaskContext] Error updating task status", error);
+      logger.error("[TaskContext] Error updating task status", { error: error });
       return false;
     }
   }, []);
@@ -225,7 +225,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       }
       return false;
     } catch (error) {
-      logger.error("[TaskContext] Error claiming task", error);
+      logger.error("[TaskContext] Error claiming task", { error: error });
       return false;
     }
   }, [refreshTasks]);
@@ -243,7 +243,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       }
       return false;
     } catch (error) {
-      logger.error("[TaskContext] Error releasing task", error);
+      logger.error("[TaskContext] Error releasing task", { error: error });
       return false;
     }
   }, [refreshTasks]);
@@ -263,7 +263,7 @@ export function TaskProvider({ children }: { children: React.ReactNode }) {
       }
       return false;
     } catch (error) {
-      logger.error("[TaskContext] Error assigning task", error);
+      logger.error("[TaskContext] Error assigning task", { error: error });
       return false;
     }
   }, [refreshTasks]);

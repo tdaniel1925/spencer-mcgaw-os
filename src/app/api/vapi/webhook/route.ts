@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     const verification = verifyVapiSignature(rawBody, signature);
 
     if (!verification.valid) {
-      logger.error("VAPI Webhook signature verification failed", verification.error);
+      logger.error("VAPI Webhook signature verification failed", { error: verification.error });
       return NextResponse.json(
         { error: "Invalid webhook signature" },
         { status: 401 }
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(result);
   } catch (error) {
-    logger.error("VAPI Webhook Error:", error);
+    logger.error("VAPI Webhook Error:", { error: error });
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

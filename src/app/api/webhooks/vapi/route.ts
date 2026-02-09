@@ -325,42 +325,47 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Generate AI task suggestions from the call
+    // Generate AI task suggestions from the call (DISABLED per user requirement: manual task creation only)
+    // To enable: set environment variable AUTO_CREATE_CALL_TASKS=true
     let suggestionIds: string[] = [];
-    try {
-      const callContext: CallContext = {
-        callId: recordId || eventId,
-        callerPhone: callerPhone || undefined,
-        callerName: callerName || undefined,
-        transcript: transcript || undefined,
-        summary: summary || undefined,
-        category: parsedData?.analysis?.category || undefined,
-        sentiment: parsedData?.analysis?.sentiment || undefined,
-        urgency: parsedData?.analysis?.urgency || undefined,
-        suggestedActions: parsedData?.analysis?.suggestedActions || undefined,
-        keyPoints: parsedData?.analysis?.keyPoints || undefined,
-        duration: duration || undefined,
-      };
+    if (process.env.AUTO_CREATE_CALL_TASKS === "true") {
+      try {
+        const callContext: CallContext = {
+          callId: recordId || eventId,
+          callerPhone: callerPhone || undefined,
+          callerName: callerName || undefined,
+          transcript: transcript || undefined,
+          summary: summary || undefined,
+          category: parsedData?.analysis?.category || undefined,
+          sentiment: parsedData?.analysis?.sentiment || undefined,
+          urgency: parsedData?.analysis?.urgency || undefined,
+          suggestedActions: parsedData?.analysis?.suggestedActions || undefined,
+          keyPoints: parsedData?.analysis?.keyPoints || undefined,
+          duration: duration || undefined,
+        };
 
-      const suggestions = await generateTaskSuggestionsFromCall(callContext);
+        const suggestions = await generateTaskSuggestionsFromCall(callContext);
 
-      if (suggestions.length > 0) {
-        suggestionIds = await storeTaskSuggestions(
-          suggestions,
-          "phone_call",
-          recordId || eventId,
-          {
-            vapiCallId: eventId,
-            callerPhone,
-            callerName,
-            category: parsedData?.analysis?.category,
-            webhookLogId,
-          }
-        );
+        if (suggestions.length > 0) {
+          suggestionIds = await storeTaskSuggestions(
+            suggestions,
+            "phone_call",
+            recordId || eventId,
+            {
+              vapiCallId: eventId,
+              callerPhone,
+              callerName,
+              category: parsedData?.analysis?.category,
+              webhookLogId,
+            }
+          );
+        }
+      } catch (suggestionError) {
+        // Don't fail the webhook if suggestion generation fails
+        logger.error("[VAPI Webhook] Error generating task suggestions:", { error: suggestionError });
       }
-    } catch (suggestionError) {
-      // Don't fail the webhook if suggestion generation fails
-      logger.error("[VAPI Webhook] Error generating task suggestions:", { error: suggestionError });
+    } else {
+      logger.info("[VAPI Webhook] Auto task creation disabled (manual task creation only)");
     }
 
     return NextResponse.json({

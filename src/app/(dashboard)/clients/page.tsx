@@ -33,6 +33,8 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ClientListSkeleton } from "@/components/ui/loading-skeleton";
 import {
   Search,
   Plus,
@@ -184,17 +186,34 @@ export default function ClientsPage() {
       });
 
       if (response.ok) {
-        toast.success("Client created successfully");
+        const data = await response.json();
+        toast.success(`Client created: ${formData.name}`, {
+          description: "Client has been added to your list",
+          action: data.client?.id ? {
+            label: "View",
+            onClick: () => router.push(`/clients/${data.client.id}`)
+          } : undefined,
+          duration: 5000,
+        });
         setCreateDialogOpen(false);
         resetForm();
         fetchClients();
       } else {
         const error = await response.json();
-        toast.error(error.error || "Failed to create client");
+        const errorMsg = error.error || "Failed to create client";
+        toast.error(errorMsg, {
+          description: errorMsg.includes("already exists")
+            ? "A client with this information already exists"
+            : "Please check your information and try again",
+          duration: 7000,
+        });
       }
     } catch (error) {
       console.error("Error creating client:", error);
-      toast.error("Failed to create client");
+      toast.error("Network error", {
+        description: "Could not connect to server. Check your connection and try again",
+        duration: 7000,
+      });
     } finally {
       setSaving(false);
     }
@@ -257,10 +276,10 @@ export default function ClientsPage() {
           <div className="h-4 border-l mx-2" />
 
           {/* Actions */}
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={fetchClients}>
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={fetchClients} aria-label="Refresh clients list">
             <RefreshCw className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => window.print()}>
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => window.print()} aria-label="Print clients list">
             <Printer className="h-4 w-4" />
           </Button>
           <Button variant="outline" size="sm" className="h-8" onClick={() => setBulkUploadOpen(true)}>
@@ -287,19 +306,50 @@ export default function ClientsPage() {
               <Card className="border-border/50">
                 <CardContent className="p-0">
                   {loading ? (
-                    <div className="flex items-center justify-center py-12">
-                      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                    </div>
+                    <ClientListSkeleton count={10} />
                   ) : clients.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-12 text-center">
-                      <Users className="h-12 w-12 text-muted-foreground mb-4" />
-                      <h3 className="text-lg font-medium">No clients found</h3>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {searchQuery || statusFilter !== "all"
-                          ? "Try adjusting your filters"
-                          : "Add your first client to get started"}
-                      </p>
-                    </div>
+                    searchQuery || statusFilter !== "all" ? (
+                      <EmptyState
+                        icon={Search}
+                        title="No clients found"
+                        description="Try adjusting your search terms or filters to see more results"
+                        action={
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              setSearchQuery("");
+                              setStatusFilter("all");
+                            }}
+                          >
+                            Clear Filters
+                          </Button>
+                        }
+                        size="md"
+                        showCard={false}
+                      />
+                    ) : (
+                      <EmptyState
+                        icon={Users}
+                        title="No clients yet"
+                        description="Add your first client to start organizing all your work and tracking interactions in one place"
+                        action={
+                          <Button asChild size="lg">
+                            <a href="/clients/new">
+                              <Plus className="h-4 w-4 mr-2" />
+                              Add First Client
+                            </a>
+                          </Button>
+                        }
+                        secondaryAction={
+                          <Button variant="outline" asChild>
+                            <a href="/help/clients">Learn More</a>
+                          </Button>
+                        }
+                        tip="💡 Clients help you organize all related tasks, emails, and communications in one place"
+                        size="lg"
+                        showCard={false}
+                      />
+                    )
                   ) : (
                     <Table>
                       <TableHeader>
