@@ -246,12 +246,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Create email_message record first (for Inbound Communications)
+    // Use upsert to handle Resend webhook retries (message_id is unique)
+    const messageId = email.message_id || email.email_id;
+
     const { data: emailMessage, error: emailError } = await supabase
       .from('email_messages')
-      .insert({
+      .upsert({
         user_id: user.id,
         connection_id: null, // Not from OAuth connection
-        message_id: email.message_id || email.email_id, // Resend's unique ID
+        message_id: messageId, // Resend's unique ID
         internet_message_id: email.message_id,
         subject: email.subject,
         from_email: forwarderEmail,
@@ -269,6 +272,10 @@ export async function POST(request: NextRequest) {
         has_attachments: false,
         attachment_count: 0,
         folder: 'inbox',
+        updated_at: new Date().toISOString(),
+      }, {
+        onConflict: 'message_id', // Update if message_id already exists
+        ignoreDuplicates: false, // Update instead of ignoring
       })
       .select('id')
       .single();
@@ -451,12 +458,15 @@ async function createUnassignedEmailAndTask(
   const receivedAt = new Date(email.created_at);
 
   // Create unassigned email_message (user_id = NULL means visible to all)
+  // Use upsert to handle Resend webhook retries (message_id is unique)
+  const messageId = email.message_id || email.email_id;
+
   const { data: emailMessage, error: emailError } = await supabase
     .from('email_messages')
-    .insert({
+    .upsert({
       user_id: null, // NULL = unassigned, visible to all users
       connection_id: null,
-      message_id: email.message_id || email.email_id,
+      message_id: messageId,
       internet_message_id: email.message_id,
       subject: email.subject,
       from_email: senderEmail,
@@ -474,6 +484,10 @@ async function createUnassignedEmailAndTask(
       has_attachments: false,
       attachment_count: 0,
       folder: 'inbox',
+      updated_at: new Date().toISOString(),
+    }, {
+      onConflict: 'message_id', // Update if message_id already exists
+      ignoreDuplicates: false, // Update instead of ignoring
     })
     .select('id')
     .single();
