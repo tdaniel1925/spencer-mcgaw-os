@@ -79,8 +79,14 @@ export const emailSentimentEnum = pgEnum("email_sentiment", ["positive", "neutra
 export const syncStatusEnum = pgEnum("sync_status", ["idle", "syncing", "error", "paused"]);
 export const webhookSubStatusEnum = pgEnum("webhook_sub_status", ["active", "expired", "failed", "none"]);
 export const potentialTaskStatusEnum = pgEnum("potential_task_status", ["pending", "approved", "dismissed", "expired"]);
+export const chatRoomTypeEnum = pgEnum("chat_room_type", ["community", "team", "direct", "private"]);
+export const chatMessageTypeEnum = pgEnum("chat_message_type", ["text", "image", "file", "system", "announcement"]);
+export const chatMemberRoleEnum = pgEnum("chat_member_role", ["admin", "moderator", "member"]);
 
-// Users table
+// Users table (DEPRECATED - Use userProfiles instead)
+// This table exists in Drizzle schema but is not used in production.
+// All user data is stored in user_profiles table (defined below).
+// Kept for backwards compatibility only.
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
   email: varchar("email", { length: 255 }).notNull().unique(),
@@ -96,6 +102,114 @@ export const users = pgTable("users", {
   }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// User Profiles table (PRIMARY USER TABLE - used in production)
+// This is the actual user table used by the application.
+// Synchronized with auth.users via trigger handle_new_user().
+export const userProfiles = pgTable("user_profiles", {
+  id: uuid("id").primaryKey(), // References auth.users(id)
+  email: text("email"),
+  fullName: text("full_name"),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  avatarUrl: text("avatar_url"),
+  phone: text("phone"),
+  jobTitle: text("job_title"),
+  department: text("department"),
+  role: text("role").notNull().default("staff"), // 'owner', 'admin', 'manager', 'staff'
+  isActive: boolean("is_active").notNull().default(true),
+  hireDate: timestamp("hire_date"),
+  timezone: text("timezone").default("America/Chicago"),
+  preferences: jsonb("preferences").default({}),
+  onboardingCompleted: boolean("onboarding_completed").default(false),
+  onboardingCompletedAt: timestamp("onboarding_completed_at"),
+  notificationPreferences: jsonb("notification_preferences").default({
+    email: true,
+    sms: false,
+    dashboard: true,
+  }),
+  showInTaskpool: boolean("show_in_taskpool").default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Chat Rooms table
+export const chatRooms = pgTable("chat_rooms", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  slug: text("slug").notNull().unique(),
+  description: text("description"),
+  type: text("type").notNull().default("community"), // 'community', 'team', 'direct', 'private'
+  isPrivate: boolean("is_private").notNull().default(false),
+  isArchived: boolean("is_archived").notNull().default(false),
+  icon: text("icon"),
+  color: text("color"),
+  participantIds: uuid("participant_ids").array(),
+  lastMessageAt: timestamp("last_message_at"),
+  messageCount: integer("message_count").notNull().default(0),
+  createdBy: uuid("created_by").references(() => userProfiles.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Chat Messages table
+export const chatMessages = pgTable("chat_messages", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  roomId: uuid("room_id").notNull().references(() => chatRooms.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => userProfiles.id, { onDelete: "cascade" }),
+  content: text("content").notNull(),
+  messageType: text("message_type").notNull().default("text"), // 'text', 'image', 'file', 'system', 'announcement'
+  replyToId: uuid("reply_to_id"), // Self-reference handled in DB and relations
+  threadId: uuid("thread_id"), // Self-reference handled in DB and relations
+  isEdited: boolean("is_edited").notNull().default(false),
+  editedAt: timestamp("edited_at"),
+  originalContent: text("original_content"),
+  isDeleted: boolean("is_deleted").notNull().default(false),
+  attachments: jsonb("attachments").default([]),
+  metadata: jsonb("metadata").default({}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Chat Room Members table
+export const chatRoomMembers = pgTable("chat_room_members", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  roomId: uuid("room_id").notNull().references(() => chatRooms.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => userProfiles.id, { onDelete: "cascade" }),
+  role: text("role").notNull().default("member"), // 'admin', 'moderator', 'member'
+  canPost: boolean("can_post").notNull().default(true),
+  isMuted: boolean("is_muted").notNull().default(false),
+  mutedUntil: timestamp("muted_until"),
+  lastReadAt: timestamp("last_read_at"),
+  lastReadMessageId: uuid("last_read_message_id").references(() => chatMessages.id, { onDelete: "set null" }),
+  joinedAt: timestamp("joined_at").notNull().defaultNow(),
+});
+
+// Chat Mentions table
+export const chatMentions = pgTable("chat_mentions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  messageId: uuid("message_id").notNull().references(() => chatMessages.id, { onDelete: "cascade" }),
+  mentionedUserId: uuid("mentioned_user_id").notNull().references(() => userProfiles.id, { onDelete: "cascade" }),
+  isRead: boolean("is_read").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// Chat Message Reactions table
+export const chatMessageReactions = pgTable("chat_message_reactions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  messageId: uuid("message_id").notNull().references(() => chatMessages.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => userProfiles.id, { onDelete: "cascade" }),
+  emoji: varchar("emoji", { length: 20 }).notNull(), // e.g., '👍', '❤️', '😂'
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// Chat Typing Indicators table
+export const chatTypingIndicators = pgTable("chat_typing_indicators", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  roomId: uuid("room_id").notNull().references(() => chatRooms.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => userProfiles.id, { onDelete: "cascade" }),
+  startedAt: timestamp("started_at").notNull().defaultNow(),
 });
 
 // Clients table
@@ -1405,6 +1519,103 @@ export const webhookLogsRelations = relations(webhookLogs, ({ one }) => ({
   }),
 }));
 
+// User Profiles Relations
+export const userProfilesRelations = relations(userProfiles, ({ many }) => ({
+  chatRoomsCreated: many(chatRooms),
+  chatMessages: many(chatMessages),
+  chatRoomMemberships: many(chatRoomMembers),
+  chatMentions: many(chatMentions),
+  chatReactions: many(chatMessageReactions),
+  chatTypingIndicators: many(chatTypingIndicators),
+}));
+
+// Chat Rooms Relations
+export const chatRoomsRelations = relations(chatRooms, ({ one, many }) => ({
+  creator: one(userProfiles, {
+    fields: [chatRooms.createdBy],
+    references: [userProfiles.id],
+  }),
+  messages: many(chatMessages),
+  members: many(chatRoomMembers),
+  typingIndicators: many(chatTypingIndicators),
+}));
+
+// Chat Messages Relations
+export const chatMessagesRelations = relations(chatMessages, ({ one, many }) => ({
+  room: one(chatRooms, {
+    fields: [chatMessages.roomId],
+    references: [chatRooms.id],
+  }),
+  author: one(userProfiles, {
+    fields: [chatMessages.userId],
+    references: [userProfiles.id],
+  }),
+  replyTo: one(chatMessages, {
+    fields: [chatMessages.replyToId],
+    references: [chatMessages.id],
+    relationName: "replies",
+  }),
+  thread: one(chatMessages, {
+    fields: [chatMessages.threadId],
+    references: [chatMessages.id],
+    relationName: "threadMessages",
+  }),
+  mentions: many(chatMentions),
+  reactions: many(chatMessageReactions),
+}));
+
+// Chat Room Members Relations
+export const chatRoomMembersRelations = relations(chatRoomMembers, ({ one }) => ({
+  room: one(chatRooms, {
+    fields: [chatRoomMembers.roomId],
+    references: [chatRooms.id],
+  }),
+  user: one(userProfiles, {
+    fields: [chatRoomMembers.userId],
+    references: [userProfiles.id],
+  }),
+  lastReadMessage: one(chatMessages, {
+    fields: [chatRoomMembers.lastReadMessageId],
+    references: [chatMessages.id],
+  }),
+}));
+
+// Chat Mentions Relations
+export const chatMentionsRelations = relations(chatMentions, ({ one }) => ({
+  message: one(chatMessages, {
+    fields: [chatMentions.messageId],
+    references: [chatMessages.id],
+  }),
+  mentionedUser: one(userProfiles, {
+    fields: [chatMentions.mentionedUserId],
+    references: [userProfiles.id],
+  }),
+}));
+
+// Chat Message Reactions Relations
+export const chatMessageReactionsRelations = relations(chatMessageReactions, ({ one }) => ({
+  message: one(chatMessages, {
+    fields: [chatMessageReactions.messageId],
+    references: [chatMessages.id],
+  }),
+  user: one(userProfiles, {
+    fields: [chatMessageReactions.userId],
+    references: [userProfiles.id],
+  }),
+}));
+
+// Chat Typing Indicators Relations
+export const chatTypingIndicatorsRelations = relations(chatTypingIndicators, ({ one }) => ({
+  room: one(chatRooms, {
+    fields: [chatTypingIndicators.roomId],
+    references: [chatRooms.id],
+  }),
+  user: one(userProfiles, {
+    fields: [chatTypingIndicators.userId],
+    references: [userProfiles.id],
+  }),
+}));
+
 // Types
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -1478,3 +1689,17 @@ export type EmailAiInsight = typeof emailAiInsights.$inferSelect;
 export type NewEmailAiInsight = typeof emailAiInsights.$inferInsert;
 export type PotentialTask = typeof potentialTasks.$inferSelect;
 export type NewPotentialTask = typeof potentialTasks.$inferInsert;
+export type UserProfile = typeof userProfiles.$inferSelect;
+export type NewUserProfile = typeof userProfiles.$inferInsert;
+export type ChatRoom = typeof chatRooms.$inferSelect;
+export type NewChatRoom = typeof chatRooms.$inferInsert;
+export type ChatMessage = typeof chatMessages.$inferSelect;
+export type NewChatMessage = typeof chatMessages.$inferInsert;
+export type ChatRoomMember = typeof chatRoomMembers.$inferSelect;
+export type NewChatRoomMember = typeof chatRoomMembers.$inferInsert;
+export type ChatMention = typeof chatMentions.$inferSelect;
+export type NewChatMention = typeof chatMentions.$inferInsert;
+export type ChatMessageReaction = typeof chatMessageReactions.$inferSelect;
+export type NewChatMessageReaction = typeof chatMessageReactions.$inferInsert;
+export type ChatTypingIndicator = typeof chatTypingIndicators.$inferSelect;
+export type NewChatTypingIndicator = typeof chatTypingIndicators.$inferInsert;
