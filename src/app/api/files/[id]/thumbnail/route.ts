@@ -16,7 +16,7 @@ const THUMBNAIL_QUALITY = 80;
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
@@ -28,7 +28,7 @@ export async function GET(
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const fileId = params.id;
+    const { id: fileId } = await params;
 
     // Get file metadata
     const { data: file, error: fileError } = await supabase

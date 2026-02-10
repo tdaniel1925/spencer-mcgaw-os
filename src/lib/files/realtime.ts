@@ -58,7 +58,7 @@ export function subscribeToFileChanges(
       },
       (payload) => {
         const eventType = payload.eventType as FileChangeType;
-        const record = payload.new || payload.old;
+        const record = (payload.new || payload.old) as any;
 
         if (!record) return;
 
@@ -101,7 +101,7 @@ export function subscribeToFolderChanges(
       },
       (payload) => {
         const eventType = payload.eventType as FileChangeType;
-        const record = payload.new || payload.old;
+        const record = (payload.new || payload.old) as any;
 
         if (!record) return;
 

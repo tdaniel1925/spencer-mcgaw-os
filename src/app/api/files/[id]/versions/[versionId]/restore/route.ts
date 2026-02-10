@@ -12,7 +12,7 @@ import { createClient } from "@/lib/supabase/server";
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string; versionId: string } }
+  { params }: { params: Promise<{ id: string; versionId: string }> }
 ) {
   try {
     const supabase = await createClient();
@@ -24,8 +24,7 @@ export async function POST(
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const fileId = params.id;
-    const versionId = params.versionId;
+    const { id: fileId, versionId } = await params;
 
     // Get file to verify ownership
     const { data: file, error: fileError } = await supabase

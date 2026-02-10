@@ -45,11 +45,10 @@ export async function POST(request: NextRequest) {
       .where(eq(users.id, adminUser.id))
       .limit(1);
 
-    const isOwner = adminProfile?.role === 'owner';
     const isAdmin = adminProfile?.role === 'admin';
     const isSuperUser = adminProfile?.email === 'tdaniel@botmakers.ai';
 
-    if (!adminProfile || (!isOwner && !isAdmin && !isSuperUser)) {
+    if (!adminProfile || (!isAdmin && !isSuperUser)) {
       logger.warn('[Impersonation] Non-admin attempted to impersonate', {
         adminId: adminUser.id,
         role: adminProfile?.role,
@@ -87,28 +86,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Cannot impersonate inactive user' }, { status: 400 });
     }
 
-    // Prevent impersonating other admins (unless you're owner or super user)
-    if (targetUser.role === 'admin' && !isOwner && !isSuperUser) {
+    // Prevent impersonating other admins (unless you're super user)
+    if (targetUser.role === 'admin' && !isSuperUser) {
       logger.warn('[Impersonation] Admin attempted to impersonate another admin', {
         adminId: adminUser.id,
         adminRole: adminProfile.role,
         targetUserId,
       });
       return NextResponse.json(
-        { error: 'Forbidden: Only owners can impersonate admins' },
+        { error: 'Forbidden: Only super users can impersonate admins' },
         { status: 403 }
       );
     }
 
-    // Prevent impersonating owners (even super user can't impersonate owners for security)
-    if (targetUser.role === 'owner' && !isSuperUser) {
-      logger.warn('[Impersonation] Attempted to impersonate owner', {
+    // Prevent impersonating other admins unless you're super user
+    if (targetUser.role === 'admin' && !isSuperUser) {
+      logger.warn('[Impersonation] Attempted to impersonate admin', {
         adminId: adminUser.id,
         adminRole: adminProfile.role,
         targetUserId,
       });
       return NextResponse.json(
-        { error: 'Forbidden: Cannot impersonate owners' },
+        { error: 'Forbidden: Cannot impersonate other admins' },
         { status: 403 }
       );
     }
