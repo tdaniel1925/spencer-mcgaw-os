@@ -67,6 +67,17 @@ export async function POST(request: NextRequest) {
       hasData: !!body.data,
     });
 
+    // 🔍 DIAGNOSTIC: Log what Resend actually sends
+    logger.info('[Email Webhook] RAW PAYLOAD DIAGNOSTIC', {
+      hasHtml: !!body.data?.html,
+      hasText: !!body.data?.text,
+      hasEmailId: !!body.data?.email_id,
+      dataKeys: body.data ? Object.keys(body.data) : [],
+      htmlLength: body.data?.html?.length || 0,
+      textLength: body.data?.text?.length || 0,
+      subject: body.data?.subject,
+    });
+
     // Validate webhook payload
     let webhook: ResendWebhook;
     try {
