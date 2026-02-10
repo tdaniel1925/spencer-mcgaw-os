@@ -1,6 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getApiUser, isAdmin } from "@/lib/auth/api-rbac";
+import { z } from "zod";
+
+// ============================================================================
+// VALIDATION SCHEMAS
+// ============================================================================
+
+const GetUsersQuerySchema = z.object({
+  search: z.string().optional(),
+  taskpool: z.enum(["true", "false"]).optional(),
+});
+
+const UpdateUserSchema = z.object({
+  userId: z.string().uuid("Invalid user ID format"),
+  show_in_taskpool: z.boolean(),
+});
+
+// ============================================================================
+// API ROUTES
+// ============================================================================
 
 // GET - List users for assignment dropdown
 export async function GET(request: NextRequest) {
@@ -12,8 +31,22 @@ export async function GET(request: NextRequest) {
   }
 
   const { searchParams } = new URL(request.url);
-  const search = searchParams.get("search") || "";
-  const taskpoolOnly = searchParams.get("taskpool") === "true";
+
+  // Validate query parameters
+  const queryValidation = GetUsersQuerySchema.safeParse({
+    search: searchParams.get("search"),
+    taskpool: searchParams.get("taskpool"),
+  });
+
+  if (!queryValidation.success) {
+    return NextResponse.json(
+      { error: "Invalid query parameters", details: queryValidation.error.issues },
+      { status: 400 }
+    );
+  }
+
+  const search = queryValidation.data.search || "";
+  const taskpoolOnly = queryValidation.data.taskpool === "true";
 
   try {
     // Get users from user_profiles table
@@ -61,16 +94,11 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { userId, show_in_taskpool } = body;
 
-    if (!userId) {
-      return NextResponse.json({ error: "User ID is required" }, { status: 400 });
-    }
+    // Validate request body
+    const validated = UpdateUserSchema.parse(body);
 
-    // Validate show_in_taskpool is a boolean
-    if (typeof show_in_taskpool !== "boolean") {
-      return NextResponse.json({ error: "show_in_taskpool must be a boolean" }, { status: 400 });
-    }
+    const { userId, show_in_taskpool } = validated;
 
     const { data, error } = await supabase
       .from("user_profiles")
@@ -87,6 +115,14 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ user: data });
   } catch (error) {
     console.error("Error updating user profile:", error);
+
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: "Validation error", details: error.issues },
+        { status: 400 }
+      );
+    }
+
     return NextResponse.json({ error: "Failed to update user" }, { status: 500 });
   }
 }
