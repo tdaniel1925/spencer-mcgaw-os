@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
       .from("chat_messages")
       .select(`
         *,
-        users:user_id (
+        user_profiles:user_id (
           id,
           full_name,
           email,

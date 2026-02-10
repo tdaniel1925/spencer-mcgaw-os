@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
           content,
           room_id,
           created_at,
-          users:user_id (
+          user_profiles:user_id (
             id,
             full_name,
             email,

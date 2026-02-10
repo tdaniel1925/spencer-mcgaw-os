@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
         content,
         created_at,
         user_id,
-        users:user_id (
+        user_profiles:user_id (
           full_name,
           email
         )
@@ -130,7 +130,7 @@ export async function GET(request: NextRequest) {
           .select(`
             room_id,
             user_id,
-            users:user_id (
+            user_profiles:user_id (
               id,
               full_name,
               email,
@@ -144,7 +144,7 @@ export async function GET(request: NextRequest) {
     // Create a map of room_id -> other user for private rooms
     const otherUserByRoom: Record<string, unknown> = {};
     for (const member of allPrivateMembers || []) {
-      otherUserByRoom[member.room_id] = member.users;
+      otherUserByRoom[member.room_id] = member.user_profiles;
     }
 
     // Wait for unread counts

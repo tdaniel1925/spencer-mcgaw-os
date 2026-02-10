@@ -1257,7 +1257,7 @@ export function FileProvider({ children }: { children: React.ReactNode }) {
         .from("folder_permissions")
         .select(`
           *,
-          users:user_id (
+          user_profiles:user_id (
             full_name,
             email,
             avatar_url

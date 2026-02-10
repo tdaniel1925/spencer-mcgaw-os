@@ -401,7 +401,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
             .from("chat_messages")
             .select(`
               *,
-              users:user_id (
+              user_profiles:user_id (
                 id,
                 full_name,
                 email,
