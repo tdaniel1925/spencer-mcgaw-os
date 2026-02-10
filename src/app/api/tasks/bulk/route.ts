@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
 
         // Get assignee details
         const { data: assignee } = await supabase
-          .from("users")
+          .from("user_profiles")
           .select("full_name, email")
           .eq("id", validated.assignedTo)
           .single();

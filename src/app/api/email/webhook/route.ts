@@ -180,7 +180,7 @@ export async function POST(request: NextRequest) {
     // Find user by forwarder's email
     const supabase = await createClient();
     const { data: user, error: userError } = await supabase
-      .from('users')
+      .from('user_profiles')
       .select('id, email, full_name, is_active')
       .eq('email', forwarderEmail)
       .eq('is_active', true)
