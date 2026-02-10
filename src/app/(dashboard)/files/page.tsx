@@ -105,6 +105,7 @@ import { FilePreview } from "@/components/files/file-preview";
 import { StorageInfo, SyncStatusBadge } from "@/components/files/sync-status-badge";
 import { FileErrorBoundary } from "@/components/files/file-error-boundary";
 import { FileThumbnail } from "@/components/files/file-thumbnail";
+import { VersionHistoryDialog } from "@/components/files/version-history-dialog";
 
 // File type to icon mapping
 const getFileIcon = (mimeType: string) => {
@@ -196,6 +197,8 @@ export default function FilesPage() {
   const [shareMaxDownloads, setShareMaxDownloads] = useState<number | "">("");
   const [sharePermission, setSharePermission] = useState<"view" | "download" | "edit">("download");
   const [generatedShareUrl, setGeneratedShareUrl] = useState("");
+  const [showVersionHistory, setShowVersionHistory] = useState(false);
+  const [versionHistoryFile, setVersionHistoryFile] = useState<FileRecord | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; type: "file" | "folder" } | null>(null);
   const [activeSection, setActiveSection] = useState<"all" | "recent" | "starred" | "trash" | "team" | "repository">("all");
@@ -1000,6 +1003,15 @@ export default function FilesPage() {
                               <Download className="h-4 w-4 mr-2" />
                               Download
                             </ContextMenuItem>
+                            {activeSection !== "trash" && (
+                              <ContextMenuItem onClick={() => {
+                                setVersionHistoryFile(file);
+                                setShowVersionHistory(true);
+                              }}>
+                                <Clock className="h-4 w-4 mr-2" />
+                                Version History
+                              </ContextMenuItem>
+                            )}
                             {activeSection === "trash" ? (
                               <>
                                 <ContextMenuSeparator />
@@ -1399,6 +1411,18 @@ export default function FilesPage() {
         onPrevious={() => navigatePreview("prev")}
         hasNext={previewFile ? displayFiles.findIndex(f => f.id === previewFile.id) < displayFiles.length - 1 : false}
         hasPrevious={previewFile ? displayFiles.findIndex(f => f.id === previewFile.id) > 0 : false}
+      />
+
+      {/* Version History Dialog */}
+      <VersionHistoryDialog
+        fileId={versionHistoryFile?.id || null}
+        fileName={versionHistoryFile?.name || ""}
+        open={showVersionHistory}
+        onOpenChange={setShowVersionHistory}
+        onVersionRestored={() => {
+          refreshCurrentFolder();
+          toast.success("Version restored successfully");
+        }}
       />
     </FileErrorBoundary>
   );
