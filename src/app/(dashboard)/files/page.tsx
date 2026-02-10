@@ -104,6 +104,7 @@ const MAX_FILE_SIZE_BYTES = 1073741824;
 import { FilePreview } from "@/components/files/file-preview";
 import { StorageInfo, SyncStatusBadge } from "@/components/files/sync-status-badge";
 import { FileErrorBoundary } from "@/components/files/file-error-boundary";
+import { FileThumbnail } from "@/components/files/file-thumbnail";
 
 // File type to icon mapping
 const getFileIcon = (mimeType: string) => {
@@ -190,6 +191,11 @@ export default function FilesPage() {
   const [renameTarget, setRenameTarget] = useState<{ id: string; name: string; type: "file" | "folder" } | null>(null);
   const [showShareDialog, setShowShareDialog] = useState(false);
   const [shareTarget, setShareTarget] = useState<FileRecord | null>(null);
+  const [sharePassword, setSharePassword] = useState("");
+  const [shareExpiration, setShareExpiration] = useState("");
+  const [shareMaxDownloads, setShareMaxDownloads] = useState<number | "">("");
+  const [sharePermission, setSharePermission] = useState<"view" | "download" | "edit">("download");
+  const [generatedShareUrl, setGeneratedShareUrl] = useState("");
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; type: "file" | "folder" } | null>(null);
   const [activeSection, setActiveSection] = useState<"all" | "recent" | "starred" | "trash" | "team" | "repository">("all");
@@ -419,17 +425,39 @@ export default function FilesPage() {
 
   // Handle share
   const handleShare = useCallback(async () => {
-    if (shareTarget) {
-      const share = await createShareLink(shareTarget.id);
-      if (share?.shareUrl) {
-        await navigator.clipboard.writeText(share.shareUrl);
+    if (!shareTarget) return;
+
+    try {
+      const response = await fetch("/api/files/shares", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileId: shareTarget.id,
+          permission: sharePermission,
+          password: sharePassword || undefined,
+          expiresAt: shareExpiration || undefined,
+          maxDownloads: shareMaxDownloads || undefined,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to create share link");
+      }
+
+      const data = await response.json();
+
+      if (data.share?.shareUrl) {
+        setGeneratedShareUrl(data.share.shareUrl);
+        await navigator.clipboard.writeText(data.share.shareUrl);
         toast.success("Share link copied to clipboard");
-        setShowShareDialog(false);
       } else {
         toast.error("Failed to create share link");
       }
+    } catch (error) {
+      console.error("Share error:", error);
+      toast.error("Failed to create share link");
     }
-  }, [shareTarget, createShareLink]);
+  }, [shareTarget, sharePassword, shareExpiration, shareMaxDownloads, sharePermission]);
 
   // Open file preview
   const openPreview = useCallback((file: FileRecord) => {
@@ -951,7 +979,13 @@ export default function FilesPage() {
                                 <Star className="absolute top-2 right-2 h-4 w-4 text-amber-500 fill-amber-500" />
                               )}
                               <div className="flex flex-col items-center gap-2">
-                                <FileIcon className="h-12 w-12 text-muted-foreground" />
+                                <FileThumbnail
+                                  fileId={file.id}
+                                  fileName={file.name}
+                                  mimeType={file.mimeType}
+                                  fallbackIcon={FileIcon}
+                                  className="w-full aspect-square"
+                                />
                                 <p className="text-sm font-medium text-center truncate w-full">{file.name}</p>
                                 <p className="text-xs text-muted-foreground">{formatFileSize(file.sizeBytes)}</p>
                               </div>
@@ -1241,30 +1275,117 @@ export default function FilesPage() {
       </Dialog>
 
       {/* Share Dialog */}
-      <Dialog open={showShareDialog} onOpenChange={setShowShareDialog}>
-        <DialogContent className="sm:max-w-md">
+      <Dialog open={showShareDialog} onOpenChange={(open) => {
+        setShowShareDialog(open);
+        if (!open) {
+          // Reset form
+          setSharePassword("");
+          setShareExpiration("");
+          setShareMaxDownloads("");
+          setSharePermission("download");
+          setGeneratedShareUrl("");
+        }
+      }}>
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Share "{shareTarget?.name}"</DialogTitle>
             <DialogDescription>
-              Create a shareable link to this file
+              Create a secure shareable link with optional password and expiration
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
-              <Link2 className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm flex-1 truncate">
-                {typeof window !== "undefined" && `${window.location.origin}/share/...`}
-              </span>
-            </div>
+            {generatedShareUrl ? (
+              <div className="space-y-3">
+                <Label>Share Link (copied to clipboard)</Label>
+                <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
+                  <Link2 className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                  <span className="text-sm flex-1 truncate font-mono">
+                    {generatedShareUrl}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(generatedShareUrl);
+                      toast.success("Copied!");
+                    }}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+                {sharePassword && (
+                  <div className="p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                    <p className="text-sm text-amber-900 dark:text-amber-100">
+                      🔒 Password: <span className="font-mono font-semibold">{sharePassword}</span>
+                    </p>
+                    <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                      Share this password separately with recipients
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="permission">Permission Level</Label>
+                  <select
+                    id="permission"
+                    value={sharePermission}
+                    onChange={(e) => setSharePermission(e.target.value as any)}
+                    className="w-full px-3 py-2 border rounded-lg bg-background"
+                  >
+                    <option value="view">View Only</option>
+                    <option value="download">View & Download</option>
+                    <option value="edit">View, Download & Edit</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password (optional)</Label>
+                  <Input
+                    id="password"
+                    type="text"
+                    placeholder="Enter password for extra security"
+                    value={sharePassword}
+                    onChange={(e) => setSharePassword(e.target.value)}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="expiration">Expires (optional)</Label>
+                    <Input
+                      id="expiration"
+                      type="datetime-local"
+                      value={shareExpiration}
+                      onChange={(e) => setShareExpiration(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="maxDownloads">Max Downloads</Label>
+                    <Input
+                      id="maxDownloads"
+                      type="number"
+                      min="1"
+                      placeholder="Unlimited"
+                      value={shareMaxDownloads}
+                      onChange={(e) => setShareMaxDownloads(e.target.value ? parseInt(e.target.value) : "")}
+                    />
+                  </div>
+                </div>
+              </>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowShareDialog(false)}>
-              Cancel
+              {generatedShareUrl ? "Done" : "Cancel"}
             </Button>
-            <Button onClick={handleShare}>
-              <Copy className="h-4 w-4 mr-2" />
-              Copy Link
-            </Button>
+            {!generatedShareUrl && (
+              <Button onClick={handleShare}>
+                <Link2 className="h-4 w-4 mr-2" />
+                Create Share Link
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
