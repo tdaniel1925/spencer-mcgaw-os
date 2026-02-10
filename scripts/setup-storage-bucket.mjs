@@ -1,85 +1,47 @@
-import { createClient } from "@supabase/supabase-js";
-import dotenv from "dotenv";
-import { fileURLToPath } from "url";
-import { dirname, join } from "path";
+import { createClient } from '@supabase/supabase-js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://cyygkhwujcrbhzgjqipj.supabase.co';
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN5eWdraHd1amNyYmh6Z2pxaXBqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NDc0MDk4NywiZXhwIjoyMDgwMzE2OTg3fQ.A307u4qstiXj_AWbLxaD1mhP9DUD_ImMWNYqKU1N7JI';
 
-dotenv.config({ path: join(__dirname, "..", ".env.local") });
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  console.error("Missing Supabase credentials in .env.local");
-  process.exit(1);
-}
-
-const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: { persistSession: false },
-});
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 async function setupStorageBucket() {
-  console.log("Setting up storage bucket...\n");
+  try {
+    console.log('\n🚀 Setting up Supabase storage bucket...\n');
 
-  // 1. Create the bucket
-  console.log("1. Creating 'files' bucket...");
-  const { data: bucketData, error: bucketError } = await supabase.storage.createBucket("files", {
-    public: false,
-    fileSizeLimit: 52428800, // 50MB
-  });
+    const { data: buckets, error: listError } = await supabase.storage.listBuckets();
 
-  if (bucketError) {
-    if (bucketError.message.includes("already exists")) {
-      console.log("   ✓ Bucket 'files' already exists\n");
-    } else {
-      console.error("   ✗ Error creating bucket:", bucketError.message);
-      return;
+    if (listError) {
+      console.error('❌ Failed to list buckets:', listError.message);
+      process.exit(1);
     }
-  } else {
-    console.log("   ✓ Bucket 'files' created successfully\n");
+
+    const filesBucket = buckets.find(b => b.name === 'files');
+
+    if (filesBucket) {
+      console.log('✅ Storage bucket "files" already exists');
+      console.log(`   ID: ${filesBucket.id}`);
+      console.log(`   Public: ${filesBucket.public}`);
+    } else {
+      const { data: newBucket, error: createError } = await supabase.storage.createBucket('files', {
+        public: false,
+        fileSizeLimit: 104857600,
+      });
+
+      if (createError) {
+        console.error('❌ Failed to create bucket:', createError.message);
+        process.exit(1);
+      }
+
+      console.log('✅ Created storage bucket "files"');
+    }
+
+    console.log('\n✅ Storage bucket setup complete!\n');
+
+  } catch (error) {
+    console.error('❌ Unexpected error:', error.message);
+    process.exit(1);
   }
-
-  // 2. Note about policies
-  console.log("2. Storage policies need to be set up in the Supabase Dashboard:");
-  console.log("   Go to: Storage → files bucket → Policies tab\n");
-  console.log("   Or run this SQL in the SQL Editor:\n");
-
-  const policySql = `
--- Storage policies for the files bucket
--- Run this in Supabase SQL Editor
-
--- Allow authenticated users to upload files
-CREATE POLICY "Allow authenticated uploads"
-ON storage.objects FOR INSERT
-TO authenticated
-WITH CHECK (bucket_id = 'files');
-
--- Allow authenticated users to read files
-CREATE POLICY "Allow authenticated reads"
-ON storage.objects FOR SELECT
-TO authenticated
-USING (bucket_id = 'files');
-
--- Allow authenticated users to update files
-CREATE POLICY "Allow authenticated updates"
-ON storage.objects FOR UPDATE
-TO authenticated
-USING (bucket_id = 'files');
-
--- Allow authenticated users to delete files
-CREATE POLICY "Allow authenticated deletes"
-ON storage.objects FOR DELETE
-TO authenticated
-USING (bucket_id = 'files');
-`;
-
-  console.log(policySql);
-  console.log("\n✓ Storage bucket setup complete!");
-  console.log("\nNext steps:");
-  console.log("1. Copy the SQL above and run it in Supabase SQL Editor");
-  console.log("2. Or manually create policies in Storage → files → Policies");
 }
 
-setupStorageBucket().catch(console.error);
+setupStorageBucket();
