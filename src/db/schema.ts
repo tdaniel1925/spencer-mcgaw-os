@@ -312,6 +312,9 @@ export const tasks = pgTable("tasks", {
   tags: jsonb("tags").$type<string[]>().default([]),
   customFields: jsonb("custom_fields").$type<Record<string, unknown>>().default({}),
 
+  // View tracking
+  firstViewedAt: timestamp("first_viewed_at"),
+
   // Timestamps
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -545,6 +548,7 @@ export const calls = pgTable("calls", {
   id: uuid("id").primaryKey().defaultRandom(),
   vapiCallId: varchar("vapi_call_id", { length: 255 }).unique(),
   clientId: uuid("client_id").references(() => clients.id),
+  userId: uuid("user_id").references(() => userProfiles.id),
   callerPhone: varchar("caller_phone", { length: 20 }),
   callerName: varchar("caller_name", { length: 255 }),
   status: callStatusEnum("status").notNull(),

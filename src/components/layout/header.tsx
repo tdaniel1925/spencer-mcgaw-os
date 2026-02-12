@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { PageBreadcrumb } from "./page-breadcrumb";
 import { useNotifications } from "@/lib/notifications";
+import { QuickTaskButton } from "./quick-task-button";
 
 interface HeaderProps {
   title: string;
@@ -83,6 +84,9 @@ export function Header({ title, breadcrumbItems, currentPageLabel }: HeaderProps
 
       {/* Right: Notifications & Profile */}
       <div className="flex items-center gap-2">
+        {/* Quick Task Button */}
+        <QuickTaskButton />
+
         {/* Call Notifications */}
         <Popover>
           <PopoverTrigger asChild>

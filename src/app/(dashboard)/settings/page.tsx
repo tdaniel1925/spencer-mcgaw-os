@@ -15,6 +15,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
@@ -40,10 +46,12 @@ import {
   EyeOff,
   AlertCircle,
   Check,
+  Info,
 } from "lucide-react";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { useEmail } from "@/lib/email/email-context";
 import { toast } from "sonner";
+import { DEFAULT_COMPANY_NAME } from "@/lib/constants";
 
 interface EmailAccount {
   id: string;
@@ -132,8 +140,6 @@ export default function SettingsPage() {
   const { accounts: contextAccounts, refreshAccounts } = useEmail();
   const [loadingAccounts, setLoadingAccounts] = useState(false);
   const [connecting, setConnecting] = useState(false);
-  const [orphanedDataCount, setOrphanedDataCount] = useState(0);
-  const [clearingData, setClearingData] = useState(false);
   const [updatingRoutingId, setUpdatingRoutingId] = useState<string | null>(null);
 
   // Profile form state
@@ -147,7 +153,7 @@ export default function SettingsPage() {
 
   // Company form state
   const [company, setCompany] = useState<CompanySettings>({
-    companyName: "Spencer McGaw CPA",
+    companyName: DEFAULT_COMPANY_NAME,
     companyEmail: "",
     companyPhone: "",
     timezone: "cst",
@@ -182,6 +188,16 @@ export default function SettingsPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [passwordErrors, setPasswordErrors] = useState<string[]>([]);
 
+  // Fastmail connection state
+  const [fastmailForm, setFastmailForm] = useState({
+    email: "",
+    appPassword: "",
+  });
+  const [connectingFastmail, setConnectingFastmail] = useState(false);
+
+  // Clear all data state
+  const [clearingAllData, setClearingAllData] = useState(false);
+
   // Load profile, company, and notification settings
   useEffect(() => {
     async function loadSettings() {
@@ -205,7 +221,7 @@ export default function SettingsPage() {
         if (companyRes.ok) {
           const data = await companyRes.json();
           setCompany({
-            companyName: data.companyName || "Spencer McGaw CPA",
+            companyName: data.companyName || DEFAULT_COMPANY_NAME,
             companyEmail: data.companyEmail || "",
             companyPhone: data.companyPhone || "",
             timezone: data.timezone || "cst",
@@ -450,25 +466,6 @@ export default function SettingsPage() {
     loadAccounts();
   }, [refreshAccounts]);
 
-  // Check for orphaned data when accounts change
-  useEffect(() => {
-    const checkOrphanedData = async () => {
-      if (emailAccounts.length === 0) {
-        try {
-          const emailDataResponse = await fetch("/api/email-intelligence?limit=1");
-          if (emailDataResponse.ok) {
-            const emailData = await emailDataResponse.json();
-            setOrphanedDataCount(emailData.total || 0);
-          }
-        } catch (error) {
-          console.error("Error checking orphaned data:", error);
-        }
-      } else {
-        setOrphanedDataCount(0);
-      }
-    };
-    checkOrphanedData();
-  }, [emailAccounts.length]);
 
   const handleConnectMicrosoft = () => {
     setConnecting(true);
@@ -506,35 +503,81 @@ export default function SettingsPage() {
     }
   };
 
-  const handleClearOrphanedData = async () => {
+
+  // Handle clear all data
+  const handleClearAllData = async () => {
     if (!confirm(
-      "Are you sure you want to clear all orphaned email data?\n\n" +
+      "⚠️ DANGER: Clear ALL Data?\n\n" +
       "This will permanently delete:\n" +
-      "• All email classifications and AI analysis\n" +
-      "• All extracted action items\n" +
-      "• All tasks created from emails\n" +
-      "• Email training data\n\n" +
-      "This action cannot be undone."
+      "• All emails\n" +
+      "• All tasks\n" +
+      "• All phone calls\n" +
+      "• All clients and contacts\n" +
+      "• All documents\n" +
+      "• All activity logs\n" +
+      "• Everything except users\n\n" +
+      "This action CANNOT be undone!\n\n" +
+      "Type 'DELETE' to confirm:"
     )) return;
 
-    setClearingData(true);
+    const confirmation = prompt("Type DELETE to confirm:");
+    if (confirmation !== "DELETE") {
+      toast.error("Cancelled - confirmation did not match");
+      return;
+    }
+
+    setClearingAllData(true);
     try {
-      const response = await fetch("/api/email/cleanup", {
-        method: "POST",
+      const response = await fetch("/api/admin/clear-all-data", {
+        method: "DELETE",
       });
 
       if (response.ok) {
         const data = await response.json();
-        toast.success(`Cleaned up ${data.cleaned?.classifications || 0} orphaned email records.`);
-        setOrphanedDataCount(0);
+        toast.success(data.message || "All data cleared successfully");
+        // Reload page
+        window.location.reload();
       } else {
-        toast.error("Failed to clear orphaned data");
+        const data = await response.json();
+        toast.error(data.error || "Failed to clear data");
       }
     } catch (error) {
-      console.error("Error clearing orphaned data:", error);
-      toast.error("Failed to clear orphaned data");
+      console.error("Error clearing data:", error);
+      toast.error("Failed to clear data");
     } finally {
-      setClearingData(false);
+      setClearingAllData(false);
+    }
+  };
+
+  // Handle Fastmail connection
+  const handleConnectFastmail = async () => {
+    if (!fastmailForm.email || !fastmailForm.appPassword) {
+      toast.error("Please enter both email and app password");
+      return;
+    }
+
+    setConnectingFastmail(true);
+    try {
+      const response = await fetch("/api/email/fastmail/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fastmailForm),
+      });
+
+      if (response.ok) {
+        toast.success("Fastmail account connected successfully!");
+        setFastmailForm({ email: "", appPassword: "" });
+        // Refresh accounts
+        await refreshAccounts();
+      } else {
+        const data = await response.json();
+        toast.error(data.error || "Failed to connect Fastmail account");
+      }
+    } catch (error) {
+      console.error("Error connecting Fastmail:", error);
+      toast.error("Failed to connect Fastmail account");
+    } finally {
+      setConnectingFastmail(false);
     }
   };
 
@@ -568,6 +611,78 @@ export default function SettingsPage() {
     }
   };
 
+  // Reusable email account card component
+  const renderEmailAccountCard = (account: EmailAccount, providerColor: string, providerIcon: string) => (
+    <div
+      key={account.id}
+      className="flex flex-col gap-3 p-3 border rounded-lg"
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className={`h-10 w-10 rounded-full ${providerColor} flex items-center justify-center`}>
+            <Mail className={`h-5 w-5 ${providerIcon}`} />
+          </div>
+          <div>
+            <p className="font-medium text-sm">{account.email}</p>
+            <p className="text-xs text-muted-foreground">
+              {account.isConnected ? (
+                <span className="flex items-center gap-1">
+                  <CheckCircle className="h-3 w-3 text-green-600" />
+                  Connected
+                </span>
+              ) : (
+                <span className="flex items-center gap-1">
+                  <XCircle className="h-3 w-3 text-destructive" />
+                  Disconnected
+                </span>
+              )}
+            </p>
+          </div>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => handleDisconnectAccount(account.id)}
+        >
+          Disconnect
+        </Button>
+      </div>
+
+      {/* Email Routing Selection */}
+      <div className="flex items-center gap-2 pt-2 border-t">
+        <Label htmlFor={`routing-${account.id}`} className="text-xs font-medium min-w-fit">
+          Email Routing:
+        </Label>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs">
+              <p className="font-semibold mb-1">Personal Inbox</p>
+              <p className="text-xs mb-2">Emails visible only to you. Private communication stays in your personal view.</p>
+              <p className="font-semibold mb-1">Org Feed</p>
+              <p className="text-xs">Emails visible to your entire organization. Great for shared communication and team collaboration.</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        <Select
+          value={account.isGlobal ? "org" : "personal"}
+          onValueChange={(value) => handleRoutingChange(account.id, value === "org")}
+          disabled={updatingRoutingId === account.id}
+        >
+          <SelectTrigger id={`routing-${account.id}`} className="h-8 text-xs flex-1">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="personal">Personal Inbox</SelectItem>
+            <SelectItem value="org">Org Feed</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  );
+
   return (
     <>
       <Header title="Settings" />
@@ -587,6 +702,10 @@ export default function SettingsPage() {
             <TabsTrigger value="notifications" className="flex items-center gap-2">
               <Bell className="h-4 w-4" />
               Notifications
+            </TabsTrigger>
+            <TabsTrigger value="email" className="flex items-center gap-2">
+              <Mail className="h-4 w-4" />
+              Email
             </TabsTrigger>
             <TabsTrigger value="security" className="flex items-center gap-2">
               <Shield className="h-4 w-4" />
@@ -1101,6 +1220,134 @@ export default function SettingsPage() {
             </div>
           </TabsContent>
 
+          {/* Email Settings */}
+          <TabsContent value="email">
+            <div className="space-y-6">
+              {/* Fastmail Connection */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Mail className="h-5 w-5" />
+                    Fastmail Connection
+                  </CardTitle>
+                  <CardDescription>
+                    Connect your Fastmail account to sync emails automatically
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* Connected Accounts */}
+                  {emailAccounts.filter(acc => acc.provider === "imap").length > 0 && (
+                    <div className="space-y-3">
+                      <p className="text-sm font-medium">Connected Accounts</p>
+                      {emailAccounts
+                        .filter(acc => acc.provider === "imap")
+                        .map((account) => renderEmailAccountCard(account, "bg-indigo-100", "text-indigo-600"))}
+                    </div>
+                  )}
+
+                  <Separator />
+
+                  {/* Add New Fastmail Account */}
+                  <div className="space-y-4">
+                    <p className="text-sm font-medium">Add New Fastmail Account</p>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="fastmailEmail">Fastmail Email</Label>
+                      <Input
+                        id="fastmailEmail"
+                        type="email"
+                        placeholder="you@fastmail.com"
+                        value={fastmailForm.email}
+                        onChange={(e) =>
+                          setFastmailForm(prev => ({ ...prev, email: e.target.value }))
+                        }
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="fastmailPassword">App Password</Label>
+                      <Input
+                        id="fastmailPassword"
+                        type="password"
+                        placeholder="Enter your Fastmail app password"
+                        value={fastmailForm.appPassword}
+                        onChange={(e) =>
+                          setFastmailForm(prev => ({ ...prev, appPassword: e.target.value }))
+                        }
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        You can create an app password in your Fastmail settings under{" "}
+                        <a
+                          href="https://www.fastmail.com/settings/security/devicekeys"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary hover:underline inline-flex items-center gap-1"
+                        >
+                          Security → App Passwords
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      </p>
+                    </div>
+
+                    <Button
+                      onClick={handleConnectFastmail}
+                      disabled={connectingFastmail || !fastmailForm.email || !fastmailForm.appPassword}
+                      className="w-full"
+                    >
+                      {connectingFastmail ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                          Connecting...
+                        </>
+                      ) : (
+                        <>
+                          <Mail className="h-4 w-4 mr-2" />
+                          Connect Fastmail
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Microsoft Email Connection */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Mail className="h-5 w-5" />
+                    Microsoft Email Connection
+                  </CardTitle>
+                  <CardDescription>
+                    Connect your Microsoft/Outlook account for email integration
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {emailAccounts.filter(acc => acc.provider === "microsoft").length > 0 ? (
+                    <div className="space-y-3">
+                      {emailAccounts
+                        .filter(acc => acc.provider === "microsoft")
+                        .map((account) => renderEmailAccountCard(account, "bg-blue-100", "text-blue-600"))}
+                    </div>
+                  ) : (
+                    <Button onClick={handleConnectMicrosoft} disabled={connecting}>
+                      {connecting ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                          Connecting...
+                        </>
+                      ) : (
+                        <>
+                          <Mail className="h-4 w-4 mr-2" />
+                          Connect Microsoft Email
+                        </>
+                      )}
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
           {/* Security Settings */}
           <TabsContent value="security">
             <Card>
@@ -1265,6 +1512,55 @@ export default function SettingsPage() {
           {isAdmin && (
             <TabsContent value="data-management">
               <div className="space-y-6">
+                {/* Clear All Data - DANGER ZONE */}
+                <Card className="border-destructive">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-destructive">
+                      <AlertCircle className="h-5 w-5" />
+                      Danger Zone - Clear All Data
+                    </CardTitle>
+                    <CardDescription>
+                      Permanently delete all data except users. This action cannot be undone.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg mb-4">
+                      <p className="text-sm text-destructive font-medium mb-2">
+                        ⚠️ This will permanently delete:
+                      </p>
+                      <ul className="text-sm text-destructive space-y-1 list-disc list-inside">
+                        <li>All emails and email connections</li>
+                        <li>All tasks and potential tasks</li>
+                        <li>All phone calls and recordings</li>
+                        <li>All clients and contacts</li>
+                        <li>All documents and files</li>
+                        <li>All activity logs and notifications</li>
+                      </ul>
+                      <p className="text-sm text-destructive font-medium mt-2">
+                        ✅ Users and authentication data will be preserved
+                      </p>
+                    </div>
+                    <Button
+                      variant="destructive"
+                      onClick={handleClearAllData}
+                      disabled={clearingAllData}
+                      className="w-full"
+                    >
+                      {clearingAllData ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                          Clearing All Data...
+                        </>
+                      ) : (
+                        <>
+                          <XCircle className="h-4 w-4 mr-2" />
+                          Clear All Data (Keep Users)
+                        </>
+                      )}
+                    </Button>
+                  </CardContent>
+                </Card>
+
                 {/* Current Call Data */}
                 <Card>
                   <CardHeader>

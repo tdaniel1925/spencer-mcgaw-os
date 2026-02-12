@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, memo } from "react";
 import {
   Kanban,
   Plus,
@@ -71,6 +71,7 @@ import { cn } from "@/lib/utils";
 import { TaskDetailModal } from "@/app/(dashboard)/taskpool/task-detail-modal";
 import { CreateTaskDialog } from "@/app/(dashboard)/taskpool/create-task-dialog";
 import Link from "next/link";
+import { motion, AnimatePresence, Reorder } from "framer-motion";
 
 interface ActionType {
   id: string;
@@ -208,6 +209,26 @@ function formatTimeElapsed(dateString: string): { text: string; isOld: boolean }
   return { text, isOld };
 }
 
+// Debounce utility for server updates
+function useDebounce<T extends (...args: any[]) => any>(
+  callback: T,
+  delay: number
+): T {
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  return useCallback(
+    ((...args: Parameters<T>) => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+      timeoutRef.current = setTimeout(() => {
+        callback(...args);
+      }, delay);
+    }) as T,
+    [callback, delay]
+  );
+}
+
 export default function KanbanBoardPage() {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [actionTypes, setActionTypes] = useState<ActionType[]>([]);
@@ -244,18 +265,62 @@ export default function KanbanBoardPage() {
     }
   }, []);
 
-  // Scroll handlers for arrow buttons
+  // Scroll handlers for arrow buttons with smooth easing
   const scrollLeft = () => {
     const container = scrollContainerRef.current;
     if (container) {
-      container.scrollBy({ left: -300, behavior: "smooth" });
+      const start = container.scrollLeft;
+      const target = start - 320;
+      const duration = 300;
+      const startTime = performance.now();
+
+      const easeInOutCubic = (t: number) => {
+        return t < 0.5
+          ? 4 * t * t * t
+          : 1 - Math.pow(-2 * t + 2, 3) / 2;
+      };
+
+      const animate = (currentTime: number) => {
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        const eased = easeInOutCubic(progress);
+        container.scrollLeft = start + (target - start) * eased;
+
+        if (progress < 1) {
+          requestAnimationFrame(animate);
+        }
+      };
+
+      requestAnimationFrame(animate);
     }
   };
 
   const scrollRight = () => {
     const container = scrollContainerRef.current;
     if (container) {
-      container.scrollBy({ left: 300, behavior: "smooth" });
+      const start = container.scrollLeft;
+      const target = start + 320;
+      const duration = 300;
+      const startTime = performance.now();
+
+      const easeInOutCubic = (t: number) => {
+        return t < 0.5
+          ? 4 * t * t * t
+          : 1 - Math.pow(-2 * t + 2, 3) / 2;
+      };
+
+      const animate = (currentTime: number) => {
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        const eased = easeInOutCubic(progress);
+        container.scrollLeft = start + (target - start) * eased;
+
+        if (progress < 1) {
+          requestAnimationFrame(animate);
+        }
+      };
+
+      requestAnimationFrame(animate);
     }
   };
 
@@ -456,7 +521,6 @@ export default function KanbanBoardPage() {
     setTasks(prev => prev.map(t =>
       t.id === taskId ? { ...t, status } : t
     ));
-    toast.success("Task status updated");
 
     try {
       const response = await fetch(`/api/taskpool/tasks/${taskId}`, {
@@ -465,7 +529,11 @@ export default function KanbanBoardPage() {
         body: JSON.stringify({ status }),
       });
 
-      if (!response.ok) {
+      if (response.ok) {
+        toast.success("Task moved successfully", {
+          duration: 2000,
+        });
+      } else {
         // Revert on error
         setTasks(previousTasks);
         toast.error("Failed to update task");
@@ -478,8 +546,49 @@ export default function KanbanBoardPage() {
     }
   };
 
+  // Debounced version for drag operations (not used in optimistic update, but available)
+  const debouncedStatusUpdate = useDebounce(handleChangeStatus, 300);
+
   // Track dragged task ID in ref for reliability across events
   const draggedTaskIdRef = useRef<string | null>(null);
+  const autoScrollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Auto-scroll when dragging near edges
+  const handleAutoScroll = useCallback((e: React.DragEvent) => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const rect = container.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const scrollSpeed = 15;
+    const edgeThreshold = 100;
+
+    if (autoScrollIntervalRef.current) {
+      clearInterval(autoScrollIntervalRef.current);
+      autoScrollIntervalRef.current = null;
+    }
+
+    if (x < edgeThreshold) {
+      // Scroll left
+      autoScrollIntervalRef.current = setInterval(() => {
+        container.scrollLeft -= scrollSpeed;
+        updateScrollButtons();
+      }, 16);
+    } else if (x > rect.width - edgeThreshold) {
+      // Scroll right
+      autoScrollIntervalRef.current = setInterval(() => {
+        container.scrollLeft += scrollSpeed;
+        updateScrollButtons();
+      }, 16);
+    }
+  }, [updateScrollButtons]);
+
+  const stopAutoScroll = useCallback(() => {
+    if (autoScrollIntervalRef.current) {
+      clearInterval(autoScrollIntervalRef.current);
+      autoScrollIntervalRef.current = null;
+    }
+  }, []);
 
   // Drag and Drop handlers
   const handleDragStart = (e: React.DragEvent, task: Task) => {
@@ -492,27 +601,31 @@ export default function KanbanBoardPage() {
     e.dataTransfer.setData("text/plain", task.id);
     e.dataTransfer.setData("application/x-task-id", task.id);
 
-    // Create a custom drag image that preserves the card's appearance
+    // Create a custom drag image with enhanced styling
     const sourceElement = e.currentTarget as HTMLElement;
     const rect = sourceElement.getBoundingClientRect();
     const dragImage = sourceElement.cloneNode(true) as HTMLElement;
 
-    // Set fixed dimensions to match the original card
+    // Enhanced drag image styling with smooth animations
     dragImage.style.width = `${rect.width}px`;
     dragImage.style.height = `${rect.height}px`;
     dragImage.style.position = "fixed";
     dragImage.style.top = "-9999px";
     dragImage.style.left = "-9999px";
-    dragImage.style.opacity = "0.9";
-    dragImage.style.transform = "rotate(2deg)";
+    dragImage.style.opacity = "0.98";
+    dragImage.style.transform = "rotate(4deg) scale(1.08)";
     dragImage.style.pointerEvents = "none";
     dragImage.style.zIndex = "9999";
-    dragImage.style.boxShadow = "0 8px 16px rgba(0,0,0,0.15)";
-    dragImage.style.borderRadius = "8px";
+    dragImage.style.boxShadow = "0 25px 50px -12px rgba(0,0,0,0.35), 0 15px 25px -8px rgba(0,0,0,0.2)";
+    dragImage.style.borderRadius = "12px";
     dragImage.style.overflow = "hidden";
+    dragImage.style.border = "3px solid hsl(var(--primary))";
+    dragImage.style.willChange = "transform";
+    dragImage.style.backdropFilter = "blur(8px)";
+    dragImage.style.transition = "transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1)";
 
     document.body.appendChild(dragImage);
-    e.dataTransfer.setDragImage(dragImage, rect.width / 2, 20);
+    e.dataTransfer.setDragImage(dragImage, rect.width / 2, 25);
 
     // Remove after a brief delay
     requestAnimationFrame(() => {
@@ -522,20 +635,10 @@ export default function KanbanBoardPage() {
         }
       }, 0);
     });
-
-    // Visual feedback on source
-    requestAnimationFrame(() => {
-      sourceElement.style.opacity = "0.4";
-      sourceElement.style.transform = "scale(0.98)";
-    });
   };
 
   const handleDragEnd = (e: React.DragEvent) => {
-    const target = e.currentTarget as HTMLElement;
-    if (target) {
-      target.style.opacity = "1";
-      target.style.transform = "";
-    }
+    stopAutoScroll();
     setDraggedTask(null);
     draggedTaskIdRef.current = null;
     setDragOverColumn(null);
@@ -546,6 +649,7 @@ export default function KanbanBoardPage() {
     e.stopPropagation();
     e.dataTransfer.dropEffect = "move";
     setDragOverColumn(columnId);
+    handleAutoScroll(e);
   };
 
   const handleDragEnter = (e: React.DragEvent, columnId: string) => {
@@ -568,6 +672,7 @@ export default function KanbanBoardPage() {
   const handleDrop = async (e: React.DragEvent, statusId: string) => {
     e.preventDefault();
     e.stopPropagation();
+    stopAutoScroll();
     setDragOverColumn(null);
 
     // Try multiple methods to get the task ID
@@ -646,7 +751,14 @@ export default function KanbanBoardPage() {
     return user.email.slice(0, 2).toUpperCase();
   };
 
-  const renderTaskCard = (task: Task) => {
+  // Memoized task card component for performance
+  const TaskCard = memo(({
+    task,
+    isDragging
+  }: {
+    task: Task;
+    isDragging: boolean;
+  }) => {
     const isOverdue = task.due_date && new Date(task.due_date) < new Date();
     const createdDate = new Date(task.created_at);
     const isRecent = (Date.now() - createdDate.getTime()) < 24 * 60 * 60 * 1000;
@@ -657,63 +769,134 @@ export default function KanbanBoardPage() {
     const { text: timerText, isOld } = formatTimeElapsed(timerDate);
 
     return (
-      <div
-        key={task.id}
-        draggable
-        onDragStart={(e) => handleDragStart(e, task)}
-        onDragEnd={handleDragEnd}
-        className={cn(
-          "bg-background rounded-lg border cursor-grab transition-all duration-200",
-          "hover:shadow-md hover:border-border/80",
-          "group relative overflow-hidden select-none",
-          draggedTask?.id === task.id && "opacity-40 scale-[0.98] cursor-grabbing"
-        )}
-        onClick={() => setSelectedTask(task)}
+      <motion.div
+        layout
+        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+        animate={{
+          opacity: isDragging ? 0.5 : 1,
+          scale: isDragging ? 0.95 : 1,
+          y: 0,
+          rotateZ: isDragging ? 2 : 0
+        }}
+        exit={{ opacity: 0, scale: 0.9, y: -20 }}
+        transition={{
+          layout: { type: "spring", stiffness: 500, damping: 30 },
+          opacity: { duration: 0.2 },
+          scale: { type: "spring", stiffness: 600, damping: 35 },
+          rotateZ: { duration: 0.2 }
+        }}
+        whileHover={{
+          y: -3,
+          scale: 1.02,
+          boxShadow: "0 10px 30px -5px rgba(0,0,0,0.15), 0 8px 15px -6px rgba(0,0,0,0.1)",
+          transition: { type: "spring", stiffness: 400, damping: 25 }
+        }}
+        whileTap={{ scale: 0.98 }}
+        style={{
+          willChange: "transform, opacity, box-shadow"
+        }}
       >
-        {/* Priority indicator strip */}
         <div
+          draggable
+          onDragStart={(e) => handleDragStart(e, task)}
+          onDragEnd={handleDragEnd}
           className={cn(
-            "absolute left-0 top-0 bottom-0 w-1",
+            "bg-background rounded-lg border",
+            isDragging ? "cursor-grabbing shadow-2xl" : "cursor-grab hover:shadow-lg hover:shadow-black/5 hover:border-primary/20",
+            "group relative overflow-hidden select-none",
+            "transition-shadow duration-200 will-change-transform"
+          )}
+          onClick={() => setSelectedTask(task)}
+        >
+        {/* Priority indicator strip */}
+        <motion.div
+          className={cn(
+            "absolute left-0 top-0 bottom-0 w-1.5",
             priorityDotColors[task.priority] || "bg-gray-300"
           )}
+          initial={{ scaleY: 0, opacity: 0 }}
+          animate={{
+            scaleY: 1,
+            opacity: 1
+          }}
+          transition={{
+            type: "spring",
+            stiffness: 600,
+            damping: 30,
+            delay: 0.05
+          }}
+          style={{ transformOrigin: "top" }}
+        />
+
+        {/* Subtle gradient overlay for depth */}
+        <motion.div
+          className="absolute inset-0 bg-gradient-to-br from-transparent via-transparent to-black/[0.015] pointer-events-none"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: isDragging ? 0 : 1 }}
+          transition={{ duration: 0.2 }}
         />
 
         <div className="p-3 pl-3.5">
           {/* Header row with badges and timer */}
           <div className="flex items-start justify-between gap-2 mb-2">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <Badge
-                variant="secondary"
-                className={cn(
-                  "text-[10px] px-1.5 py-0 font-medium capitalize",
-                  priorityColors[task.priority]
-                )}
+              <motion.div
+                initial={{ opacity: 0, x: -5 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.1 }}
               >
-                {task.priority}
-              </Badge>
-              {task.action_type && (
                 <Badge
-                  variant="outline"
-                  className="text-[10px] px-1.5 py-0"
-                  style={{ borderColor: task.action_type.color, color: task.action_type.color }}
+                  variant="secondary"
+                  className={cn(
+                    "text-[10px] px-1.5 py-0 font-medium capitalize",
+                    priorityColors[task.priority]
+                  )}
                 >
-                  {task.action_type.label}
+                  {task.priority}
                 </Badge>
+              </motion.div>
+              {task.action_type && (
+                <motion.div
+                  initial={{ opacity: 0, x: -5 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.15 }}
+                >
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] px-1.5 py-0"
+                    style={{ borderColor: task.action_type.color, color: task.action_type.color }}
+                  >
+                    {task.action_type.label}
+                  </Badge>
+                </motion.div>
               )}
             </div>
             <div className="flex items-center gap-1.5">
               {/* Time since assigned/created badge */}
-              <Badge
-                variant="secondary"
-                className={cn(
-                  "text-[10px] px-1.5 py-0 font-medium flex items-center gap-0.5",
-                  isOld ? "bg-amber-100 text-amber-700" : "bg-muted text-muted-foreground"
-                )}
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.2, type: "spring", stiffness: 500, damping: 30 }}
               >
-                <Clock className="h-2.5 w-2.5" />
-                {timerText}
-              </Badge>
-              <GripVertical className="h-4 w-4 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab" />
+                <Badge
+                  variant="secondary"
+                  className={cn(
+                    "text-[10px] px-1.5 py-0 font-medium flex items-center gap-0.5",
+                    isOld ? "bg-amber-100 text-amber-700" : "bg-muted text-muted-foreground"
+                  )}
+                >
+                  <Clock className="h-2.5 w-2.5" />
+                  {timerText}
+                </Badge>
+              </motion.div>
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: isDragging ? 1 : 0.3 }}
+                whileHover={{ opacity: 1, scale: 1.1 }}
+                transition={{ duration: 0.15 }}
+              >
+                <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab active:cursor-grabbing" />
+              </motion.div>
             </div>
           </div>
 
@@ -758,9 +941,23 @@ export default function KanbanBoardPage() {
             )}
           </div>
         </div>
-      </div>
+        </div>
+      </motion.div>
     );
-  };
+  }, (prevProps, nextProps) => {
+    // Custom comparison for better memoization
+    return (
+      prevProps.task.id === nextProps.task.id &&
+      prevProps.task.status === nextProps.task.status &&
+      prevProps.task.priority === nextProps.task.priority &&
+      prevProps.task.title === nextProps.task.title &&
+      prevProps.task.assigned_to === nextProps.task.assigned_to &&
+      prevProps.task.due_date === nextProps.task.due_date &&
+      prevProps.isDragging === nextProps.isDragging
+    );
+  });
+
+  TaskCard.displayName = 'TaskCard';
 
   return (
     <div className="flex flex-col h-screen bg-muted/20">
@@ -854,27 +1051,47 @@ export default function KanbanBoardPage() {
 
       {/* Board Content */}
       <div className="flex-1 relative min-h-0">
-        {/* Scroll Arrow Buttons */}
-        {canScrollLeft && (
-          <Button
-            variant="secondary"
-            size="icon"
-            className="absolute left-2 top-1/2 -translate-y-1/2 z-10 h-10 w-10 rounded-full shadow-lg bg-background/90 backdrop-blur-sm"
-            onClick={scrollLeft}
-          >
-            <ChevronLeft className="h-5 w-5" />
-          </Button>
-        )}
-        {canScrollRight && (
-          <Button
-            variant="secondary"
-            size="icon"
-            className="absolute right-2 top-1/2 -translate-y-1/2 z-10 h-10 w-10 rounded-full shadow-lg bg-background/90 backdrop-blur-sm"
-            onClick={scrollRight}
-          >
-            <ChevronRight className="h-5 w-5" />
-          </Button>
-        )}
+        {/* Scroll Arrow Buttons - Enhanced with animations */}
+        <AnimatePresence>
+          {canScrollLeft && (
+            <motion.div
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.2 }}
+              className="absolute left-2 top-1/2 -translate-y-1/2 z-10"
+            >
+              <Button
+                variant="secondary"
+                size="icon"
+                className="h-10 w-10 rounded-full shadow-lg bg-background/95 backdrop-blur-md hover:shadow-xl transition-all hover:scale-105"
+                onClick={scrollLeft}
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </Button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        <AnimatePresence>
+          {canScrollRight && (
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              transition={{ duration: 0.2 }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 z-10"
+            >
+              <Button
+                variant="secondary"
+                size="icon"
+                className="h-10 w-10 rounded-full shadow-lg bg-background/95 backdrop-blur-md hover:shadow-xl transition-all hover:scale-105"
+                onClick={scrollRight}
+              >
+                <ChevronRight className="h-5 w-5" />
+              </Button>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <div
           ref={scrollContainerRef}
@@ -883,11 +1100,46 @@ export default function KanbanBoardPage() {
           {loading ? (
             <div className="flex gap-4 h-full">
               {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="w-80 flex-shrink-0 space-y-3">
-                  <Skeleton className="h-10 w-full rounded-lg" />
-                  <Skeleton className="h-24 w-full rounded-lg" />
-                  <Skeleton className="h-24 w-full rounded-lg" />
-                </div>
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{
+                    delay: i * 0.05,
+                    duration: 0.3
+                  }}
+                  className="w-80 flex-shrink-0"
+                >
+                  <div className="bg-card rounded-xl border overflow-hidden shadow-sm">
+                    <Skeleton className="h-12 w-full" />
+                    <div className="p-2 space-y-2">
+                      {[1, 2, 3].map((j) => (
+                        <motion.div
+                          key={j}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{
+                            delay: i * 0.05 + j * 0.03,
+                            duration: 0.2
+                          }}
+                        >
+                          <div className="bg-background rounded-lg border p-3">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Skeleton className="h-4 w-12" />
+                              <Skeleton className="h-4 w-16" />
+                            </div>
+                            <Skeleton className="h-5 w-full mb-1" />
+                            <Skeleton className="h-3 w-3/4 mb-2" />
+                            <div className="flex items-center justify-between pt-2 border-t">
+                              <Skeleton className="h-5 w-5 rounded-full" />
+                              <Skeleton className="h-3 w-16" />
+                            </div>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </div>
+                  </div>
+                </motion.div>
               ))}
             </div>
           ) : (
@@ -900,35 +1152,75 @@ export default function KanbanBoardPage() {
                 const isDropTarget = dragOverColumn === column.code;
 
                 return (
-                  <div
+                  <motion.div
                     key={column.id}
+                    layout
+                    initial={{ opacity: 0, x: 20, scale: 0.95 }}
+                    animate={{
+                      opacity: 1,
+                      x: 0,
+                      scale: isDropTarget ? 1.02 : 1,
+                      boxShadow: isDropTarget
+                        ? "0 0 0 3px hsl(var(--primary) / 0.5), 0 15px 40px -8px rgba(0,0,0,0.25)"
+                        : "0 1px 3px 0 rgba(0,0,0,0.1)"
+                    }}
+                    transition={{
+                      duration: 0.3,
+                      scale: { type: "spring", stiffness: 400, damping: 25 },
+                      boxShadow: { duration: 0.2 }
+                    }}
                     className={cn(
-                      "w-80 flex-shrink-0 flex flex-col bg-card rounded-xl shadow-sm border overflow-hidden transition-all",
-                      isDropTarget && "ring-2 ring-blue-500 ring-offset-2 bg-blue-50/50"
+                      "w-80 flex-shrink-0 flex flex-col bg-card rounded-xl border overflow-hidden",
+                      "will-change-transform"
                     )}
                   >
                     {/* Column Header */}
-                    <div className={cn(
-                      "flex items-center gap-2 px-3 py-2.5 border-b",
-                      colors.bg
-                    )}>
+                    <motion.div
+                      className={cn(
+                        "flex items-center gap-2 px-3 py-2.5 border-b",
+                        colors.bg
+                      )}
+                      animate={{
+                        backgroundColor: isDropTarget
+                          ? "hsl(var(--primary) / 0.15)"
+                          : undefined,
+                        borderBottomColor: isDropTarget
+                          ? "hsl(var(--primary) / 0.3)"
+                          : undefined
+                      }}
+                      transition={{ duration: 0.2 }}
+                    >
                       <Icon className={cn("h-4 w-4", colors.text)} />
                       <span className="font-semibold text-sm text-foreground flex-1">
                         {column.label}
                       </span>
-                      <Badge variant="secondary" className="text-xs">
-                        {columnTasks.length}
-                      </Badge>
-                    </div>
+                      <motion.div
+                        key={columnTasks.length}
+                        initial={{ scale: 1.2 }}
+                        animate={{ scale: 1 }}
+                        transition={{ type: "spring", stiffness: 500, damping: 25 }}
+                      >
+                        <Badge variant="secondary" className="text-xs">
+                          {columnTasks.length}
+                        </Badge>
+                      </motion.div>
+                    </motion.div>
 
                     {/* Column Content - This is the drop zone */}
-                    <div
+                    <motion.div
                       data-column-content
                       data-column-code={column.code}
-                      className={cn(
-                        "flex-1 p-2 space-y-2 overflow-y-auto bg-muted/10 min-h-[200px]",
-                        isDropTarget && "bg-blue-100/30"
-                      )}
+                      className="flex-1 p-2 overflow-y-auto min-h-[200px] scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent"
+                      animate={{
+                        backgroundColor: isDropTarget
+                          ? "hsl(var(--primary) / 0.08)"
+                          : "transparent",
+                        scale: isDropTarget ? 0.99 : 1
+                      }}
+                      transition={{
+                        backgroundColor: { duration: 0.2 },
+                        scale: { type: "spring", stiffness: 400, damping: 30 }
+                      }}
                       onDragOver={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
@@ -953,15 +1245,66 @@ export default function KanbanBoardPage() {
                       onDrop={(e) => handleDrop(e, column.code)}
                     >
                       {columnTasks.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-8 text-muted-foreground pointer-events-none">
-                          <Icon className={cn("h-6 w-6 opacity-30 mb-2", colors.text)} />
-                          <p className="text-xs">Drop tasks here</p>
-                        </div>
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.3 }}
+                          className="flex flex-col items-center justify-center py-12 text-muted-foreground pointer-events-none"
+                        >
+                          <motion.div
+                            animate={{
+                              scale: isDropTarget ? 1.15 : 1,
+                              opacity: isDropTarget ? 0.7 : 0.35,
+                              y: isDropTarget ? -4 : 0
+                            }}
+                            transition={{
+                              type: "spring",
+                              stiffness: 400,
+                              damping: 20
+                            }}
+                          >
+                            <Icon className={cn("h-8 w-8 mb-2", colors.text)} />
+                          </motion.div>
+                          <motion.p
+                            className="text-xs font-medium"
+                            animate={{
+                              opacity: isDropTarget ? 1 : 0.6,
+                              scale: isDropTarget ? 1.05 : 1
+                            }}
+                            transition={{ duration: 0.2 }}
+                          >
+                            {isDropTarget ? "Drop task here" : "No tasks"}
+                          </motion.p>
+                        </motion.div>
                       ) : (
-                        columnTasks.map((task) => renderTaskCard(task))
+                        <motion.div
+                          className="space-y-2"
+                          layout
+                        >
+                          <AnimatePresence mode="popLayout">
+                            {columnTasks.map((task, index) => (
+                              <motion.div
+                                key={task.id}
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{
+                                  delay: index * 0.03,
+                                  type: "spring",
+                                  stiffness: 500,
+                                  damping: 35
+                                }}
+                              >
+                                <TaskCard
+                                  task={task}
+                                  isDragging={draggedTask?.id === task.id}
+                                />
+                              </motion.div>
+                            ))}
+                          </AnimatePresence>
+                        </motion.div>
                       )}
-                    </div>
-                  </div>
+                    </motion.div>
+                  </motion.div>
                 );
               })}
             </div>

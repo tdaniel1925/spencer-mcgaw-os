@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { DEFAULT_ORGANIZATION_ID, DEFAULT_COMPANY_NAME } from "@/lib/constants";
+import { companySchema } from "@/lib/validations/settings";
+import { ZodError } from "zod";
 
 // GET - Get company/organization settings
 export async function GET() {
@@ -62,7 +64,15 @@ export async function PUT(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { companyName, companyEmail, companyPhone, timezone, address, website, taxId } = body;
+
+    // Validate request body with Zod (only validate the fields we defined in schema)
+    const { companyName, address, phone, website, taxId } = companySchema.parse({
+      companyName: body.companyName,
+      address: body.address,
+      phone: body.companyPhone,
+      website: body.website,
+      taxId: body.taxId,
+    });
 
     // Upsert settings (insert if not exists, update if exists)
     const { error } = await supabase
@@ -70,12 +80,12 @@ export async function PUT(request: NextRequest) {
       .upsert({
         id: DEFAULT_ORGANIZATION_ID,
         company_name: companyName,
-        company_email: companyEmail,
-        company_phone: companyPhone,
-        timezone,
-        address,
-        website,
-        tax_id: taxId,
+        company_email: body.companyEmail || null,
+        company_phone: phone || null,
+        timezone: body.timezone || "cst",
+        address: address || null,
+        website: website || null,
+        tax_id: taxId || null,
         updated_at: new Date().toISOString(),
         updated_by: user.id,
       });
@@ -87,6 +97,12 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({ success: true, message: "Company settings updated successfully" });
   } catch (error) {
+    if (error instanceof ZodError) {
+      return NextResponse.json(
+        { error: "Validation failed", details: error.issues },
+        { status: 400 }
+      );
+    }
     console.error("Error in company settings PUT:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }

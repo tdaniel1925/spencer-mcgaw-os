@@ -61,6 +61,7 @@ import { useAuth } from "@/lib/supabase/auth-context";
 import { Permission, roleInfo } from "@/lib/permissions";
 import { useNotifications, getProgressPercentage } from "@/lib/notifications";
 import { useOnboarding } from "@/lib/onboarding/onboarding-provider";
+import { useUnopenedTasksCount } from "@/hooks/use-unopened-tasks-count";
 
 interface NavItem {
   title: string;
@@ -72,6 +73,7 @@ interface NavItem {
     href: string;
     permission?: Permission;
     description?: string; // Tooltip description
+    showBadge?: boolean; // Show unopened tasks notification badge
   }[];
   permission?: Permission; // Required permission to view this nav item
   adminOnly?: boolean; // Only show to admin/owner
@@ -115,18 +117,13 @@ const navSections: NavSection[] = [
             href: "/tasks",
             permission: "tasks:view",
             description: "Tasks assigned to you",
+            showBadge: true, // Flag to show unopened count badge
           },
           {
             title: "Team Tasks",
             href: "/team-tasks",
             permission: "tasks:view_all",
             description: "All tasks assigned to your team members",
-          },
-          {
-            title: "Unassigned",
-            href: "/org-tasks",
-            permission: "tasks:view",
-            description: "Available tasks in the pool that anyone can claim",
           },
         ],
       },
@@ -141,12 +138,6 @@ const navSections: NavSection[] = [
   {
     label: "Organization",
     items: [
-      {
-        title: "Org Feed",
-        href: "/org-feed",
-        icon: Activity,
-        permission: "dashboard:view",
-      },
       {
         title: "Chat",
         href: "/chat",
@@ -254,10 +245,7 @@ export function Sidebar() {
   const { taskProgress } = useNotifications();
   const progressPercentage = getProgressPercentage(taskProgress);
   const { triggerOnboarding } = useOnboarding();
-
-  // Hide sidebar on email client page
-  const isEmailClient = pathname === '/email-client';
-  if (isEmailClient) return null;
+  const { count: unopenedTasksCount } = useUnopenedTasksCount();
 
   useEffect(() => {
     setMounted(true);
@@ -407,18 +395,28 @@ export function Sidebar() {
             className="ml-4 mt-1 space-y-1 border-l border-sidebar-border pl-4"
           >
             {item.children?.map((child) => {
+              const showNotificationBadge = child.showBadge && unopenedTasksCount > 0;
+
               const childContent = (
                 <Link
                   key={child.href}
                   href={child.href}
                   className={cn(
-                    "block px-3 py-2 rounded-lg text-sm transition-colors",
+                    "flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors",
                     pathname === child.href
                       ? "text-sidebar-primary font-medium"
                       : "text-sidebar-foreground/70 hover:text-sidebar-foreground"
                   )}
                 >
-                  {child.title}
+                  <span>{child.title}</span>
+                  {showNotificationBadge && (
+                    <span className="relative flex h-5 w-5 flex-shrink-0">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-5 w-5 bg-yellow-400 items-center justify-center text-[10px] font-semibold text-yellow-900">
+                        {unopenedTasksCount > 9 ? '9+' : unopenedTasksCount}
+                      </span>
+                    </span>
+                  )}
                 </Link>
               );
 
@@ -637,6 +635,10 @@ export function Sidebar() {
       </div>
     </>
   );
+
+  // Hide sidebar on email client page
+  const isEmailClient = pathname === '/email-client';
+  if (isEmailClient) return null;
 
   return (
     <>

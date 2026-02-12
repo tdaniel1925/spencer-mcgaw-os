@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { profileSchema } from "@/lib/validations/settings";
+import { ZodError } from "zod";
 
 // GET - Get user profile settings
 export async function GET() {
@@ -48,16 +50,19 @@ export async function PUT(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { fullName, phone, department, jobTitle, bio } = body;
+
+    // Validate request body with Zod
+    const validatedData = profileSchema.parse(body);
+    const { fullName, phone, department, jobTitle, bio } = validatedData;
 
     const { error } = await supabase
       .from("user_profiles")
       .update({
         full_name: fullName,
-        phone,
-        department,
-        job_title: jobTitle,
-        bio,
+        phone: phone || null,
+        department: department || null,
+        job_title: jobTitle || null,
+        bio: bio || null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", user.id);
@@ -69,6 +74,12 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({ success: true, message: "Profile updated successfully" });
   } catch (error) {
+    if (error instanceof ZodError) {
+      return NextResponse.json(
+        { error: "Validation failed", details: error.issues },
+        { status: 400 }
+      );
+    }
     console.error("Error in profile PUT:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }

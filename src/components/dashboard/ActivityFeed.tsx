@@ -3,10 +3,17 @@
  * Shows recent activities across the organization
  */
 
+"use client";
+
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Activity,
   User,
@@ -17,9 +24,15 @@ import {
   ListTodo,
   ArrowRight,
   Loader2,
+  ChevronDown,
+  ChevronRight,
+  Inbox,
+  Clock,
 } from "lucide-react";
 import { safeFormatDistanceToNow } from "@/lib/utils";
 import Link from "next/link";
+import { useState, useEffect } from "react";
+import { createClient } from "@/lib/supabase/client";
 
 interface ActivityItem {
   id: string;
@@ -32,6 +45,19 @@ interface ActivityItem {
     client_name?: string;
     [key: string]: any;
   };
+}
+
+interface EmailItem {
+  id: string;
+  subject: string;
+  from_email: string;
+  from_name?: string;
+  body_preview: string;
+  received_at: string;
+  is_read: boolean;
+  is_flagged: boolean;
+  has_attachments: boolean;
+  importance: "low" | "normal" | "high";
 }
 
 interface ActivityFeedProps {
@@ -77,6 +103,60 @@ const getActivityColor = (type: string) => {
 };
 
 export function ActivityFeed({ activities, loading = false }: ActivityFeedProps) {
+  const [emails, setEmails] = useState<EmailItem[]>([]);
+  const [emailsLoading, setEmailsLoading] = useState(false);
+  const [emailsOpen, setEmailsOpen] = useState(false);
+
+  useEffect(() => {
+    async function fetchEmails() {
+      try {
+        setEmailsLoading(true);
+        const response = await fetch("/api/emails/recent?limit=10");
+        if (response.ok) {
+          const data = await response.json();
+          setEmails(data.emails || []);
+        }
+      } catch (error) {
+        console.error("Failed to fetch emails:", error);
+      } finally {
+        setEmailsLoading(false);
+      }
+    }
+
+    fetchEmails();
+
+    // Set up real-time subscription for new emails
+    const supabase = createClient();
+    const channel = supabase
+      .channel('email_messages_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'email_messages',
+        },
+        (payload) => {
+          console.log('New email received:', payload.new);
+          // Add new email to the list
+          const newEmail = payload.new as any;
+          setEmails((prev) => {
+            // Check if email already exists
+            if (prev.some(e => e.id === newEmail.id)) {
+              return prev;
+            }
+            // Add to beginning and keep only 10
+            return [newEmail, ...prev].slice(0, 10);
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
   if (loading) {
     return (
       <Card className="border-border/50">
@@ -138,6 +218,93 @@ export function ActivityFeed({ activities, loading = false }: ActivityFeedProps)
 
         <ScrollArea className="h-[300px]">
           <div className="p-3">
+            {/* Email Accordion Section */}
+            <Collapsible
+              open={emailsOpen}
+              onOpenChange={setEmailsOpen}
+              className="mb-3"
+            >
+              <CollapsibleTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full justify-between p-2 h-auto hover:bg-muted/50"
+                >
+                  <div className="flex items-center gap-2">
+                    <Inbox className="h-4 w-4 text-indigo-600" />
+                    <span className="text-sm font-medium">Recent Emails</span>
+                    <Badge variant="secondary" className="ml-1">
+                      {emails.length}
+                    </Badge>
+                  </div>
+                  {emailsOpen ? (
+                    <ChevronDown className="h-4 w-4" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4" />
+                  )}
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="mt-2 space-y-1">
+                {emailsLoading ? (
+                  <div className="flex items-center justify-center py-4">
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  </div>
+                ) : emails.length === 0 ? (
+                  <div className="text-center py-4 text-sm text-muted-foreground">
+                    No recent emails
+                  </div>
+                ) : (
+                  emails.map((email) => (
+                    <div
+                      key={email.id}
+                      className="flex items-start gap-3 py-2 px-2 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
+                    >
+                      <div className="h-8 w-8 rounded-full flex items-center justify-center flex-shrink-0 bg-indigo-100 text-indigo-600">
+                        <Mail className="h-4 w-4" />
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium text-foreground truncate">
+                            {email.subject || "(No Subject)"}
+                          </p>
+                          {!email.is_read && (
+                            <div className="h-2 w-2 rounded-full bg-blue-500 flex-shrink-0" />
+                          )}
+                        </div>
+
+                        <p className="text-xs text-muted-foreground truncate">
+                          From: {email.from_name || email.from_email}
+                        </p>
+
+                        <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                          {email.body_preview}
+                        </p>
+
+                        <div className="flex items-center gap-2 mt-1">
+                          <Clock className="h-3 w-3 text-muted-foreground" />
+                          <p className="text-xs text-muted-foreground">
+                            {safeFormatDistanceToNow(email.received_at)}
+                          </p>
+                          {email.has_attachments && (
+                            <Badge variant="outline" className="text-xs">
+                              Attachments
+                            </Badge>
+                          )}
+                          {email.importance === "high" && (
+                            <Badge variant="destructive" className="text-xs">
+                              High Priority
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </CollapsibleContent>
+            </Collapsible>
+
+            {/* Activity Items */}
             {activities.map((activity) => (
               <div
                 key={activity.id}

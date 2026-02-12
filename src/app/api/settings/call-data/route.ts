@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { db } from "@/db";
 import { calls } from "@/db/schema";
 import { sql } from "drizzle-orm";
+import { callDataSchema } from "@/lib/validations/settings";
+import { ZodError } from "zod";
 
 /**
  * GET /api/settings/call-data
@@ -80,25 +82,12 @@ export async function PUT(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { autoDeleteEnabled, deleteAfterDays, deleteOnDay } = body;
 
-    // Validate deleteAfterDays
-    const days = parseInt(deleteAfterDays) || 30;
-    if (days < 1 || days > 365) {
-      return NextResponse.json(
-        { error: "Delete after days must be between 1 and 365" },
-        { status: 400 }
-      );
-    }
+    // Validate request body with Zod
+    const validatedData = callDataSchema.parse(body);
+    const { autoDeleteEnabled, deleteAfterDays, deleteOnDay } = validatedData;
 
-    // Validate deleteOnDay
-    const validDays = ["", "sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
-    if (!validDays.includes(deleteOnDay || "")) {
-      return NextResponse.json(
-        { error: "Invalid day of week" },
-        { status: 400 }
-      );
-    }
+    const days = deleteAfterDays || 30;
 
     // Update or insert settings
     const { error } = await supabase
@@ -128,6 +117,12 @@ export async function PUT(request: NextRequest) {
       deleteOnDay: deleteOnDay || "",
     });
   } catch (error) {
+    if (error instanceof ZodError) {
+      return NextResponse.json(
+        { error: "Validation failed", details: error.issues },
+        { status: 400 }
+      );
+    }
     console.error("[Call Data Settings] Error:", error);
     return NextResponse.json(
       { error: "Failed to save call data settings" },

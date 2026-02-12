@@ -22,6 +22,7 @@ const PUBLIC_ROUTES = [
   '/api/auth',
   '/api/webhooks',
   '/api/email/webhook', // Resend inbound webhook
+  '/api/cron', // Cron jobs (protected by CRON_SECRET in production)
   '/api/health',
   '/api/files/share', // Public file sharing
 ];

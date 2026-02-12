@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Header } from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -72,6 +72,7 @@ import {
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
+import logger from "@/lib/logger";
 
 // Types
 interface TeamMember {
@@ -163,6 +164,30 @@ export default function TasksPage() {
     allTasks,
     taskCounts,
   } = useTaskContext();
+
+  // Mark tasks as viewed when page loads (only once per session)
+  const [hasMarkedViewed, setHasMarkedViewed] = useState(false);
+
+  useEffect(() => {
+    const markTasksAsViewed = async () => {
+      if (!user || hasMarkedViewed) return;
+
+      try {
+        const response = await fetch("/api/tasks/mark-viewed", {
+          method: "POST",
+        });
+
+        if (response.ok) {
+          setHasMarkedViewed(true);
+        }
+      } catch (error) {
+        // Silently fail - not critical to user experience
+        logger.error("Failed to mark tasks as viewed", { error });
+      }
+    };
+
+    markTasksAsViewed();
+  }, [user, hasMarkedViewed]);
 
   // Team members for reassignment
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);

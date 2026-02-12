@@ -203,7 +203,8 @@ export default function InboundPage() {
   };
 
   // Get initials for avatar
-  const getInitials = (name: string): string => {
+  const getInitials = (name: string | null | undefined): string => {
+    if (!name) return "??";
     return name
       .split(" ")
       .map((n) => n[0])
@@ -505,18 +506,35 @@ export default function InboundPage() {
 
                         {/* Email: Body */}
                         {comm.type === "email" && (comm.bodyHtml || comm.bodyText) && (
-                          <div className="bg-muted/50 rounded-md p-3">
-                            <p className="text-sm font-medium mb-2">Message</p>
-                            {comm.bodyHtml ? (
-                              <div
-                                className="text-sm prose prose-sm max-w-none"
-                                dangerouslySetInnerHTML={{ __html: comm.bodyHtml }}
-                              />
-                            ) : (
-                              <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                                {comm.bodyText}
-                              </p>
-                            )}
+                          <div className="bg-white dark:bg-gray-900 border rounded-md overflow-hidden">
+                            <div className="bg-muted/50 px-3 py-2 border-b">
+                              <p className="text-sm font-medium">Message</p>
+                            </div>
+                            <ScrollArea className="max-h-[600px]">
+                              <div className="p-4">
+                                {comm.bodyHtml ? (
+                                  <div
+                                    className="prose prose-sm dark:prose-invert max-w-none
+                                             prose-headings:font-semibold prose-headings:text-foreground
+                                             prose-p:text-foreground prose-p:leading-relaxed
+                                             prose-a:text-primary hover:prose-a:text-primary/80
+                                             prose-strong:text-foreground prose-strong:font-semibold
+                                             prose-ul:text-foreground prose-ol:text-foreground
+                                             prose-li:text-foreground prose-code:text-foreground
+                                             prose-blockquote:text-muted-foreground prose-blockquote:border-l-primary"
+                                    dangerouslySetInnerHTML={{ __html: comm.bodyHtml }}
+                                  />
+                                ) : (
+                                  <div className="text-sm text-foreground leading-relaxed space-y-3">
+                                    {comm.bodyText?.split('\n\n').map((paragraph, idx) => (
+                                      <p key={idx} className="whitespace-pre-wrap">
+                                        {paragraph}
+                                      </p>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </ScrollArea>
                           </div>
                         )}
 

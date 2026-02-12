@@ -33,6 +33,7 @@ export async function GET() {
       dueTodayResult,
       overdueResult,
       urgentTasksResult,
+      unopenedResult,
     ] = await Promise.all([
       supabase.from("tasks").select("id", { count: "exact", head: true }),
       supabase.from("tasks").select("id", { count: "exact", head: true }).eq("status", "pending"),
@@ -64,6 +65,12 @@ export async function GET() {
         .neq("status", "cancelled")
         .order("due_date", { ascending: true, nullsFirst: false })
         .limit(5),
+      // Unopened tasks assigned to current user
+      supabase.from("tasks").select("id", { count: "exact", head: true })
+        .eq("assigned_to", user.id)
+        .is("first_viewed_at", null)
+        .neq("status", "completed")
+        .neq("status", "cancelled"),
     ]);
 
     // Check for any query errors
@@ -77,6 +84,7 @@ export async function GET() {
       dueTodayResult.error,
       overdueResult.error,
       urgentTasksResult.error,
+      unopenedResult.error,
     ].filter(Boolean);
 
     if (errors.length > 0) {
@@ -94,6 +102,7 @@ export async function GET() {
       dueToday: dueTodayResult.count || 0,
       overdue: overdueResult.count || 0,
       urgentTasks: urgentTasksResult.data || [],
+      unopened: unopenedResult.count || 0,
     });
   } catch (error) {
     console.error("Error fetching task stats:", error);

@@ -289,7 +289,76 @@ export default function DashboardPage() {
                         : `You have ${posts.length} communication${posts.length > 1 ? 's' : ''} in your feed. Chat with AI to take action.`}
                     </p>
                   </div>
-                </div>
+                </CardContent>
+              </Card>
+
+              {/* Three key metrics */}
+              <DashboardMetrics
+                stats={{
+                  overdue: overdueCount,
+                  dueToday: dueTodayCount,
+                  inProgress: stats?.inProgress || 0,
+                }}
+                loading={statsLoading}
+              />
+
+              {/* AI Task Suggestions */}
+              <AITaskSuggestions
+                onTaskApproved={async () => {
+                  // Refresh both tasks (via context) and stats
+                  await Promise.all([refreshTasks(), fetchStatsAndActivity()]);
+                }}
+              />
+
+              {/* Workflow Info Card */}
+              <Card className="border-blue-200 bg-blue-50/50 dark:bg-blue-950/20 dark:border-blue-900">
+                <CardContent className="pt-6">
+                  <div className="flex items-start gap-4">
+                    <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900">
+                      <Bot className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-blue-900 dark:text-blue-100 mb-2">
+                        💡 How AI Task Suggestions Work
+                      </h3>
+                      <div className="space-y-2 text-sm text-blue-800 dark:text-blue-200">
+                        <div className="flex items-center gap-2">
+                          <span>📧 Forward your email to the Fastmail address provided by your IT team</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span>📞 Phone calls are automatically logged</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span>✨ AI analyzes and creates task suggestions above</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span>✅ Approve suggestions to create real tasks</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Two-column layout for tasks and activity */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <TasksNeedingAttention
+                  tasks={needsAttention}
+                  loading={loading}
+                  onTaskClick={handleTaskClick}
+                  onViewAll={() => router.push("/tasks")}
+                />
+
+                <ActivityFeed
+                  activities={activities.map(a => ({
+                    id: a.id,
+                    type: a.resource_type === "task" ? "task_created" : "note_added",
+                    description: `${a.action} ${a.resource_name || ""}`,
+                    user_name: a.user_email?.split("@")[0],
+                    created_at: a.created_at,
+                  }))}
+                  loading={statsLoading}
+                />
               </div>
 
               {/* Loading State */}
