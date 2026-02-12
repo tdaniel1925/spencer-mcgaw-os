@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
-import { calls, emailMessages } from '@/db/schema';
+import { calls, emailMessages, emailConnections } from '@/db/schema';
 import { desc, and, eq, not, inArray, or, isNull } from 'drizzle-orm';
 import logger from '@/lib/logger';
 
@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const limit = parseInt(searchParams.get('limit') || '50', 10);
     const type = searchParams.get('type'); // 'phone' | 'email' | undefined (all)
-    const ownership = searchParams.get('ownership'); // 'mine' | 'unassigned' | 'all' | undefined (all)
+    const emailVisibility = searchParams.get('emailVisibility'); // 'personal' | 'org' | 'all' | undefined (all)
 
     // Fetch calls (excluding voicemail, wrong numbers, spam)
     let callsData: any[] = [];
@@ -75,19 +75,23 @@ export async function GET(request: NextRequest) {
     // Fetch emails
     let emailsData: any[] = [];
     if (!type || type === 'email') {
-      // Build ownership filter
-      let ownershipFilter;
-      if (ownership === 'mine') {
-        // Only user's emails
-        ownershipFilter = eq(emailMessages.userId, user.id);
-      } else if (ownership === 'unassigned') {
-        // Only unassigned emails (NULL user_id)
-        ownershipFilter = isNull(emailMessages.userId);
-      } else {
-        // Default: all (user's emails + unassigned)
-        ownershipFilter = or(
+      // Build email visibility filter
+      let visibilityFilter;
+      if (emailVisibility === 'personal') {
+        // Only personal emails: user's private email accounts (is_global = false)
+        // Join with email_connections to check is_global flag
+        visibilityFilter = and(
           eq(emailMessages.userId, user.id),
-          isNull(emailMessages.userId)
+          eq(emailConnections.isGlobal, false)
+        );
+      } else if (emailVisibility === 'org') {
+        // Only org emails: from shared email accounts (is_global = true)
+        visibilityFilter = eq(emailConnections.isGlobal, true);
+      } else {
+        // Default: all (personal + org emails accessible to user)
+        visibilityFilter = or(
+          and(eq(emailMessages.userId, user.id), eq(emailConnections.isGlobal, false)),
+          eq(emailConnections.isGlobal, true)
         );
       }
 
@@ -123,9 +127,10 @@ export async function GET(request: NextRequest) {
           createdAt: emailMessages.createdAt,
         })
         .from(emailMessages)
+        .leftJoin(emailConnections, eq(emailMessages.connectionId, emailConnections.id))
         .where(
           and(
-            ownershipFilter,
+            visibilityFilter,
             not(eq(emailMessages.isDeleted, true)),
             not(eq(emailMessages.isArchived, true))
           )
@@ -196,7 +201,7 @@ export async function GET(request: NextRequest) {
     logger.info('[Inbound API] Fetched communications', {
       userId: user.id,
       type: type || 'all',
-      ownership: ownership || 'all',
+      emailVisibility: emailVisibility || 'all',
       callsCount: callsData.length,
       emailsCount: emailsData.length,
       totalCount: limitedCommunications.length,

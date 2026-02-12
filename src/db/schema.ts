@@ -758,6 +758,7 @@ export const emailConnections = pgTable("email_connections", {
   expiresAt: timestamp("expires_at"),
   scopes: jsonb("scopes").$type<string[]>(),
   isActive: boolean("is_active").notNull().default(true),
+  isGlobal: boolean("is_global").notNull().default(false), // true = Org Feed (visible to all), false = Personal Inbox
   lastSyncAt: timestamp("last_sync_at"),
   syncErrors: integer("sync_errors").notNull().default(0),
   metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),

@@ -74,7 +74,7 @@ export default function InboundPage() {
   const [communications, setCommunications] = useState<Communication[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [filterType, setFilterType] = useState<"all" | "phone" | "email">("all");
-  const [ownershipFilter, setOwnershipFilter] = useState<"all" | "mine" | "unassigned">("all");
+  const [emailVisibilityFilter, setEmailVisibilityFilter] = useState<"all" | "personal" | "org">("all");
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
 
   // Assignment dialog state
@@ -99,7 +99,7 @@ export default function InboundPage() {
     try {
       const params = new URLSearchParams();
       if (filterType !== "all") params.append("type", filterType);
-      if (ownershipFilter !== "all") params.append("ownership", ownershipFilter);
+      if (emailVisibilityFilter !== "all") params.append("emailVisibility", emailVisibilityFilter);
 
       const queryString = params.toString();
       const response = await fetch(`/api/inbound${queryString ? `?${queryString}` : ""}`);
@@ -114,7 +114,7 @@ export default function InboundPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [filterType, ownershipFilter]);
+  }, [filterType, emailVisibilityFilter]);
 
   useEffect(() => {
     fetchCommunications();
@@ -255,30 +255,30 @@ export default function InboundPage() {
               {/* Divider */}
               <div className="h-6 w-px bg-border" />
 
-              {/* Email Ownership Filters */}
+              {/* Email Visibility Filters */}
               <Button
-                variant={ownershipFilter === "all" ? "default" : "ghost"}
+                variant={emailVisibilityFilter === "all" ? "default" : "ghost"}
                 size="sm"
-                onClick={() => setOwnershipFilter("all")}
+                onClick={() => setEmailVisibilityFilter("all")}
                 className="h-8"
               >
                 All Emails
               </Button>
               <Button
-                variant={ownershipFilter === "mine" ? "default" : "ghost"}
+                variant={emailVisibilityFilter === "personal" ? "default" : "ghost"}
                 size="sm"
-                onClick={() => setOwnershipFilter("mine")}
+                onClick={() => setEmailVisibilityFilter("personal")}
                 className="h-8"
               >
                 My Emails
               </Button>
               <Button
-                variant={ownershipFilter === "unassigned" ? "default" : "ghost"}
+                variant={emailVisibilityFilter === "org" ? "default" : "ghost"}
                 size="sm"
-                onClick={() => setOwnershipFilter("unassigned")}
-                className="h-8 text-amber-600 hover:text-amber-700"
+                onClick={() => setEmailVisibilityFilter("org")}
+                className="h-8"
               >
-                Unassigned
+                Org Emails
               </Button>
             </div>
 
