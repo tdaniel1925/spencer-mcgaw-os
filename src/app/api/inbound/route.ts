@@ -75,25 +75,12 @@ export async function GET(request: NextRequest) {
     // Fetch emails
     let emailsData: any[] = [];
     if (!type || type === 'email') {
-      // Build email visibility filter
-      let visibilityFilter;
-      if (emailVisibility === 'personal') {
-        // Only personal emails: user's private email accounts (is_global = false)
-        // Join with email_connections to check is_global flag
-        visibilityFilter = and(
-          eq(emailMessages.userId, user.id),
-          eq(emailConnections.isGlobal, false)
-        );
-      } else if (emailVisibility === 'org') {
-        // Only org emails: from shared email accounts (is_global = true)
-        visibilityFilter = eq(emailConnections.isGlobal, true);
-      } else {
-        // Default: all (personal + org emails accessible to user)
-        visibilityFilter = or(
-          and(eq(emailMessages.userId, user.id), eq(emailConnections.isGlobal, false)),
-          eq(emailConnections.isGlobal, true)
-        );
-      }
+      // For now, ignore emailVisibility filter until is_global column is added to production
+      // TODO: Remove this fallback after migration runs in production
+      const baseFilter = and(
+        not(eq(emailMessages.isDeleted, true)),
+        not(eq(emailMessages.isArchived, true))
+      );
 
       emailsData = await db
         .select({
@@ -127,14 +114,7 @@ export async function GET(request: NextRequest) {
           createdAt: emailMessages.createdAt,
         })
         .from(emailMessages)
-        .leftJoin(emailConnections, eq(emailMessages.connectionId, emailConnections.id))
-        .where(
-          and(
-            visibilityFilter,
-            not(eq(emailMessages.isDeleted, true)),
-            not(eq(emailMessages.isArchived, true))
-          )
-        )
+        .where(baseFilter)
         .orderBy(desc(emailMessages.receivedAt))
         .limit(limit);
     }
