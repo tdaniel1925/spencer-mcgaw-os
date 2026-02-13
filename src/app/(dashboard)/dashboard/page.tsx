@@ -38,8 +38,8 @@ import {
   Clock,
   CheckCircle2,
   Loader2,
-  Bot,
   Plus,
+  Bot,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format, isPast, isToday } from "date-fns";
@@ -93,7 +93,6 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<TaskStats | null>(null);
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [statsLoading, setStatsLoading] = useState(true);
-  const [fastmailAddress, setFastmailAddress] = useState<string | null>(null);
 
   // Derive dashboard tasks from shared context
   const tasks: DashboardTask[] = contextTasks.map(t => ({
@@ -140,10 +139,9 @@ export default function DashboardPage() {
   // Fetch stats and activity (tasks come from shared context)
   const fetchStatsAndActivity = useCallback(async () => {
     try {
-      const [statsRes, activityRes, emailAccountsRes] = await Promise.all([
+      const [statsRes, activityRes] = await Promise.all([
         fetch("/api/tasks/stats"),
         fetch("/api/activity?limit=10"),
-        fetch("/api/email/accounts"),
       ]);
 
       if (statsRes.ok) {
@@ -154,15 +152,6 @@ export default function DashboardPage() {
       if (activityRes.ok) {
         const data = await activityRes.json();
         setActivities(data.activities || []);
-      }
-
-      if (emailAccountsRes.ok) {
-        const data = await emailAccountsRes.json();
-        // Find first Fastmail/IMAP account
-        const fastmailAccount = data.accounts?.find((acc: any) => acc.provider === 'imap');
-        if (fastmailAccount) {
-          setFastmailAddress(fastmailAccount.email);
-        }
       }
     } catch (error) {
       console.error("Failed to fetch dashboard data:", error);
@@ -475,45 +464,6 @@ export default function DashboardPage() {
                   await Promise.all([refreshTasks(), fetchStatsAndActivity()]);
                 }}
               />
-
-              {/* Workflow Info Card */}
-              <Card className="border-blue-200 bg-blue-50/50 dark:bg-blue-950/20 dark:border-blue-900">
-                <CardContent className="pt-6">
-                  <div className="flex items-start gap-4">
-                    <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900">
-                      <Bot className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-blue-900 dark:text-blue-100 mb-2">
-                        💡 How AI Task Suggestions Work
-                      </h3>
-                      <div className="space-y-2 text-sm text-blue-800 dark:text-blue-200">
-                        {fastmailAddress ? (
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900 text-blue-900 dark:text-blue-100">
-                              📧 {fastmailAddress}
-                            </span>
-                            <span>Forward a copy of emails to this address</span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <span>📧 Connect your Fastmail account in Settings to get started</span>
-                          </div>
-                        )}
-                        <div className="flex items-center gap-2">
-                          <span>📞 Phone calls are automatically logged</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span>✨ AI analyzes and creates task suggestions above</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span>✅ Approve suggestions to create real tasks</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
 
               {/* Two-column layout for tasks and activity */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

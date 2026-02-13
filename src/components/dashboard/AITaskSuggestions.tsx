@@ -4,10 +4,26 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, Mail, Phone, Check, X, Loader2, ChevronRight } from "lucide-react";
+import { Sparkles, Mail, Phone, Check, X, Loader2, ChevronRight, UserPlus } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { useAuth } from "@/lib/supabase/auth-context";
 
 interface PotentialTask {
   id: string;
@@ -28,11 +44,22 @@ interface AITaskSuggestionsProps {
   onTaskApproved?: () => void;
 }
 
+interface User {
+  id: string;
+  email: string;
+  full_name: string | null;
+}
+
 export function AITaskSuggestions({ onTaskApproved }: AITaskSuggestionsProps) {
+  const { user: currentUser } = useAuth();
   const [suggestions, setSuggestions] = useState<PotentialTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [users, setUsers] = useState<User[]>([]);
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [selectedSuggestion, setSelectedSuggestion] = useState<PotentialTask | null>(null);
+  const [selectedAssignee, setSelectedAssignee] = useState<string>("me");
 
   const fetchSuggestions = async () => {
     try {
@@ -47,22 +74,48 @@ export function AITaskSuggestions({ onTaskApproved }: AITaskSuggestionsProps) {
     }
   };
 
+  const fetchUsers = async () => {
+    try {
+      const res = await fetch("/api/users");
+      if (!res.ok) return;
+      const data = await res.json();
+      setUsers(data.users || []);
+    } catch (error) {
+      console.error("Failed to fetch users:", error);
+    }
+  };
+
   useEffect(() => {
     fetchSuggestions();
+    fetchUsers();
     // Refresh every 30 seconds
     const interval = setInterval(fetchSuggestions, 30000);
     return () => clearInterval(interval);
   }, []);
 
-  const handleApprove = async (suggestion: PotentialTask) => {
-    setProcessingId(suggestion.id);
+  const handleApprove = (suggestion: PotentialTask) => {
+    setSelectedSuggestion(suggestion);
+    setSelectedAssignee("me");
+    setAssignDialogOpen(true);
+  };
+
+  const handleConfirmApprove = async () => {
+    if (!selectedSuggestion) return;
+
+    setProcessingId(selectedSuggestion.id);
+    setAssignDialogOpen(false);
+
     try {
+      // Determine assignee ID
+      const assigneeId = selectedAssignee === "me" ? currentUser?.id : selectedAssignee;
+
       const res = await fetch("/api/potential-tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          potentialTaskId: suggestion.id,
+          potentialTaskId: selectedSuggestion.id,
           action: "approve",
+          assignedTo: assigneeId,
         }),
       });
 
@@ -71,13 +124,17 @@ export function AITaskSuggestions({ onTaskApproved }: AITaskSuggestionsProps) {
         throw new Error(error.error || "Failed to approve");
       }
 
+      const assigneeName = selectedAssignee === "me"
+        ? "yourself"
+        : users.find(u => u.id === selectedAssignee)?.full_name || "user";
+
       toast.success("Task created!", {
-        description: suggestion.suggested_title,
+        description: `Assigned to ${assigneeName}`,
         duration: 4000,
       });
 
       // Remove from list
-      setSuggestions((prev) => prev.filter((s) => s.id !== suggestion.id));
+      setSuggestions((prev) => prev.filter((s) => s.id !== selectedSuggestion.id));
 
       // Notify parent to refresh tasks
       onTaskApproved?.();
@@ -87,6 +144,7 @@ export function AITaskSuggestions({ onTaskApproved }: AITaskSuggestionsProps) {
       });
     } finally {
       setProcessingId(null);
+      setSelectedSuggestion(null);
     }
   };
 
@@ -278,6 +336,57 @@ export function AITaskSuggestions({ onTaskApproved }: AITaskSuggestionsProps) {
             </div>
           </div>
         ))}
+
+        {/* Assignment Dialog */}
+        <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <UserPlus className="h-5 w-5 text-primary" />
+                Assign Task
+              </DialogTitle>
+              <DialogDescription>
+                Who should this task be assigned to?
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              {selectedSuggestion && (
+                <div className="p-3 rounded-lg bg-muted">
+                  <p className="font-medium text-sm">{selectedSuggestion.suggested_title}</p>
+                  {selectedSuggestion.suggested_description && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {selectedSuggestion.suggested_description}
+                    </p>
+                  )}
+                </div>
+              )}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Assign to:</label>
+                <Select value={selectedAssignee} onValueChange={setSelectedAssignee}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="me">Myself</SelectItem>
+                    {users.map((user) => (
+                      <SelectItem key={user.id} value={user.id}>
+                        {user.full_name || user.email}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setAssignDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleConfirmApprove}>
+                Create Task
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </CardContent>
     </Card>
   );
