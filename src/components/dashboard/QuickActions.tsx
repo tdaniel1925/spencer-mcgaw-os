@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import {
   Plus,
   Users,
-  Phone,
+  MessageSquare,
   Mail,
   FileText,
   ListTodo,
@@ -34,9 +34,9 @@ export function QuickActions({ onCreateTask }: QuickActionsProps) {
       variant: "outline" as const,
     },
     {
-      label: "Log Call",
-      icon: Phone,
-      href: "/calls",
+      label: "Send SMS",
+      icon: MessageSquare,
+      href: "/sms",
       variant: "outline" as const,
     },
     {
