@@ -62,6 +62,7 @@ interface Communication {
   bodyHtml?: string;
   bodyText?: string;
   userId?: string | null; // NULL = unassigned email
+  connectionEmail?: string; // Email account this came from
   // Common AI fields
   aiSummary?: string | null;
   sentiment?: string | null;
@@ -74,7 +75,6 @@ export default function InboundPage() {
   const [communications, setCommunications] = useState<Communication[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [filterType, setFilterType] = useState<"all" | "phone" | "email">("all");
-  const [emailVisibilityFilter, setEmailVisibilityFilter] = useState<"all" | "personal" | "org">("all");
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
 
   // Assignment dialog state
@@ -99,7 +99,6 @@ export default function InboundPage() {
     try {
       const params = new URLSearchParams();
       if (filterType !== "all") params.append("type", filterType);
-      if (emailVisibilityFilter !== "all") params.append("emailVisibility", emailVisibilityFilter);
 
       const queryString = params.toString();
       const response = await fetch(`/api/inbound${queryString ? `?${queryString}` : ""}`);
@@ -114,7 +113,7 @@ export default function InboundPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [filterType, emailVisibilityFilter]);
+  }, [filterType]);
 
   useEffect(() => {
     fetchCommunications();
@@ -228,7 +227,7 @@ export default function InboundPage() {
                 onClick={() => setFilterType("all")}
                 className="h-8"
               >
-                All
+                All (Emails and Phone)
                 <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-[10px]">
                   {communications.length}
                 </Badge>
@@ -240,7 +239,7 @@ export default function InboundPage() {
                 className="h-8"
               >
                 <Phone className="h-4 w-4 mr-2" />
-                Phone Calls
+                Phone Only
               </Button>
               <Button
                 variant={filterType === "email" ? "default" : "ghost"}
@@ -249,36 +248,7 @@ export default function InboundPage() {
                 className="h-8"
               >
                 <Mail className="h-4 w-4 mr-2" />
-                Emails
-              </Button>
-
-              {/* Divider */}
-              <div className="h-6 w-px bg-border" />
-
-              {/* Email Visibility Filters */}
-              <Button
-                variant={emailVisibilityFilter === "all" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setEmailVisibilityFilter("all")}
-                className="h-8"
-              >
-                All Emails
-              </Button>
-              <Button
-                variant={emailVisibilityFilter === "personal" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setEmailVisibilityFilter("personal")}
-                className="h-8"
-              >
-                My Emails
-              </Button>
-              <Button
-                variant={emailVisibilityFilter === "org" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setEmailVisibilityFilter("org")}
-                className="h-8"
-              >
-                Org Emails
+                Emails Only
               </Button>
             </div>
 
@@ -339,28 +309,26 @@ export default function InboundPage() {
 
                           <div className="flex-1 min-w-0">
                             {/* Type Badge + From */}
-                            <div className="flex items-center gap-2 mb-1">
+                            <div className="flex items-center gap-2 mb-1 flex-wrap">
                               <Badge
                                 variant="outline"
                                 className={cn(
-                                  "text-xs font-medium",
+                                  "text-xs font-bold uppercase",
                                   comm.type === "phone"
                                     ? "bg-blue-50 text-blue-700 border-blue-300"
                                     : "bg-purple-50 text-purple-700 border-purple-300"
                                 )}
                               >
-                                {comm.type === "phone" ? (
-                                  <>
-                                    <Phone className="h-3 w-3 mr-1" />
-                                    Phone
-                                  </>
-                                ) : (
-                                  <>
-                                    <Mail className="h-3 w-3 mr-1" />
-                                    Email
-                                  </>
-                                )}
+                                {comm.type === "phone" ? "PHONE" : "EMAIL"}
                               </Badge>
+
+                              {/* Email Account Badge */}
+                              {comm.type === "email" && comm.connectionEmail && (
+                                <Badge variant="outline" className="text-[10px] bg-slate-50 text-slate-700 border-slate-300">
+                                  <Mail className="h-3 w-3 mr-1" />
+                                  {comm.connectionEmail}
+                                </Badge>
+                              )}
 
                               {/* Direction badge for calls */}
                               {comm.type === "phone" && comm.direction && (

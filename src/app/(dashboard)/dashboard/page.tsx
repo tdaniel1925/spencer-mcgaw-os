@@ -1,50 +1,134 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { Header } from "@/components/layout/header";
+import { useKeyboardNavigation } from "@/hooks/use-keyboard-navigation";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAuth } from "@/lib/supabase/auth-context";
-import { FeedPostCard } from "@/components/feed/feed-post";
-import { AIChatDrawer } from "@/components/feed/ai-chat-drawer";
-import type { FeedPost } from "@/app/api/feed/route";
+import { TaskDetailPanel } from "@/components/tasks/task-detail-panel";
+import { Task, useTaskContext } from "@/lib/tasks/task-context";
+import { DashboardMetrics } from "@/components/dashboard/DashboardMetrics";
+import { AITaskSuggestions } from "@/components/dashboard/AITaskSuggestions";
+import { TasksNeedingAttention } from "@/components/dashboard/TasksNeedingAttention";
+import { ActivityFeed } from "@/components/dashboard/ActivityFeed";
+import { RecentlyCompleted } from "@/components/dashboard/RecentlyCompleted";
+import { QuickActions } from "@/components/dashboard/QuickActions";
 import {
   LayoutDashboard,
+  AlertTriangle,
+  Clock,
+  CheckCircle2,
   Loader2,
-  Sparkles,
-  Mail,
-  Phone,
-  MessageSquare,
-  AlertCircle,
-  CheckCircle,
-  Filter,
+  Bot,
+  Plus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { format } from "date-fns";
+import { format, isPast, isToday } from "date-fns";
 import { toast } from "sonner";
 
-type FilterType = 'all' | 'email' | 'call' | 'sms' | 'unhandled' | 'urgent';
+interface DashboardTask {
+  id: string;
+  title: string;
+  description?: string | null;
+  priority: "urgent" | "high" | "medium" | "low";
+  due_date: string | null;
+  status: "open" | "in_progress" | "waiting" | "completed" | "cancelled";
+  client_id: string | null;
+  source_type: string | null;
+  assigned_to?: string | null;
+  client?: {
+    id: string;
+    first_name: string | null;
+    last_name: string | null;
+    email: string | null;
+    phone: string | null;
+  } | null;
+}
+
+interface TaskStats {
+  total: number;
+  open: number;
+  inProgress: number;
+  completed: number;
+  completedToday: number;
+  dueToday: number;
+  overdue: number;
+}
+
+interface ActivityItem {
+  id: string;
+  user_id: string;
+  user_email: string;
+  action: string;
+  resource_type: string;
+  resource_name: string | null;
+  created_at: string;
+}
 
 export default function DashboardPage() {
+  const router = useRouter();
   const { user } = useAuth();
+  const { tasks: contextTasks, loading: tasksLoading, refreshTasks } = useTaskContext();
   const [mounted, setMounted] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [posts, setPosts] = useState<FeedPost[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<FilterType>('all');
-  const [stats, setStats] = useState({
-    calls: 0,
-    emails: 0,
-    total: 0,
-    unread: 0,
-    urgent: 0,
-  });
+  const [stats, setStats] = useState<TaskStats | null>(null);
+  const [activities, setActivities] = useState<ActivityItem[]>([]);
+  const [statsLoading, setStatsLoading] = useState(true);
 
-  // AI Chat drawer state
-  const [selectedPost, setSelectedPost] = useState<FeedPost | null>(null);
-  const [chatDrawerOpen, setChatDrawerOpen] = useState(false);
-  const [lastErrorTime, setLastErrorTime] = useState<number>(0);
+  // Derive dashboard tasks from shared context
+  const tasks: DashboardTask[] = contextTasks.map(t => ({
+    id: t.id,
+    title: t.title,
+    description: t.description,
+    priority: t.priority,
+    due_date: t.due_date,
+    status: t.status,
+    client_id: t.client_id,
+    source_type: t.source_type,
+    assigned_to: t.assigned_to,
+    client: t.client ? {
+      id: t.client.id,
+      first_name: t.client.first_name,
+      last_name: t.client.last_name,
+      email: t.client.email || null,
+      phone: t.client.phone || null,
+    } : null,
+  }));
+
+  const loading = tasksLoading || statsLoading;
+
+  // Task detail panel state
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [detailPanelOpen, setDetailPanelOpen] = useState(false);
+
+  // Quick create dialog state
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newTask, setNewTask] = useState({
+    title: "",
+    description: "",
+    priority: "medium" as "urgent" | "high" | "medium" | "low",
+    due_date: "",
+  });
 
   useEffect(() => {
     setMounted(true);
@@ -52,83 +136,76 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Fetch feed
-  const fetchFeed = useCallback(async () => {
+  // Fetch stats and activity (tasks come from shared context)
+  const fetchStatsAndActivity = useCallback(async () => {
     try {
-      setLoading(true);
-      const response = await fetch(`/api/feed?filter=${filter}&limit=50`);
+      const [statsRes, activityRes] = await Promise.all([
+        fetch("/api/tasks/stats"),
+        fetch("/api/activity?limit=10"),
+      ]);
 
-      if (!response.ok) {
-        throw new Error('Failed to fetch feed');
+      if (statsRes.ok) {
+        const data = await statsRes.json();
+        setStats(data);
       }
 
-      const data = await response.json();
-      setPosts(data.posts || []);
-      setStats(data.stats || {
-        calls: 0,
-        emails: 0,
-        total: 0,
-        unread: 0,
-        urgent: 0,
-      });
+      if (activityRes.ok) {
+        const data = await activityRes.json();
+        setActivities(data.activities || []);
+      }
     } catch (error) {
-      console.error('Failed to fetch feed:', error);
-      // Only show toast if it's been more than 5 minutes since last error
-      const now = Date.now();
-      if (now - lastErrorTime > 5 * 60 * 1000) {
-        toast.error('Failed to load communications feed');
-        setLastErrorTime(now);
-      }
+      console.error("Failed to fetch dashboard data:", error);
     } finally {
-      setLoading(false);
+      setStatsLoading(false);
     }
-  }, [filter, lastErrorTime]);
+  }, []);
 
   useEffect(() => {
-    fetchFeed();
-    // Refresh every 60 seconds (reduced from 30)
-    const interval = setInterval(fetchFeed, 60000);
+    fetchStatsAndActivity();
+    const interval = setInterval(fetchStatsAndActivity, 60000); // Refresh every minute
     return () => clearInterval(interval);
-  }, [fetchFeed]);
+  }, [fetchStatsAndActivity]);
 
-  // Handle chat open
-  const handleChatOpen = (post: FeedPost) => {
-    setSelectedPost(post);
-    setChatDrawerOpen(true);
-  };
+  // Auto-fix email tasks with missing titles/content (runs once on mount)
+  useEffect(() => {
+    const fixEmailTasks = async () => {
+      try {
+        const response = await fetch("/api/tasks/fix-titles", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data.fixed > 0) {
+            console.log(`[Dashboard] Auto-fixed ${data.fixed} email tasks`);
+            // Refresh tasks from context
+            refreshTasks?.();
+          }
+        }
+      } catch (error) {
+        // Silent fail - this is a background fix
+        console.error("[Dashboard] Error auto-fixing tasks:", error);
+      }
+    };
 
-  // Handle assign
-  const handleAssign = async (post: FeedPost) => {
-    toast.info('Assign dialog coming soon!');
-    // TODO: Open assign dialog
-  };
+    fixEmailTasks();
+  }, []);
 
-  // Handle mark done
-  const handleMarkDone = async (post: FeedPost) => {
-    try {
-      // For now, just show a toast
-      toast.success(`Marked "${post.subject}" as handled`);
-
-      // Refresh feed
-      await fetchFeed();
-    } catch (error) {
-      toast.error('Failed to mark as done');
-    }
-  };
-
-  // Handle delete
-  const handleDelete = async (post: FeedPost) => {
-    if (!confirm('Are you sure you want to delete this?')) return;
-
-    try {
-      toast.success(`Deleted "${post.subject}"`);
-
-      // Refresh feed
-      await fetchFeed();
-    } catch (error) {
-      toast.error('Failed to delete');
-    }
-  };
+  // Keyboard navigation for create dialog
+  useKeyboardNavigation({
+    onEscape: () => {
+      if (createDialogOpen) {
+        setCreateDialogOpen(false);
+      }
+    },
+    onEnter: () => {
+      if (createDialogOpen && newTask.title.trim()) {
+        handleCreateTask();
+      }
+    },
+    enabled: createDialogOpen,
+    preventDefault: false,
+  });
 
   // Get greeting based on time
   const getGreeting = () => {
@@ -142,6 +219,133 @@ export default function DashboardPage() {
 
     return firstName ? `${greeting}, ${firstName}` : greeting;
   };
+
+  // Handle task click - open detail panel
+  const handleTaskClick = (task: DashboardTask) => {
+    // Convert to Task type for the panel
+    const fullTask: Task = {
+      id: task.id,
+      title: task.title,
+      description: task.description || null,
+      priority: task.priority,
+      due_date: task.due_date,
+      status: task.status,
+      client_id: task.client_id,
+      assigned_to: task.assigned_to || null,
+      claimed_by: null,
+      created_at: "",
+      updated_at: "",
+      source_type: null,
+      source_email_id: null,
+      source_metadata: null,
+      assigned_at: null,
+      assigned_by: null,
+      claimed_at: null,
+      completed_at: null,
+      action_type_id: null,
+      client: task.client ? {
+        id: task.client.id,
+        first_name: task.client.first_name || "",
+        last_name: task.client.last_name || "",
+        email: task.client.email || undefined,
+        phone: task.client.phone || undefined,
+      } : null,
+    };
+    setSelectedTask(fullTask);
+    setDetailPanelOpen(true);
+  };
+
+  // Handle quick create task
+  const handleCreateTask = async () => {
+    if (!newTask.title.trim()) {
+      toast.error("Title is required");
+      return;
+    }
+
+    setCreating(true);
+    try {
+      const res = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: newTask.title,
+          description: newTask.description || null,
+          priority: newTask.priority,
+          due_date: newTask.due_date || null,
+          status: "open",
+        }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to create task");
+      }
+
+      const data = await res.json();
+      const taskTitle = newTask.title.length > 50
+        ? newTask.title.substring(0, 50) + "..."
+        : newTask.title;
+
+      toast.success(`Task created: ${taskTitle}`, {
+        description: "Task has been added to your work queue",
+        action: data.task?.id ? {
+          label: "View Task",
+          onClick: () => router.push(`/tasks?id=${data.task.id}`)
+        } : undefined,
+        duration: 6000,
+      });
+      setCreateDialogOpen(false);
+      setNewTask({ title: "", description: "", priority: "medium", due_date: "" });
+      // Refresh both tasks (via context) and stats
+      await Promise.all([refreshTasks(), fetchStatsAndActivity()]);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Failed to create task";
+      toast.error(errorMsg, {
+        description: "Please check your information and try again",
+        action: {
+          label: "Retry",
+          onClick: () => handleCreateTask()
+        },
+        duration: 7000,
+      });
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  // Filter and sort tasks - show what needs attention
+  const needsAttention = tasks
+    .filter(t => t.status !== "completed" && t.status !== "cancelled")
+    .sort((a, b) => {
+      // Sort by: overdue first, then urgent, then high, then by due date
+      const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
+
+      const aOverdue = a.due_date && isPast(new Date(a.due_date)) && !isToday(new Date(a.due_date));
+      const bOverdue = b.due_date && isPast(new Date(b.due_date)) && !isToday(new Date(b.due_date));
+
+      if (aOverdue && !bOverdue) return -1;
+      if (!aOverdue && bOverdue) return 1;
+
+      const aPriority = priorityOrder[a.priority] ?? 3;
+      const bPriority = priorityOrder[b.priority] ?? 3;
+
+      if (aPriority !== bPriority) return aPriority - bPriority;
+
+      if (a.due_date && b.due_date) {
+        return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
+      }
+      return a.due_date ? -1 : 1;
+    })
+    .slice(0, 8);
+
+  // Get recently completed tasks
+  const recentlyCompleted = tasks
+    .filter(t => t.status === "completed")
+    .slice(0, 5);
+
+  const overdueCount = stats?.overdue || 0;
+  const dueTodayCount = stats?.dueToday || 0;
+  const completedTodayCount = stats?.completedToday || 0;
 
   if (!mounted) {
     return (
@@ -158,50 +362,58 @@ export default function DashboardPage() {
 
   return (
     <>
-      <Header title="Communications Feed" />
+      <Header title="Dashboard" />
       <main className="flex flex-col h-[calc(100vh-64px)] overflow-hidden">
         {/* Top Bar */}
         <div className="h-14 border-b bg-card flex items-center px-4 gap-3 flex-shrink-0">
           <div className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-primary" />
-            <span className="font-medium">Feed</span>
+            <LayoutDashboard className="h-5 w-5 text-primary" />
+            <span className="font-medium">Dashboard</span>
           </div>
 
           <div className="flex-1" />
 
-          {/* Quick Stats */}
+          {/* Quick Create Button */}
+          <Button
+            size="sm"
+            onClick={() => setCreateDialogOpen(true)}
+            className="h-8 gap-1.5"
+          >
+            <Plus className="h-4 w-4" />
+            Quick Task
+          </Button>
+
+          <div className="h-4 border-l mx-2" />
+
+          {/* Quick Stats in Top Bar */}
           <div className="flex items-center gap-4 text-sm">
-            <div className="flex items-center gap-1.5">
-              <Mail className="h-4 w-4 text-purple-600" />
-              <span className="text-muted-foreground">{stats.emails} emails</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Phone className="h-4 w-4 text-blue-600" />
-              <span className="text-muted-foreground">{stats.calls} calls</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <AlertCircle className={cn(
-                "h-4 w-4",
-                stats.unread > 0 ? "text-amber-600" : "text-muted-foreground"
-              )} />
-              <span className={cn(
-                "font-medium",
-                stats.unread > 0 ? "text-amber-600" : "text-muted-foreground"
-              )}>
-                {stats.unread} unread
+            <button
+              onClick={() => router.push("/taskpool?view=overdue")}
+              className={cn(
+                "flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors",
+                overdueCount > 0 && "hover:bg-red-50"
+              )}
+            >
+              <AlertTriangle className={cn("h-4 w-4", overdueCount > 0 ? "text-red-600" : "text-muted-foreground")} />
+              <span className={cn("font-medium", overdueCount > 0 ? "text-red-600" : "text-muted-foreground")}>
+                {overdueCount} overdue
               </span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <AlertCircle className={cn(
-                "h-4 w-4",
-                stats.urgent > 0 ? "text-red-600" : "text-muted-foreground"
-              )} />
-              <span className={cn(
-                "font-medium",
-                stats.urgent > 0 ? "text-red-600" : "text-muted-foreground"
-              )}>
-                {stats.urgent} urgent
+            </button>
+            <button
+              onClick={() => router.push("/tasks")}
+              className={cn(
+                "flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors",
+                dueTodayCount > 0 && "hover:bg-amber-50"
+              )}
+            >
+              <Clock className={cn("h-4 w-4", dueTodayCount > 0 ? "text-amber-600" : "text-muted-foreground")} />
+              <span className={cn("font-medium", dueTodayCount > 0 ? "text-amber-600" : "text-muted-foreground")}>
+                {dueTodayCount} due today
               </span>
+            </button>
+            <div className="flex items-center gap-1.5">
+              <CheckCircle2 className="h-4 w-4 text-green-600" />
+              <span className="text-muted-foreground">{completedTodayCount} done</span>
             </div>
           </div>
 
@@ -212,136 +424,189 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        {/* Filter Bar */}
-        <div className="border-b bg-muted/30 px-4 py-2 flex items-center gap-2 flex-shrink-0">
-          <Filter className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm text-muted-foreground mr-2">Filter:</span>
-
-          <Button
-            variant={filter === 'all' ? 'default' : 'ghost'}
-            size="sm"
-            className="h-7 text-xs"
-            onClick={() => setFilter('all')}
-          >
-            All
-          </Button>
-
-          <Button
-            variant={filter === 'unhandled' ? 'default' : 'ghost'}
-            size="sm"
-            className="h-7 text-xs"
-            onClick={() => setFilter('unhandled')}
-          >
-            <AlertCircle className="h-3 w-3 mr-1" />
-            Unhandled
-          </Button>
-
-          <Button
-            variant={filter === 'urgent' ? 'default' : 'ghost'}
-            size="sm"
-            className="h-7 text-xs"
-            onClick={() => setFilter('urgent')}
-          >
-            <AlertCircle className="h-3 w-3 mr-1" />
-            Urgent
-          </Button>
-
-          <div className="h-4 border-l mx-2" />
-
-          <Button
-            variant={filter === 'email' ? 'default' : 'ghost'}
-            size="sm"
-            className="h-7 text-xs"
-            onClick={() => setFilter('email')}
-          >
-            <Mail className="h-3 w-3 mr-1" />
-            Email
-          </Button>
-
-          <Button
-            variant={filter === 'call' ? 'default' : 'ghost'}
-            size="sm"
-            className="h-7 text-xs"
-            onClick={() => setFilter('call')}
-          >
-            <Phone className="h-3 w-3 mr-1" />
-            Calls
-          </Button>
-
-          <Button
-            variant={filter === 'sms' ? 'default' : 'ghost'}
-            size="sm"
-            className="h-7 text-xs"
-            onClick={() => setFilter('sms')}
-          >
-            <MessageSquare className="h-3 w-3 mr-1" />
-            SMS
-          </Button>
-        </div>
-
-        {/* Feed Content */}
-        <div className="flex-1 overflow-hidden bg-muted/20">
+        {/* Main Content */}
+        <div className="flex-1 overflow-hidden">
           <ScrollArea className="h-full">
-            <div className="max-w-4xl mx-auto p-4 space-y-3">
-              {/* Greeting */}
-              <div className="bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20 rounded-lg p-4 mb-4">
-                <div className="flex items-start gap-3">
-                  <Sparkles className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                  <div>
-                    <h1 className="text-lg font-semibold text-foreground">{getGreeting()}</h1>
-                    <p className="text-sm text-muted-foreground mt-0.5">
-                      {posts.length === 0
-                        ? "You're all caught up! No new communications."
-                        : `You have ${posts.length} communication${posts.length > 1 ? 's' : ''} in your feed. Chat with AI to take action.`}
-                    </p>
+            <div className="p-4 space-y-4 max-w-5xl mx-auto 2xl:max-w-6xl">
+              {/* Greeting Card */}
+              <Card className="border-border/50">
+                <CardContent className="p-4">
+                  <div className="bg-primary/5 rounded-lg p-4 border border-primary/10">
+                    <div className="flex items-start gap-3">
+                      <Bot className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
+                      <div>
+                        <h1 className="text-xl font-semibold text-foreground">{getGreeting()}</h1>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {needsAttention.length > 0
+                            ? `You have ${needsAttention.length} task${needsAttention.length > 1 ? 's' : ''} that need${needsAttention.length === 1 ? 's' : ''} attention.`
+                            : "You're all caught up! No urgent tasks right now."}
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                </CardContent>
+              </Card>
+
+              {/* Three key metrics */}
+              <DashboardMetrics
+                stats={{
+                  overdue: overdueCount,
+                  dueToday: dueTodayCount,
+                  inProgress: stats?.inProgress || 0,
+                }}
+                loading={statsLoading}
+              />
+
+              {/* AI Task Suggestions */}
+              <AITaskSuggestions
+                onTaskApproved={async () => {
+                  // Refresh both tasks (via context) and stats
+                  await Promise.all([refreshTasks(), fetchStatsAndActivity()]);
+                }}
+              />
+
+              {/* Workflow Info Card */}
+              <Card className="border-blue-200 bg-blue-50/50 dark:bg-blue-950/20 dark:border-blue-900">
+                <CardContent className="pt-6">
+                  <div className="flex items-start gap-4">
+                    <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900">
+                      <Bot className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-blue-900 dark:text-blue-100 mb-2">
+                        💡 How AI Task Suggestions Work
+                      </h3>
+                      <div className="space-y-2 text-sm text-blue-800 dark:text-blue-200">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900 text-blue-900 dark:text-blue-100">
+                            📧 hmcgaw@shwunde745.resend.app
+                          </span>
+                          <span>Forward emails to this address</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span>📞 Phone calls are automatically logged</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span>✨ AI analyzes and creates task suggestions above</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span>✅ Approve suggestions to create real tasks</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Two-column layout for tasks and activity */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <TasksNeedingAttention
+                  tasks={needsAttention}
+                  loading={loading}
+                  onTaskClick={handleTaskClick}
+                  onViewAll={() => router.push("/tasks")}
+                />
+
+                <ActivityFeed
+                  activities={activities.map(a => ({
+                    id: a.id,
+                    type: a.resource_type === "task" ? "task_created" : "note_added",
+                    description: `${a.action} ${a.resource_name || ""}`,
+                    user_name: a.user_email?.split("@")[0],
+                    created_at: a.created_at,
+                  }))}
+                  loading={statsLoading}
+                />
               </div>
 
-              {/* Loading State */}
-              {loading && (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                </div>
-              )}
+              {/* Recently Completed */}
+              <RecentlyCompleted
+                tasks={recentlyCompleted}
+                onTaskClick={handleTaskClick}
+              />
 
-              {/* Empty State */}
-              {!loading && posts.length === 0 && (
-                <div className="text-center py-12">
-                  <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-3" />
-                  <h3 className="text-lg font-semibold mb-1">All Clear!</h3>
-                  <p className="text-sm text-muted-foreground">
-                    No communications match your current filter.
-                  </p>
-                </div>
-              )}
-
-              {/* Feed Posts */}
-              {!loading && posts.map((post) => (
-                <FeedPostCard
-                  key={post.id}
-                  post={post}
-                  onChatOpen={handleChatOpen}
-                  onAssign={handleAssign}
-                  onMarkDone={handleMarkDone}
-                  onDelete={handleDelete}
-                />
-              ))}
+              {/* Quick Actions */}
+              <QuickActions onCreateTask={() => setCreateDialogOpen(true)} />
             </div>
           </ScrollArea>
         </div>
       </main>
 
-      {/* AI Chat Drawer */}
-      <AIChatDrawer
-        open={chatDrawerOpen}
-        onOpenChange={setChatDrawerOpen}
-        post={selectedPost}
-        onActionComplete={() => {
-          // Refresh feed when actions are performed
-          fetchFeed();
+      {/* Task Detail Panel */}
+      <TaskDetailPanel
+        task={selectedTask}
+        open={detailPanelOpen}
+        onOpenChange={setDetailPanelOpen}
+        onTaskUpdate={async () => {
+          // Refresh both tasks (via context) and stats
+          await Promise.all([refreshTasks(), fetchStatsAndActivity()]);
         }}
       />
+
+      {/* Quick Create Task Dialog */}
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Quick Create Task</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Title</label>
+              <Input
+                placeholder="What needs to be done?"
+                value={newTask.title}
+                onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Description (optional)</label>
+              <Textarea
+                placeholder="Add more details..."
+                value={newTask.description}
+                onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
+                rows={2}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Priority</label>
+                <Select
+                  value={newTask.priority}
+                  onValueChange={(v) => setNewTask({ ...newTask, priority: v as typeof newTask.priority })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="urgent">Urgent</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="low">Low</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Due Date</label>
+                <Input
+                  type="date"
+                  value={newTask.due_date}
+                  onChange={(e) => setNewTask({ ...newTask, due_date: e.target.value })}
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateTask} disabled={creating}>
+              {creating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Create Task
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

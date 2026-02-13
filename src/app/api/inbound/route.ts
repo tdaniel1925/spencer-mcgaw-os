@@ -87,6 +87,7 @@ export async function GET(request: NextRequest) {
           id: emailMessages.id,
           userId: emailMessages.userId,
           connectionId: emailMessages.connectionId,
+          connectionEmail: emailConnections.email, // Email account this came from
           threadId: emailMessages.threadId,
           messageId: emailMessages.messageId,
           subject: emailMessages.subject,
@@ -114,6 +115,7 @@ export async function GET(request: NextRequest) {
           createdAt: emailMessages.createdAt,
         })
         .from(emailMessages)
+        .leftJoin(emailConnections, eq(emailMessages.connectionId, emailConnections.id))
         .where(baseFilter)
         .orderBy(desc(emailMessages.receivedAt))
         .limit(limit);
@@ -165,6 +167,7 @@ export async function GET(request: NextRequest) {
         bodyHtml: email.bodyHtml,
         bodyText: email.bodyText,
         userId: email.userId, // Include userId to detect unassigned emails (NULL)
+        connectionEmail: email.connectionEmail, // Email account this came from
       })),
     ];
 
