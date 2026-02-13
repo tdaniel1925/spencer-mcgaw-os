@@ -141,6 +141,7 @@ export default function SettingsPage() {
   const [loadingAccounts, setLoadingAccounts] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [updatingRoutingId, setUpdatingRoutingId] = useState<string | null>(null);
+  const [syncingEmails, setSyncingEmails] = useState(false);
 
   // Profile form state
   const [profile, setProfile] = useState<ProfileSettings>({
@@ -608,6 +609,34 @@ export default function SettingsPage() {
       toast.error("Failed to update routing");
     } finally {
       setUpdatingRoutingId(null);
+    }
+  };
+
+  // Handle manual email sync
+  const handleManualSync = async () => {
+    setSyncingEmails(true);
+    try {
+      toast.info("Syncing emails...");
+      const response = await fetch("/api/email/fastmail-sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        toast.success(
+          `Synced ${data.totalEmailsProcessed} emails for ${data.usersSynced} user(s)`
+        );
+        await refreshAccounts();
+      } else {
+        const data = await response.json();
+        toast.error(data.error || "Failed to sync emails");
+      }
+    } catch (error) {
+      console.error("Error syncing emails:", error);
+      toast.error("Failed to sync emails");
+    } finally {
+      setSyncingEmails(false);
     }
   };
 
@@ -1238,7 +1267,18 @@ export default function SettingsPage() {
                   {/* Connected Accounts */}
                   {emailAccounts.filter(acc => acc.provider === "imap").length > 0 && (
                     <div className="space-y-3">
-                      <p className="text-sm font-medium">Connected Accounts</p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-medium">Connected Accounts</p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleManualSync}
+                          disabled={syncingEmails}
+                        >
+                          <RefreshCw className={`h-4 w-4 mr-2 ${syncingEmails ? 'animate-spin' : ''}`} />
+                          {syncingEmails ? "Syncing..." : "Sync Now"}
+                        </Button>
+                      </div>
                       {emailAccounts
                         .filter(acc => acc.provider === "imap")
                         .map((account) => renderEmailAccountCard(account, "bg-indigo-100", "text-indigo-600"))}
