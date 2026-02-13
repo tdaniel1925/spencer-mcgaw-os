@@ -32,6 +32,8 @@ const connections = new Map();
 
 // Decrypt function from @/lib/shared/crypto
 const ALGORITHM = "aes-256-gcm";
+const IV_LENGTH = 16;
+const AUTH_TAG_LENGTH = 16;
 
 function getEncryptionKey() {
   const key = process.env.ENCRYPTION_KEY;
@@ -41,10 +43,12 @@ function getEncryptionKey() {
     return crypto.scryptSync("development-only-key", "salt", 32);
   }
 
+  // If key is hex encoded (64 characters = 32 bytes) - EXACT MATCH with crypto.ts
   if (/^[0-9a-fA-F]{64}$/.test(key)) {
     return Buffer.from(key, "hex");
   }
 
+  // If key is base64 encoded - EXACT MATCH with crypto.ts
   if (/^[A-Za-z0-9+/=]+$/.test(key) && key.length >= 32) {
     const decoded = Buffer.from(key, "base64");
     if (decoded.length >= 32) {
@@ -52,19 +56,20 @@ function getEncryptionKey() {
     }
   }
 
+  // Derive a key from the string using scrypt - EXACT MATCH with crypto.ts
   return crypto.scryptSync(key, "spencer-mcgaw-salt", 32);
 }
 
 function decrypt(encryptedText) {
   if (!encryptedText) return encryptedText;
 
-  // Not encrypted - return as is
+  // Not encrypted - return as is - EXACT MATCH with crypto.ts
   if (!encryptedText.startsWith("enc:")) {
     return encryptedText;
   }
 
   try {
-    // Check format version
+    // Check format version - EXACT MATCH with crypto.ts
     if (encryptedText.startsWith("enc:v2:")) {
       // v2 format: enc:v2:{iv}:{authTag}:{ciphertext}
       const parts = encryptedText.split(":");
@@ -86,7 +91,7 @@ function decrypt(encryptedText) {
 
       return decrypted;
     } else {
-      // Legacy v1 format: enc:{base64}
+      // Legacy v1 format: enc:{base64} (simple base64 encoding) - EXACT MATCH with crypto.ts
       const encoded = encryptedText.slice(4);
       const buffer = Buffer.from(encoded, "base64");
       return buffer.toString("utf-8");
@@ -106,27 +111,37 @@ async function processNewEmail(item, userId) {
     // Parse with mailparser
     const parsed = await simpleParser(rawEmail);
 
-    const from = parsed.from?.text || '';
     const subject = parsed.subject || '(No Subject)';
     const messageId = parsed.messageId || `fastmail-${Date.now()}`;
     const textBody = parsed.text || '';
     const htmlBody = parsed.html || null;
     const receivedDate = parsed.date || new Date();
 
-    // Extract email address
-    const fromEmailMatch = from.match(/<([^>]+)>/) || from.match(/([^\s]+@[^\s]+)/);
-    const fromEmail = fromEmailMatch ? fromEmailMatch[1].trim().toLowerCase() : null;
+    // Extract email address - try multiple approaches
+    let fromEmail = null;
+    let fromName = null;
+
+    // Method 1: Use mailparser's parsed address object (most reliable)
+    if (parsed.from?.value && parsed.from.value.length > 0) {
+      fromEmail = parsed.from.value[0].address?.toLowerCase();
+      fromName = parsed.from.value[0].name || fromEmail;
+    }
+
+    // Method 2: Fallback to text parsing
+    if (!fromEmail && parsed.from?.text) {
+      const from = parsed.from.text;
+      const emailMatch = from.match(/<([^>]+)>/) || from.match(/([^\s]+@[^\s]+)/);
+      fromEmail = emailMatch ? emailMatch[1].trim().toLowerCase() : null;
+      const nameMatch = from.match(/^([^<]+)</);
+      fromName = nameMatch ? nameMatch[1].trim() : fromEmail;
+    }
 
     if (!fromEmail) {
-      console.log('⚠️  Could not extract email address');
+      console.log('⚠️  Could not extract email address from:', JSON.stringify(parsed.from));
       return;
     }
 
-    console.log(`📧 New email: "${subject}" from ${fromEmail}`);
-
-    // Extract name from "Name <email>" format
-    const nameMatch = from.match(/^([^<]+)</);
-    const fromName = nameMatch ? nameMatch[1].trim() : fromEmail;
+    console.log(`📧 New email: "${subject}" from ${fromName} <${fromEmail}>`);
 
     // Store email in database
     const { data: emailMessage, error: emailError } = await supabase
