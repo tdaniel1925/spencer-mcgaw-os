@@ -36,7 +36,8 @@ export function useUnopenedTasksCount() {
           .select("*", { count: "exact", head: true })
           .eq("assigned_to", user.id)
           .is("first_viewed_at", null)
-          .not("status", "in", '("completed","cancelled")');
+          .neq("status", "completed")
+          .neq("status", "cancelled");
 
         if (error) {
           logger.error("Error fetching unopened tasks count", { error });

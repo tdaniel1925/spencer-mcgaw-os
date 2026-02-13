@@ -44,6 +44,7 @@ export default function DashboardPage() {
   // AI Chat drawer state
   const [selectedPost, setSelectedPost] = useState<FeedPost | null>(null);
   const [chatDrawerOpen, setChatDrawerOpen] = useState(false);
+  const [lastErrorTime, setLastErrorTime] = useState<number>(0);
 
   useEffect(() => {
     setMounted(true);
@@ -72,16 +73,21 @@ export default function DashboardPage() {
       });
     } catch (error) {
       console.error('Failed to fetch feed:', error);
-      toast.error('Failed to load communications feed');
+      // Only show toast if it's been more than 5 minutes since last error
+      const now = Date.now();
+      if (now - lastErrorTime > 5 * 60 * 1000) {
+        toast.error('Failed to load communications feed');
+        setLastErrorTime(now);
+      }
     } finally {
       setLoading(false);
     }
-  }, [filter]);
+  }, [filter, lastErrorTime]);
 
   useEffect(() => {
     fetchFeed();
-    // Refresh every 30 seconds
-    const interval = setInterval(fetchFeed, 30000);
+    // Refresh every 60 seconds (reduced from 30)
+    const interval = setInterval(fetchFeed, 60000);
     return () => clearInterval(interval);
   }, [fetchFeed]);
 
