@@ -93,6 +93,7 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<TaskStats | null>(null);
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [statsLoading, setStatsLoading] = useState(true);
+  const [fastmailAddress, setFastmailAddress] = useState<string | null>(null);
 
   // Derive dashboard tasks from shared context
   const tasks: DashboardTask[] = contextTasks.map(t => ({
@@ -139,9 +140,10 @@ export default function DashboardPage() {
   // Fetch stats and activity (tasks come from shared context)
   const fetchStatsAndActivity = useCallback(async () => {
     try {
-      const [statsRes, activityRes] = await Promise.all([
+      const [statsRes, activityRes, emailAccountsRes] = await Promise.all([
         fetch("/api/tasks/stats"),
         fetch("/api/activity?limit=10"),
+        fetch("/api/email/accounts"),
       ]);
 
       if (statsRes.ok) {
@@ -152,6 +154,15 @@ export default function DashboardPage() {
       if (activityRes.ok) {
         const data = await activityRes.json();
         setActivities(data.activities || []);
+      }
+
+      if (emailAccountsRes.ok) {
+        const data = await emailAccountsRes.json();
+        // Find first Fastmail/IMAP account
+        const fastmailAccount = data.accounts?.find((acc: any) => acc.provider === 'imap');
+        if (fastmailAccount) {
+          setFastmailAddress(fastmailAccount.email);
+        }
       }
     } catch (error) {
       console.error("Failed to fetch dashboard data:", error);
@@ -477,12 +488,18 @@ export default function DashboardPage() {
                         💡 How AI Task Suggestions Work
                       </h3>
                       <div className="space-y-2 text-sm text-blue-800 dark:text-blue-200">
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900 text-blue-900 dark:text-blue-100">
-                            📧 hmcgaw@shwunde745.resend.app
-                          </span>
-                          <span>Forward emails to this address</span>
-                        </div>
+                        {fastmailAddress ? (
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900 text-blue-900 dark:text-blue-100">
+                              📧 {fastmailAddress}
+                            </span>
+                            <span>Forward a copy of emails to this address</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <span>📧 Connect your Fastmail account in Settings to get started</span>
+                          </div>
+                        )}
                         <div className="flex items-center gap-2">
                           <span>📞 Phone calls are automatically logged</span>
                         </div>
