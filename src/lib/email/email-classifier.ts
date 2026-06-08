@@ -1,36 +1,39 @@
-// Advanced Email Classification System for Tax/Accounting Firm
+// Advanced Email Classification System for Fusion Energy Company
 import { AIEmailClassification, EmailTaskCategory, EmailMessage } from "./types";
 
 // Business context - what American Fusion Energy does
 export const BUSINESS_CONTEXT = {
-  industry: "Tax & Accounting Services",
+  industry: "Fusion Energy & Defense Technology",
   services: [
-    "tax preparation",
-    "tax planning",
-    "bookkeeping",
-    "payroll",
-    "business consulting",
-    "IRS representation",
-    "audit support",
-    "financial statements",
-    "quarterly estimates",
-    "tax extensions",
+    "fusion reactor development",
+    "defense energy solutions",
+    "plasma diagnostics",
+    "helium-3 supply chain",
+    "energy procurement",
+    "investor relations",
+    "government contracts",
+    "engineering consulting",
+    "facility operations",
+    "regulatory compliance",
   ],
   relevantTopics: [
-    // Tax related
-    "tax", "taxes", "irs", "1040", "1099", "w-2", "w2", "w-9", "w9",
-    "schedule c", "schedule k", "k-1", "k1", "1065", "1120", "990",
-    "tax return", "refund", "extension", "amendment", "audit",
-    "deduction", "credit", "withholding", "estimated tax",
-    // Accounting related
+    // Fusion/Energy related
+    "fusion", "plasma", "reactor", "texatron", "kepler", "helium-3", "he-3",
+    "deuterium", "aneutronic", "D-He-3", "energy", "power", "megawatt", "MW",
+    "baseload", "grid", "containment", "diagnostics", "neutron",
+    // Defense/Government
+    "DoD", "defense", "ANPI", "Janus", "procurement", "EO 14299",
+    "military", "army", "navy", "DIU", "contract", "RFP",
+    // Business/Commercial
     "invoice", "payment", "billing", "account", "balance",
-    "bookkeeping", "financial", "statement", "profit", "loss",
-    "expense", "receipt", "payroll", "quarterly",
-    // Client communication
+    "partnership", "offtake", "hyperscaler", "data center",
+    "microsoft", "AWS", "google", "commercial",
+    // Communication
     "appointment", "meeting", "call", "schedule", "consultation",
     "question", "help", "document", "file", "send", "upload",
     // Business related
     "client", "engagement", "service", "deadline", "due date",
+    "SEC", "8-K", "OTCQB", "investor", "listing", "compliance",
   ],
 };
 
@@ -270,7 +273,7 @@ function checkNotification(email: Partial<EmailMessage>): { isNotification: bool
   return { isNotification: reasons.length >= 1, reasons };
 }
 
-// Check if email is business relevant (tax/accounting related)
+// Check if email is business relevant (fusion energy / defense related)
 function checkBusinessRelevance(email: Partial<EmailMessage>): { isRelevant: boolean; confidence: number; reasons: string[] } {
   const reasons: string[] = [];
   const subject = email.subject?.toLowerCase() || "";
@@ -350,7 +353,7 @@ function determineCategory(email: Partial<EmailMessage>): EmailTaskCategory {
     return "urgent";
   }
 
-  if (/document|w-?2|1099|tax return|upload|attach|send.*file/i.test(combined)) {
+  if (/document|specs|schematic|report|upload|attach|send.*file/i.test(combined)) {
     return "document_request";
   }
 
@@ -366,7 +369,7 @@ function determineCategory(email: Partial<EmailMessage>): EmailTaskCategory {
     return "appointment";
   }
 
-  if (/tax.*return|filing|irs|1040|extension|amendment/i.test(combined)) {
+  if (/procurement|contract|rfp|proposal|bid|government|defense/i.test(combined)) {
     return "tax_filing";
   }
 
@@ -511,11 +514,11 @@ function createBusinessClassification(
 
   // Generate summary based on category
   const summaries: Record<EmailTaskCategory, string> = {
-    document_request: "Client document request - review and respond",
-    question: "Client question requiring response",
+    document_request: "Document request - review and respond",
+    question: "Question requiring response",
     payment: "Payment or billing inquiry",
     appointment: "Scheduling or meeting request",
-    tax_filing: "Tax filing or IRS related matter",
+    tax_filing: "Procurement or contract related matter",
     compliance: "Compliance deadline or requirement",
     follow_up: "Follow-up on previous communication",
     information: "Informational message",

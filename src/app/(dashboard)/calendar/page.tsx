@@ -127,7 +127,7 @@ const categoryOptions: { value: EventCategory; label: string; color: string }[] 
   { value: "follow_up", label: "Follow Up", color: "bg-violet-500" },
   { value: "consultation", label: "Consultation", color: "bg-cyan-500" },
   { value: "document_review", label: "Document Review", color: "bg-orange-500" },
-  { value: "tax_filing", label: "Tax Filing", color: "bg-emerald-500" },
+  { value: "tax_filing", label: "Engineering Review", color: "bg-emerald-500" },
   { value: "phone_call", label: "Phone Call", color: "bg-indigo-500" },
   { value: "personal", label: "Personal", color: "bg-pink-500" },
   { value: "other", label: "Other", color: "bg-gray-500" },
@@ -417,7 +417,7 @@ function AISchedulingDialog({
               <Input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g., Client Tax Review"
+                placeholder="e.g., Texatron Integration Test Review"
               />
             </div>
 

@@ -93,7 +93,208 @@ export default function InboundPage() {
   // Delete confirmation
   const { confirmDelete, state: deleteState, setOpen: setDeleteOpen } = useDeleteConfirmation();
 
-  // Fetch communications
+  // Mock communications data for demo
+  const mockCommunications: Communication[] = [
+    {
+      id: "call-1",
+      type: "phone",
+      timestamp: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
+      from: "Col. James Mitchell",
+      fromIdentifier: "+1 (703) 555-0142",
+      subject: "ANPI Second Cohort — Texatron Timeline",
+      preview: "Discussed Texatron timeline for second-cohort evaluation. Wants written capability brief by June 20. Mentioned Fort Carson and Fort Drum as priority Janus sites.",
+      duration: 1122,
+      direction: "inbound",
+      status: "completed",
+      aiSummary: "DoD/DIU program manager requesting capability brief for ANPI second cohort evaluation. Timeline: June 20 deadline. Key action: prepare written brief with Texatron specs, timeline, and deployment scenarios.",
+      sentiment: "positive",
+      intent: "procurement_inquiry",
+      priorityScore: 95,
+    },
+    {
+      id: "call-2",
+      type: "phone",
+      timestamp: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
+      from: "Sarah Chen — Microsoft Energy",
+      fromIdentifier: "+1 (425) 555-0198",
+      subject: "Data Center Baseload Requirements — Quincy, WA",
+      preview: "Microsoft evaluating 50MW+ fusion for Quincy, WA campus. AI rack density driving unprecedented power demand. Requested Texatron specs document and feasibility study scope.",
+      duration: 1930,
+      direction: "outbound",
+      status: "completed",
+      aiSummary: "Microsoft energy procurement exploring fusion baseload for Quincy data center. 50MW+ requirement. Need: Texatron spec sheet, preliminary feasibility study. Follow-up call scheduled for tomorrow 2PM.",
+      sentiment: "positive",
+      intent: "commercial_inquiry",
+      priorityScore: 90,
+    },
+    {
+      id: "email-1",
+      type: "email",
+      timestamp: new Date(Date.now() - 1000 * 60 * 90).toISOString(),
+      from: "procurement@diu.mil",
+      fromIdentifier: "procurement@diu.mil",
+      subject: "RE: AMFN Capability Brief — ANPI Second Cohort",
+      preview: "Thank you for the initial submission. We need the following additional documentation by COB June 20: (1) Updated deployment timeline, (2) Safety analysis summary, (3) Logistics requirements for portable configuration...",
+      importance: "high",
+      hasAttachments: true,
+      attachmentCount: 2,
+      isRead: false,
+      aiSummary: "DIU requesting additional documentation for ANPI capability brief. Three specific items needed by June 20. Attachments include requirements template and evaluation criteria.",
+      sentiment: "neutral",
+      intent: "document_request",
+      priorityScore: 95,
+    },
+    {
+      id: "call-3",
+      type: "phone",
+      timestamp: new Date(Date.now() - 1000 * 60 * 180).toISOString(),
+      from: "Dr. Erik Lindberg — Oak Ridge National Lab",
+      fromIdentifier: "+1 (865) 555-0234",
+      subject: "D-He-3 Plasma Diagnostics Collaboration",
+      preview: "Offered access to ORNL neutron measurement facility for D-He-3 plasma diagnostics validation. Discussed potential joint publication on aneutronic fusion diagnostics methodology.",
+      duration: 1455,
+      direction: "inbound",
+      status: "completed",
+      aiSummary: "ORNL researcher proposing collaboration on plasma diagnostics. Offering facility access and co-publication opportunity. High value for technical credibility. Follow-up meeting scheduled.",
+      sentiment: "positive",
+      intent: "collaboration",
+      priorityScore: 80,
+    },
+    {
+      id: "email-2",
+      type: "email",
+      timestamp: new Date(Date.now() - 1000 * 60 * 150).toISOString(),
+      from: "brent.nelson@keplerfusion.com",
+      fromIdentifier: "brent.nelson@keplerfusion.com",
+      subject: "Texatron Integration Test Schedule — UPDATED",
+      preview: "Team — updated the integration test schedule. Plasma containment vessel installation moved to June 12. Diagnostics array calibration now June 14-16. Full system integration test targeted for June 20...",
+      importance: "high",
+      hasAttachments: true,
+      attachmentCount: 1,
+      isRead: false,
+      aiSummary: "Updated Texatron build schedule from Nelson. Key dates: containment vessel June 12, diagnostics calibration June 14-16, full integration test June 20.",
+      sentiment: "neutral",
+      intent: "status_update",
+      priorityScore: 85,
+    },
+    {
+      id: "call-4",
+      type: "phone",
+      timestamp: new Date(Date.now() - 1000 * 60 * 200).toISOString(),
+      from: "David Park — Goldman Sachs",
+      fromIdentifier: "+1 (212) 555-0167",
+      subject: "Clean Energy Coverage Initiation",
+      preview: null,
+      duration: 0,
+      direction: "inbound",
+      status: "missed",
+      aiSummary: "Voicemail: Goldman Sachs clean energy analyst interested in AMFN for coverage initiation. Callback requested.",
+      sentiment: "positive",
+      intent: "investor_inquiry",
+      priorityScore: 75,
+    },
+    {
+      id: "email-3",
+      type: "email",
+      timestamp: new Date(Date.now() - 1000 * 60 * 210).toISOString(),
+      from: "investor.relations@ibnnewswire.com",
+      fromIdentifier: "investor.relations@ibnnewswire.com",
+      subject: "Draft 8-K: Texatron Structural Frame Completion",
+      preview: "Attached is the draft 8-K for your review. Please confirm the milestone language and forward-looking statement disclaimers. We recommend filing by EOD Thursday to allow social amplification on Friday...",
+      importance: "high",
+      hasAttachments: true,
+      attachmentCount: 3,
+      isRead: true,
+      aiSummary: "IBN newswire draft 8-K for Texatron structural frame milestone. Needs review of milestone language and FLS disclaimers. Recommended filing: Thursday EOD.",
+      sentiment: "neutral",
+      intent: "compliance_review",
+      priorityScore: 88,
+    },
+    {
+      id: "call-5",
+      type: "phone",
+      timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
+      from: "Maj. Rodriguez — US Army Corps of Engineers",
+      fromIdentifier: "+1 (719) 555-0321",
+      subject: "Janus Site Evaluation — Fort Carson",
+      preview: "Fort Carson considering fusion microreactor for base energy resilience. Wants Nelson to present at July site visit. Discussed grid-independent operation requirements and timeline for portable unit deployment.",
+      duration: 728,
+      direction: "inbound",
+      status: "completed",
+      aiSummary: "Army Corps inquiring about fusion microreactor for Fort Carson Janus site. Requesting Nelson presentation at July site visit. Key requirements: grid-independent operation, portable deployment.",
+      sentiment: "positive",
+      intent: "procurement_inquiry",
+      priorityScore: 88,
+    },
+    {
+      id: "email-4",
+      type: "email",
+      timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
+      from: "energy-procurement@microsoft.com",
+      fromIdentifier: "energy-procurement@microsoft.com",
+      subject: "Follow-up: Baseload Requirements for Quincy Campus",
+      preview: "Hi team, following up on our call today. Attached are the detailed power requirements for the Quincy campus expansion. We're looking at 50-100MW baseload with 99.99% uptime SLA...",
+      importance: "normal",
+      hasAttachments: true,
+      attachmentCount: 2,
+      isRead: false,
+      aiSummary: "Microsoft follow-up with detailed Quincy campus power requirements. 50-100MW baseload, 99.99% uptime SLA. Attachments include requirements doc and campus expansion timeline.",
+      sentiment: "positive",
+      intent: "commercial_inquiry",
+      priorityScore: 85,
+    },
+    {
+      id: "call-6",
+      type: "phone",
+      timestamp: new Date(Date.now() - 1000 * 60 * 60 * 25).toISOString(),
+      from: "Lisa Morales — Tweed Roosevelt LLP",
+      fromIdentifier: "+1 (512) 555-0445",
+      subject: "OTCQB Application Status Review",
+      preview: "All documentation submitted. Expected qualification timeline: 4-6 weeks. Discussed Frankfurt secondary listing requirements — need to prepare German-language disclosures.",
+      duration: 930,
+      direction: "outbound",
+      status: "completed",
+      aiSummary: "Legal counsel update on OTCQB application. All docs submitted, 4-6 week timeline. Also discussed Frankfurt listing prep — German-language disclosures needed.",
+      sentiment: "positive",
+      intent: "legal_update",
+      priorityScore: 70,
+    },
+    {
+      id: "email-5",
+      type: "email",
+      timestamp: new Date(Date.now() - 1000 * 60 * 60 * 26).toISOString(),
+      from: "samuel.reid@americanfusion.com",
+      fromIdentifier: "samuel.reid@americanfusion.com",
+      subject: "NATO Allied Command Briefing Prep — June 25",
+      preview: "Team — need to prepare briefing materials for NATO Allied Command presentation on June 25. Focus areas: (1) D-He-3 technology overview, (2) Portable deployment capabilities, (3) Allied procurement pathways...",
+      importance: "normal",
+      hasAttachments: false,
+      isRead: true,
+      aiSummary: "Reid requesting briefing materials for NATO presentation. Three focus areas: technology overview, portable deployment, allied procurement. Deadline: June 25.",
+      sentiment: "neutral",
+      intent: "task_assignment",
+      priorityScore: 75,
+    },
+    {
+      id: "email-6",
+      type: "email",
+      timestamp: new Date(Date.now() - 1000 * 60 * 60 * 28).toISOString(),
+      from: "supply@industrialgas.com",
+      fromIdentifier: "supply@industrialgas.com",
+      subject: "He-3 Delivery Schedule Q3 2026",
+      preview: "Confirming Q3 delivery schedule for helium-3 supply. July shipment: 500L, August: 750L, September: 750L. Please confirm receiving facility specifications and safety protocols...",
+      importance: "normal",
+      hasAttachments: true,
+      attachmentCount: 1,
+      isRead: true,
+      aiSummary: "He-3 supplier confirming Q3 delivery schedule. Total: 2,000L across July-September. Need to confirm receiving facility specs.",
+      sentiment: "neutral",
+      intent: "supply_chain",
+      priorityScore: 65,
+    },
+  ];
+
+  // Fetch communications (falls back to mock data for demo)
   const fetchCommunications = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -103,13 +304,25 @@ export default function InboundPage() {
       const queryString = params.toString();
       const response = await fetch(`/api/inbound${queryString ? `?${queryString}` : ""}`);
 
-      if (!response.ok) throw new Error("Failed to fetch communications");
+      if (!response.ok) throw new Error("Failed to fetch");
 
       const data = await response.json();
-      setCommunications(data.communications || []);
-    } catch (error) {
-      console.error("Error fetching communications:", error);
-      toast.error("Failed to load communications");
+      const live = data.communications || [];
+      // Use live data if available, otherwise fall back to mock
+      if (live.length > 0) {
+        setCommunications(live);
+      } else {
+        const filtered = filterType === "all"
+          ? mockCommunications
+          : mockCommunications.filter(c => c.type === filterType);
+        setCommunications(filtered);
+      }
+    } catch {
+      // Silently fall back to mock data for demo
+      const filtered = filterType === "all"
+        ? mockCommunications
+        : mockCommunications.filter(c => c.type === filterType);
+      setCommunications(filtered);
     } finally {
       setIsLoading(false);
     }

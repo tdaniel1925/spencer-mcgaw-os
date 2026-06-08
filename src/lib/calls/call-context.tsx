@@ -40,8 +40,8 @@ function generateAIAnalysis(transcript: string, callerPhone: string): CallAIAnal
     category = "appointment_scheduling";
   } else if (lowerTranscript.includes("payment") || lowerTranscript.includes("invoice") || lowerTranscript.includes("bill")) {
     category = "payment_inquiry";
-  } else if (lowerTranscript.includes("tax") || lowerTranscript.includes("return") || lowerTranscript.includes("refund")) {
-    category = "tax_question";
+  } else if (lowerTranscript.includes("technical") || lowerTranscript.includes("engineering") || lowerTranscript.includes("specs")) {
+    category = "technical_inquiry";
   } else if (lowerTranscript.includes("status") || lowerTranscript.includes("update") || lowerTranscript.includes("where")) {
     category = "status_check";
   } else if (lowerTranscript.includes("urgent") || lowerTranscript.includes("asap") || lowerTranscript.includes("emergency")) {
@@ -123,7 +123,7 @@ function generateAIAnalysis(transcript: string, callerPhone: string): CallAIAnal
     document_request: "Client requesting or discussing documents",
     appointment_scheduling: "Client wants to schedule an appointment",
     payment_inquiry: "Client calling about payment or billing",
-    tax_question: "Client has tax-related questions",
+    technical_inquiry: "Contact has technical or engineering questions",
     status_check: "Client checking on status of their case",
     complaint: "Client expressing concerns or complaints",
     urgent_matter: "Urgent matter requiring immediate attention",

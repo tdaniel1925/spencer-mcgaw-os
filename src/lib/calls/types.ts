@@ -134,7 +134,7 @@ export type CallCategory =
   | "document_request"
   | "appointment_scheduling"
   | "payment_inquiry"
-  | "tax_question"
+  | "technical_inquiry"
   | "status_check"
   | "complaint"
   | "urgent_matter"
@@ -238,7 +238,7 @@ export const callCategoryInfo: Record<CallCategory, { label: string; color: stri
   document_request: { label: "Document Request", color: "bg-purple-100 text-purple-700", icon: "FileText" },
   appointment_scheduling: { label: "Scheduling", color: "bg-orange-100 text-orange-700", icon: "Calendar" },
   payment_inquiry: { label: "Payment", color: "bg-green-100 text-green-700", icon: "DollarSign" },
-  tax_question: { label: "Tax Question", color: "bg-indigo-100 text-indigo-700", icon: "Calculator" },
+  technical_inquiry: { label: "Technical Inquiry", color: "bg-indigo-100 text-indigo-700", icon: "Calculator" },
   status_check: { label: "Status Check", color: "bg-cyan-100 text-cyan-700", icon: "Search" },
   complaint: { label: "Complaint", color: "bg-red-100 text-red-700", icon: "AlertTriangle" },
   urgent_matter: { label: "Urgent", color: "bg-red-100 text-red-700", icon: "AlertCircle" },
