@@ -1,4 +1,4 @@
-// Comprehensive Permission System for Spencer McGaw Hub
+// Comprehensive Permission System for American Fusion Energy Hub
 
 // User Roles - hierarchical from highest to lowest
 export type UserRole = "owner" | "admin" | "manager" | "accountant" | "staff" | "viewer";

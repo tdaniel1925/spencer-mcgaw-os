@@ -2,14 +2,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 
 export const metadata = {
-  title: "Privacy Policy | Spencer McGaw CPA Hub",
-  description: "Privacy Policy for Spencer McGaw CPA Hub",
+  title: "Privacy Policy | American Fusion Energy Hub",
+  description: "Privacy Policy for American Fusion Energy Hub",
 };
 
 export default function PrivacyPolicyPage() {
   const lastUpdated = "December 25, 2025";
-  const companyName = "Spencer McGaw CPA";
-  const appName = "Spencer McGaw CPA Hub";
+  const companyName = "American Fusion Energy";
+  const appName = "American Fusion Energy Hub";
 
   return (
     <div className="min-h-screen bg-background py-12 px-4">

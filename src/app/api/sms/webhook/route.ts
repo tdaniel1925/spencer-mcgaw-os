@@ -149,7 +149,7 @@ export async function POST(request: NextRequest) {
       return new NextResponse(
         `<?xml version="1.0" encoding="UTF-8"?>
         <Response>
-          <Message>You have been resubscribed to SMS messages from Spencer McGaw CPA.</Message>
+          <Message>You have been resubscribed to SMS messages from American Fusion Energy.</Message>
         </Response>`,
         {
           headers: { "Content-Type": "text/xml" },

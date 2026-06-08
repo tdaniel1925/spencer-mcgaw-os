@@ -53,8 +53,8 @@ function LoginForm() {
     <div className="min-h-screen flex">
       {/* Left Panel - Branding */}
       <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
-        {/* Dark green gradient background */}
-        <div className="absolute inset-0 bg-gradient-to-br from-[#1a3c34] via-[#0f2922] to-[#0a1f1a]" />
+        {/* Dark navy gradient background */}
+        <div className="absolute inset-0 bg-gradient-to-br from-[#0a1628] via-[#111d33] to-[#060e1a]" />
 
         {/* Subtle pattern overlay */}
         <div
@@ -71,7 +71,7 @@ function LoginForm() {
             {/* Replace /logo.png with your actual logo path */}
             <Image
               src="/logo.png"
-              alt="Spencer McGaw CPA"
+              alt="American Fusion Energy"
               width={200}
               height={200}
               className="drop-shadow-2xl"
@@ -81,29 +81,29 @@ function LoginForm() {
 
           {/* Firm Name */}
           <h1 className="text-4xl md:text-5xl font-bold text-white text-center mb-4 tracking-tight">
-            Spencer McGaw
+            American Fusion Energy
           </h1>
-          <h2 className="text-2xl md:text-3xl font-light text-emerald-300 text-center mb-8">
-            Certified Public Accountants
+          <h2 className="text-2xl md:text-3xl font-light text-blue-300 text-center mb-8">
+            Powering the Future
           </h2>
 
           {/* Tagline */}
           <p className="text-lg text-white/70 text-center max-w-md leading-relaxed">
-            Your trusted partner for tax planning, accounting services, and financial guidance.
+            Leading the way in fusion energy innovation and clean power solutions.
           </p>
 
           {/* Decorative elements */}
           <div className="absolute bottom-12 left-12 right-12">
-            <div className="h-px bg-gradient-to-r from-transparent via-emerald-500/30 to-transparent" />
+            <div className="h-px bg-gradient-to-r from-transparent via-blue-500/30 to-transparent" />
             <p className="text-center text-white/40 text-sm mt-6">
-              Excellence in Financial Services Since 1985
+              Clean Energy for a Brighter Tomorrow
             </p>
           </div>
         </div>
 
         {/* Decorative circles */}
-        <div className="absolute -top-24 -right-24 w-96 h-96 bg-emerald-600/10 rounded-full blur-3xl" />
-        <div className="absolute -bottom-32 -left-32 w-[500px] h-[500px] bg-emerald-500/5 rounded-full blur-3xl" />
+        <div className="absolute -top-24 -right-24 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl" />
+        <div className="absolute -bottom-32 -left-32 w-[500px] h-[500px] bg-blue-500/5 rounded-full blur-3xl" />
       </div>
 
       {/* Right Panel - Login Form */}
@@ -113,18 +113,18 @@ function LoginForm() {
           <div className="lg:hidden flex flex-col items-center mb-8">
             <Image
               src="/logo.png"
-              alt="Spencer McGaw CPA"
+              alt="American Fusion Energy"
               width={80}
               height={80}
               className="mb-4"
               priority
             />
-            <h1 className="text-2xl font-bold text-[#1a3c34]">Spencer McGaw CPA</h1>
+            <h1 className="text-2xl font-bold text-[#0a1628]">American Fusion Energy</h1>
           </div>
 
           {/* Welcome Text */}
           <div className="mb-8">
-            <h2 className="text-3xl font-bold text-[#1a3c34] mb-2">Welcome back</h2>
+            <h2 className="text-3xl font-bold text-[#0a1628] mb-2">Welcome back</h2>
             <p className="text-gray-600">Sign in to access your account</p>
           </div>
 
@@ -138,7 +138,7 @@ function LoginForm() {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-[#1a3c34] font-medium">
+              <Label htmlFor="email" className="text-[#0a1628] font-medium">
                 Email Address
               </Label>
               <Input
@@ -150,18 +150,18 @@ function LoginForm() {
                 required
                 disabled={loading}
                 autoComplete="email"
-                className="h-12 bg-white border-gray-200 focus:border-emerald-500 focus:ring-emerald-500/20 rounded-lg"
+                className="h-12 bg-white border-gray-200 focus:border-blue-500 focus:ring-blue-500/20 rounded-lg"
               />
             </div>
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label htmlFor="password" className="text-[#1a3c34] font-medium">
+                <Label htmlFor="password" className="text-[#0a1628] font-medium">
                   Password
                 </Label>
                 <Link
                   href="/forgot-password"
-                  className="text-sm text-emerald-600 hover:text-emerald-700 hover:underline font-medium"
+                  className="text-sm text-blue-600 hover:text-blue-700 hover:underline font-medium"
                 >
                   Forgot password?
                 </Link>
@@ -175,14 +175,14 @@ function LoginForm() {
                 required
                 disabled={loading}
                 autoComplete="current-password"
-                className="h-12 bg-white border-gray-200 focus:border-emerald-500 focus:ring-emerald-500/20 rounded-lg"
+                className="h-12 bg-white border-gray-200 focus:border-blue-500 focus:ring-blue-500/20 rounded-lg"
               />
             </div>
 
             <Button
               type="submit"
               disabled={loading}
-              className="w-full h-12 bg-[#1a3c34] hover:bg-[#0f2922] text-white font-semibold rounded-lg transition-all duration-200 shadow-lg shadow-emerald-900/20"
+              className="w-full h-12 bg-[#0a1628] hover:bg-[#111d33] text-white font-semibold rounded-lg transition-all duration-200 shadow-lg shadow-blue-900/20"
             >
               {loading ? (
                 <>
@@ -200,7 +200,7 @@ function LoginForm() {
             Don&apos;t have an account?{" "}
             <Link
               href="/signup"
-              className="text-emerald-600 hover:text-emerald-700 font-semibold hover:underline"
+              className="text-blue-600 hover:text-blue-700 font-semibold hover:underline"
             >
               Contact us
             </Link>
@@ -209,7 +209,7 @@ function LoginForm() {
           {/* Footer */}
           <div className="mt-12 pt-8 border-t border-gray-200">
             <p className="text-center text-sm text-gray-400">
-              &copy; {new Date().getFullYear()} Spencer McGaw CPA. All rights reserved.
+              &copy; {new Date().getFullYear()} American Fusion Energy. All rights reserved.
             </p>
           </div>
         </div>
@@ -221,10 +221,10 @@ function LoginForm() {
 function LoadingState() {
   return (
     <div className="min-h-screen flex">
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-[#1a3c34] via-[#0f2922] to-[#0a1f1a]" />
+      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-[#0a1628] via-[#111d33] to-[#060e1a]" />
       <div className="w-full lg:w-1/2 flex items-center justify-center bg-[#faf9f7]">
         <div className="flex flex-col items-center">
-          <Loader2 className="h-8 w-8 animate-spin text-emerald-600 mb-4" />
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600 mb-4" />
           <p className="text-gray-600">Loading...</p>
         </div>
       </div>

@@ -35,7 +35,7 @@ function formatLog(
     timestamp: new Date().toISOString(),
     level: level.toUpperCase(),
     message,
-    service: 'spencer-mcgaw-hub',
+    service: 'american-fusion-energy-hub',
     environment: process.env.NODE_ENV || 'development',
     ...(options?.requestId && { requestId: options.requestId }),
     ...(options?.userId && { userId: options.userId }),

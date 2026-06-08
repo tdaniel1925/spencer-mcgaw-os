@@ -134,7 +134,7 @@ describe("SMS API", () => {
     const mockTemplate = {
       id: "template-1",
       name: "Welcome Message",
-      body: "Welcome to Spencer McGaw CPA! We're glad to have you.",
+      body: "Welcome to American Fusion Energy! We're glad to have you.",
       category: "onboarding",
     };
 

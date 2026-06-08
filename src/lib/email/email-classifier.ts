@@ -1,7 +1,7 @@
 // Advanced Email Classification System for Tax/Accounting Firm
 import { AIEmailClassification, EmailTaskCategory, EmailMessage } from "./types";
 
-// Business context - what Bot Makers / Spencer McGaw does
+// Business context - what American Fusion Energy does
 export const BUSINESS_CONTEXT = {
   industry: "Tax & Accounting Services",
   services: [
@@ -48,7 +48,7 @@ const SPAM_MARKETING_INDICATORS = {
     /deals@/i,
     /info@.*\.com$/i,  // Generic info@ addresses
     /hello@.*\.com$/i, // Generic hello@ addresses (often marketing)
-    /support@(?!spencermcgaw|botmakers)/i, // Support emails not from our domains
+    /support@(?!americanfusionenergy|botmakers)/i, // Support emails not from our domains
   ],
   // Subject line patterns indicating spam/marketing
   subjectPatterns: [

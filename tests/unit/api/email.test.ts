@@ -36,7 +36,7 @@ describe("Email API", () => {
   describe("Email Accounts", () => {
     const mockAccount = {
       id: "account-1",
-      email: "office@spencermcgaw.com",
+      email: "office@americanfusionenergy.com",
       provider: "google",
       is_connected: true,
       last_sync: "2024-01-01T00:00:00Z",
@@ -63,7 +63,7 @@ describe("Email API", () => {
         id: "email-1",
         subject: "Tax Question",
         from: "client@example.com",
-        to: "office@spencermcgaw.com",
+        to: "office@americanfusionenergy.com",
         body: "I have a question about my taxes",
         is_read: false,
         received_at: "2024-01-01T10:00:00Z",
@@ -72,7 +72,7 @@ describe("Email API", () => {
         id: "email-2",
         subject: "Re: Invoice",
         from: "client2@example.com",
-        to: "office@spencermcgaw.com",
+        to: "office@americanfusionenergy.com",
         body: "Thank you for the invoice",
         is_read: true,
         received_at: "2024-01-01T09:00:00Z",

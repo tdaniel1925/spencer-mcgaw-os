@@ -47,12 +47,12 @@ export interface AnalysisResult {
 // AI EMAIL ANALYZER SERVICE
 // ============================================================================
 
-const ANALYSIS_PROMPT = `You are an AI assistant for Spencer McGaw CPA Hub, a business operating system for a CPA firm.
+const ANALYSIS_PROMPT = `You are an AI assistant for American Fusion Energy Hub, a business operating system for an energy company.
 
 Your job is to analyze forwarded emails and determine if they require creating a task. If yes, extract the task details.
 
 **Context:**
-- This is a CPA firm handling tax preparation, client communications, document requests, meetings, etc.
+- This is an energy company handling fusion energy projects, client communications, document requests, meetings, etc.
 - Not every email needs a task (e.g., newsletters, automated notifications, FYI emails don't need tasks)
 - Focus on actionable items that require staff attention
 

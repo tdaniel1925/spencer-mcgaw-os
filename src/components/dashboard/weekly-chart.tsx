@@ -78,9 +78,9 @@ export function WeeklyChart({ title, data, className }: WeeklyChartProps) {
             <Line
               type="monotone"
               dataKey="thisWeek"
-              stroke="#143009"
+              stroke="#0a1628"
               strokeWidth={2}
-              dot={{ fill: "#143009", strokeWidth: 2, r: 4 }}
+              dot={{ fill: "#0a1628", strokeWidth: 2, r: 4 }}
               activeDot={{ r: 6 }}
             />
             <Line

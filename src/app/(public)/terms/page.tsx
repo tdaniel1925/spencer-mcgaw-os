@@ -2,14 +2,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 
 export const metadata = {
-  title: "Terms of Service | Spencer McGaw CPA Hub",
-  description: "Terms of Service for Spencer McGaw CPA Hub",
+  title: "Terms of Service | American Fusion Energy Hub",
+  description: "Terms of Service for American Fusion Energy Hub",
 };
 
 export default function TermsOfServicePage() {
   const lastUpdated = "December 25, 2025";
-  const companyName = "Spencer McGaw CPA";
-  const appName = "Spencer McGaw CPA Hub";
+  const companyName = "American Fusion Energy";
+  const appName = "American Fusion Energy Hub";
 
   return (
     <div className="min-h-screen bg-background py-12 px-4">

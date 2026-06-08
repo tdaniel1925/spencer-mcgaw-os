@@ -88,7 +88,7 @@ const categories: Category[] = [
     id: "getting-started",
     name: "Getting Started",
     icon: <BookOpen className="h-5 w-5" />,
-    description: "Learn the basics of Spencer McGaw Hub",
+    description: "Learn the basics of American Fusion Energy Hub",
     articleCount: 5,
   },
   {
@@ -148,14 +148,14 @@ const articles: Article[] = [
   {
     id: "quick-start-guide",
     title: "Quick Start Guide",
-    description: "Get up and running with Spencer McGaw Hub in minutes",
+    description: "Get up and running with American Fusion Energy Hub in minutes",
     category: "getting-started",
     tags: ["basics", "setup", "introduction"],
     readTime: 5,
     lastUpdated: "2024-12-27",
     featured: true,
     content: [
-      { type: "paragraph", content: "Welcome to Spencer McGaw Hub! This comprehensive guide will help you get started with the platform quickly and efficiently." },
+      { type: "paragraph", content: "Welcome to American Fusion Energy Hub! This comprehensive guide will help you get started with the platform quickly and efficiently." },
       { type: "heading", content: "Step 1: Complete Your Profile" },
       { type: "paragraph", content: "Navigate to Settings from the sidebar to customize your profile. You can add your name, upload a profile photo, set your department, and configure your notification preferences." },
       { type: "steps", content: [
@@ -238,7 +238,7 @@ const articles: Article[] = [
     readTime: 2,
     lastUpdated: "2024-12-27",
     content: [
-      { type: "paragraph", content: "When you first log in to Spencer McGaw Hub, you'll be greeted with an interactive onboarding tour that introduces you to the key features." },
+      { type: "paragraph", content: "When you first log in to American Fusion Energy Hub, you'll be greeted with an interactive onboarding tour that introduces you to the key features." },
       { type: "heading", content: "The Onboarding Experience" },
       { type: "list", content: [
         "Welcome screen with an overview of the platform",
@@ -288,7 +288,7 @@ const articles: Article[] = [
   {
     id: "task-management",
     title: "Task Management Overview",
-    description: "Understanding how tasks work in Spencer McGaw Hub",
+    description: "Understanding how tasks work in American Fusion Energy Hub",
     category: "tasks",
     tags: ["tasks", "workflow", "management"],
     readTime: 6,
@@ -418,7 +418,7 @@ const articles: Article[] = [
     lastUpdated: "2024-12-27",
     featured: true,
     content: [
-      { type: "paragraph", content: "Clients are at the heart of your business. Spencer McGaw Hub makes it easy to track all client information and interactions." },
+      { type: "paragraph", content: "Clients are at the heart of your business. American Fusion Energy Hub makes it easy to track all client information and interactions." },
       { type: "heading", content: "Adding a New Client" },
       { type: "steps", content: [
         "Go to Clients from the sidebar",
@@ -451,7 +451,7 @@ const articles: Article[] = [
     readTime: 3,
     lastUpdated: "2024-12-27",
     content: [
-      { type: "paragraph", content: "Spencer McGaw Hub automatically attempts to match incoming emails and phone calls to existing clients." },
+      { type: "paragraph", content: "American Fusion Energy Hub automatically attempts to match incoming emails and phone calls to existing clients." },
       { type: "heading", content: "How Matching Works" },
       { type: "list", content: [
         "Email Address - Emails are matched to clients with the same email address",
@@ -508,7 +508,7 @@ const articles: Article[] = [
     lastUpdated: "2026-02-07",
     featured: true,
     content: [
-      { type: "paragraph", content: "Spencer McGaw Hub uses a shared inbox to receive and process emails with AI-powered task suggestions." },
+      { type: "paragraph", content: "American Fusion Energy Hub uses a shared inbox to receive and process emails with AI-powered task suggestions." },
       { type: "heading", content: "How It Works" },
       { type: "paragraph", content: "Simply forward emails to your organization's shared inbox address, and AI will analyze them to create task suggestions." },
       { type: "steps", content: [
@@ -635,7 +635,7 @@ const articles: Article[] = [
     readTime: 5,
     lastUpdated: "2024-12-27",
     content: [
-      { type: "paragraph", content: "Spencer McGaw Hub integrates with your phone system to log calls, record conversations, and generate transcripts and summaries." },
+      { type: "paragraph", content: "American Fusion Energy Hub integrates with your phone system to log calls, record conversations, and generate transcripts and summaries." },
       { type: "heading", content: "Call Tracking Features" },
       { type: "list", content: [
         "Automatic call logging with caller information",
@@ -692,7 +692,7 @@ const articles: Article[] = [
     readTime: 5,
     lastUpdated: "2024-12-27",
     content: [
-      { type: "paragraph", content: "Phone webhooks allow Spencer McGaw Hub to receive real-time notifications about phone calls from your phone provider." },
+      { type: "paragraph", content: "Phone webhooks allow American Fusion Energy Hub to receive real-time notifications about phone calls from your phone provider." },
       { type: "heading", content: "Available Webhooks" },
       { type: "list", content: [
         "Inbound Call Webhook - Triggered when a call comes in",
@@ -812,7 +812,7 @@ const articles: Article[] = [
     readTime: 6,
     lastUpdated: "2024-12-27",
     content: [
-      { type: "paragraph", content: "Spencer McGaw Hub uses role-based access control (RBAC) to manage what users can see and do." },
+      { type: "paragraph", content: "American Fusion Energy Hub uses role-based access control (RBAC) to manage what users can see and do." },
       { type: "heading", content: "Available Roles" },
       { type: "list", content: [
         "Owner - Full access including billing and system administration",
@@ -907,7 +907,7 @@ const articles: Article[] = [
     readTime: 4,
     lastUpdated: "2024-12-27",
     content: [
-      { type: "paragraph", content: "All significant actions in Spencer McGaw Hub are logged for compliance and troubleshooting." },
+      { type: "paragraph", content: "All significant actions in American Fusion Energy Hub are logged for compliance and troubleshooting." },
       { type: "heading", content: "What Gets Logged" },
       { type: "list", content: [
         "User logins and logouts",
@@ -938,7 +938,7 @@ const articles: Article[] = [
     readTime: 4,
     lastUpdated: "2024-12-27",
     content: [
-      { type: "paragraph", content: "Spencer McGaw Hub is built with security as a priority, especially important for accounting firms handling sensitive financial data." },
+      { type: "paragraph", content: "American Fusion Energy Hub is built with security as a priority, especially important for accounting firms handling sensitive financial data." },
       { type: "heading", content: "Security Measures" },
       { type: "list", content: [
         "Encryption at Rest - All data is encrypted using AES-256",
@@ -995,7 +995,7 @@ const articles: Article[] = [
     readTime: 3,
     lastUpdated: "2024-12-27",
     content: [
-      { type: "paragraph", content: "By default, Spencer McGaw Hub promotes transparency with an 'everyone sees everything' model. However, privacy controls are available." },
+      { type: "paragraph", content: "By default, American Fusion Energy Hub promotes transparency with an 'everyone sees everything' model. However, privacy controls are available." },
       { type: "heading", content: "Visibility Model" },
       { type: "paragraph", content: "In the organization:" },
       { type: "list", content: [
@@ -1111,7 +1111,7 @@ const faqs: FAQ[] = [
   },
   {
     question: "Can clients access the system?",
-    answer: "Currently, Spencer McGaw Hub is for internal team use only. A client portal feature is planned for the future.",
+    answer: "Currently, American Fusion Energy Hub is for internal team use only. A client portal feature is planned for the future.",
     category: "clients",
   },
 ];
@@ -1587,7 +1587,7 @@ export default function HelpPage() {
                     <CardHeader>
                       <CardTitle>Frequently Asked Questions</CardTitle>
                       <CardDescription>
-                        Quick answers to common questions about Spencer McGaw Hub
+                        Quick answers to common questions about American Fusion Energy Hub
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -1642,9 +1642,9 @@ export default function HelpPage() {
                           Send us an email and we'll respond within 24 hours during business days.
                         </p>
                         <Button className="w-full" asChild>
-                          <a href="mailto:support@spencermcgaw.com">
+                          <a href="mailto:support@americanfusionenergy.com">
                             <Mail className="h-4 w-4 mr-2" />
-                            support@spencermcgaw.com
+                            support@americanfusionenergy.com
                           </a>
                         </Button>
                       </CardContent>

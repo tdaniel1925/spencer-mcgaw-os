@@ -18,8 +18,8 @@ import crypto from "crypto";
 
 const WEBHOOK_SECRET = process.env.SUPABASE_AUTH_HOOK_SECRET;
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const EMAIL_FROM = process.env.EMAIL_FROM || "notifications@spencermcgaw.com";
-const APP_NAME = "Spencer McGaw Hub";
+const EMAIL_FROM = process.env.EMAIL_FROM || "notifications@americanfusionenergy.com";
+const APP_NAME = "American Fusion Energy Hub";
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
 /**

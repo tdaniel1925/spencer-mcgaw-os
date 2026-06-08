@@ -51,9 +51,9 @@ async function getResendClient() {
 }
 
 // Email templates
-const EMAIL_FROM = process.env.EMAIL_FROM || "notifications@spencermcgaw.com";
-const APP_NAME = "Spencer McGaw Hub";
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://spencermcgaw.app";
+const EMAIL_FROM = process.env.EMAIL_FROM || "notifications@americanfusionenergy.com";
+const APP_NAME = "American Fusion Energy Hub";
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://americanfusionenergy.com";
 
 interface EmailOptions {
   to: string;
@@ -167,7 +167,7 @@ function baseTemplate(content: string): string {
     .header { background: #1a1a2e; padding: 20px; text-align: center; }
     .header h1 { color: white; margin: 0; font-size: 24px; }
     .content { padding: 30px; }
-    .button { display: inline-block; background: #143009; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 500; }
+    .button { display: inline-block; background: #0a1628; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 500; }
     .footer { background: #f5f5f5; padding: 20px; text-align: center; font-size: 12px; color: #666; }
   </style>
 </head>

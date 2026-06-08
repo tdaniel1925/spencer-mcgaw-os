@@ -18,8 +18,8 @@ interface Message {
 const appKnowledge = {
   // General app info
   general: {
-    name: "Spencer McGaw Business OS",
-    description: "A comprehensive business management platform for accounting and professional services firms. It helps you manage clients, tasks, emails, documents, calendar, and phone calls all in one place.",
+    name: "American Fusion Energy Hub",
+    description: "A comprehensive business management platform for American Fusion Energy. It helps you manage clients, tasks, emails, documents, calendar, and phone calls all in one place.",
   },
 
   // Page-specific help

@@ -18,8 +18,8 @@ describe("constants", () => {
   });
 
   describe("DEFAULT_COMPANY_NAME", () => {
-    it("should be Spencer McGaw CPA", () => {
-      expect(DEFAULT_COMPANY_NAME).toBe("Spencer McGaw CPA");
+    it("should be American Fusion Energy", () => {
+      expect(DEFAULT_COMPANY_NAME).toBe("American Fusion Energy");
     });
 
     it("should be a non-empty string", () => {

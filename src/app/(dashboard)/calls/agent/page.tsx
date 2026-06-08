@@ -55,7 +55,7 @@ const defaultSettings: PhoneAgentSettings = {
   autoCreateTasks: true,
   recordCalls: true,
   transcribeCalls: true,
-  greetingScript: "Hello, thank you for calling Spencer McGaw CPA. This is our automated assistant. How may I help you today?",
+  greetingScript: "Hello, thank you for calling American Fusion Energy. This is our automated assistant. How may I help you today?",
   businessHoursResponse: "Our office hours are Monday through Friday, 9 AM to 5 PM Central Time. Is there anything else I can help you with?",
   transferMessage: "I'd be happy to connect you with one of our team members. Please hold while I transfer your call.",
 };

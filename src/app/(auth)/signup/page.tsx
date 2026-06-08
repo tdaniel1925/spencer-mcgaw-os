@@ -113,12 +113,12 @@ export default function SignupPage() {
         <CardHeader className="space-y-1 text-center">
           <div className="flex justify-center mb-4">
             <div className="w-12 h-12 rounded-lg bg-primary flex items-center justify-center">
-              <span className="text-xl font-bold text-white">SM</span>
+              <span className="text-xl font-bold text-white">AF</span>
             </div>
           </div>
           <CardTitle className="text-2xl font-bold">Create an account</CardTitle>
           <CardDescription>
-            Get started with Spencer McGaw CPA Hub
+            Get started with American Fusion Energy Hub
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>

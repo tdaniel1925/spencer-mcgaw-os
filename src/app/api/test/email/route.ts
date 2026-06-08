@@ -46,12 +46,12 @@ export async function POST(request: NextRequest) {
     const { Resend } = await import("resend");
     const resend = new Resend(process.env.RESEND_API_KEY);
 
-    const emailFrom = process.env.EMAIL_FROM || "notifications@spencermcgaw.com";
+    const emailFrom = process.env.EMAIL_FROM || "notifications@americanfusionenergy.com";
 
     const { data, error } = await resend.emails.send({
       from: emailFrom,
       to: to,
-      subject: "Test Email - Spencer McGaw Hub",
+      subject: "Test Email - American Fusion Energy Hub",
       html: `
         <!DOCTYPE html>
         <html>
@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
         <body>
           <div class="container">
             <div class="header">
-              <h1>Spencer McGaw Hub</h1>
+              <h1>American Fusion Energy Hub</h1>
             </div>
             <div class="content">
               <h2>Test Email Successful!</h2>
@@ -77,13 +77,13 @@ export async function POST(request: NextRequest) {
               <p><strong>Sent by:</strong> ${user.email}</p>
             </div>
             <div class="footer">
-              <p>This is a test email from Spencer McGaw Hub.</p>
+              <p>This is a test email from American Fusion Energy Hub.</p>
             </div>
           </div>
         </body>
         </html>
       `,
-      text: `Test Email - Spencer McGaw Hub\n\nThis is a test email to verify that your email notification system is working correctly.\n\nSent at: ${new Date().toLocaleString()}\nSent by: ${user.email}`,
+      text: `Test Email - American Fusion Energy Hub\n\nThis is a test email to verify that your email notification system is working correctly.\n\nSent at: ${new Date().toLocaleString()}\nSent by: ${user.email}`,
     });
 
     if (error) {

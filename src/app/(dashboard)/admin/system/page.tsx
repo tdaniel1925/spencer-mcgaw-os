@@ -217,7 +217,7 @@ export default function SystemSettingsPage() {
 
   // Settings states
   const [generalSettings, setGeneralSettings] = useState({
-    companyName: "Spencer McGaw CPA",
+    companyName: "American Fusion Energy",
     timezone: "America/Chicago",
     dateFormat: "MM/dd/yyyy",
     currency: "USD",
@@ -597,10 +597,10 @@ export default function SystemSettingsPage() {
                     <div className="flex items-center gap-2">
                       <Input
                         readOnly
-                        value="https://spencer-mcgaw-os.vercel.app/api/webhooks/vapi"
+                        value="https://american-fusion-energy.vercel.app/api/webhooks/vapi"
                         className="font-mono text-sm"
                       />
-                      <Button variant="outline" size="icon" onClick={() => copyToClipboard("https://spencer-mcgaw-os.vercel.app/api/webhooks/vapi")}>
+                      <Button variant="outline" size="icon" onClick={() => copyToClipboard("https://american-fusion-energy.vercel.app/api/webhooks/vapi")}>
                         <Copy className="h-4 w-4" />
                       </Button>
                     </div>

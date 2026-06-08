@@ -1,7 +1,7 @@
 /**
  * Application Constants
  *
- * Single-tenant application for Spencer McGaw CPA
+ * Single-tenant application for American Fusion Energy
  * This file centralizes configuration constants.
  */
 
@@ -10,7 +10,7 @@
 export const DEFAULT_ORGANIZATION_ID = "00000000-0000-0000-0000-000000000001";
 
 // Default company name
-export const DEFAULT_COMPANY_NAME = "Spencer McGaw CPA";
+export const DEFAULT_COMPANY_NAME = "American Fusion Energy";
 
 // API version (for future use)
 export const API_VERSION = "v1";

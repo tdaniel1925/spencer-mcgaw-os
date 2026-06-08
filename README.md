@@ -1,6 +1,6 @@
-# Spencer McGaw CPA Hub
+# American Fusion Energy Hub
 
-Business Operating System for Spencer McGaw CPA - a comprehensive platform for managing clients, tasks, communications, and documents.
+Business Operating System for American Fusion Energy - a comprehensive platform for managing clients, tasks, communications, and documents.
 
 ## Features
 

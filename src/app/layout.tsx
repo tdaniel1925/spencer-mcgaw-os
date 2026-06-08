@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Spencer McGaw CPA Hub",
-  description: "Business Operating System for Spencer McGaw CPA",
+  title: "American Fusion Energy Hub",
+  description: "Business Operating System for American Fusion Energy",
 };
 
 export default function RootLayout({

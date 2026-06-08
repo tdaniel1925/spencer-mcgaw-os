@@ -44,110 +44,110 @@
 }
 
 /*
-  Spencer McGaw CPA Color Scheme
-  Base: #143009 (Dark Forest Green)
-  Accent: #DBC16F (Gold)
+  American Fusion Energy Color Scheme
+  Base: #0a1628 (Dark Navy Blue)
+  Accent: #3b82f6 (Blue)
 */
 
 :root {
   --radius: 0.625rem;
 
   /* Background colors */
-  --background: #f8faf7;
-  --foreground: #143009;
+  --background: #f7f9fc;
+  --foreground: #0a1628;
 
   /* Card colors */
   --card: #ffffff;
-  --card-foreground: #143009;
+  --card-foreground: #0a1628;
 
   /* Popover colors */
   --popover: #ffffff;
-  --popover-foreground: #143009;
+  --popover-foreground: #0a1628;
 
-  /* Primary - Dark Green */
-  --primary: #143009;
+  /* Primary - Dark Navy Blue */
+  --primary: #0a1628;
   --primary-foreground: #ffffff;
 
-  /* Secondary - Light Green tint */
-  --secondary: #e8f0e5;
-  --secondary-foreground: #143009;
+  /* Secondary - Light Blue tint */
+  --secondary: #e5edf8;
+  --secondary-foreground: #0a1628;
 
   /* Muted - improved contrast for WCAG AAA compliance */
-  --muted: #f1f5f0;
-  --muted-foreground: #3d4a38;
+  --muted: #f0f3f8;
+  --muted-foreground: #384456;
 
-  /* Accent - Gold */
-  --accent: #DBC16F;
-  --accent-foreground: #143009;
+  /* Accent - Blue */
+  --accent: #3b82f6;
+  --accent-foreground: #ffffff;
 
   /* Destructive */
   --destructive: #dc2626;
 
   /* Border & Input */
-  --border: #d4ddd1;
-  --input: #d4ddd1;
-  --ring: #143009;
+  --border: #d1d9e4;
+  --input: #d1d9e4;
+  --ring: #0a1628;
 
   /* Chart colors */
-  --chart-1: #143009;
-  --chart-2: #DBC16F;
-  --chart-3: #2d5a1d;
-  --chart-4: #c4a855;
-  --chart-5: #4a7c3a;
+  --chart-1: #0a1628;
+  --chart-2: #3b82f6;
+  --chart-3: #1e3a5f;
+  --chart-4: #60a5fa;
+  --chart-5: #2563eb;
 
   /* Sidebar */
-  --sidebar: #143009;
+  --sidebar: #0a1628;
   --sidebar-foreground: #ffffff;
-  --sidebar-primary: #DBC16F;
-  --sidebar-primary-foreground: #143009;
-  --sidebar-accent: #1e4a0f;
+  --sidebar-primary: #3b82f6;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #1a2744;
   --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: #1e4a0f;
-  --sidebar-ring: #DBC16F;
+  --sidebar-border: #1a2744;
+  --sidebar-ring: #3b82f6;
 }
 
 .dark {
-  --background: #0a1a05;
-  --foreground: #f8faf7;
+  --background: #060e1a;
+  --foreground: #f7f9fc;
 
-  --card: #143009;
-  --card-foreground: #f8faf7;
+  --card: #0a1628;
+  --card-foreground: #f7f9fc;
 
-  --popover: #143009;
-  --popover-foreground: #f8faf7;
+  --popover: #0a1628;
+  --popover-foreground: #f7f9fc;
 
-  --primary: #DBC16F;
-  --primary-foreground: #143009;
+  --primary: #3b82f6;
+  --primary-foreground: #ffffff;
 
-  --secondary: #1e4a0f;
-  --secondary-foreground: #f8faf7;
+  --secondary: #1a2744;
+  --secondary-foreground: #f7f9fc;
 
-  --muted: #1e4a0f;
-  --muted-foreground: #a8b5a3;
+  --muted: #1a2744;
+  --muted-foreground: #a3b1c5;
 
-  --accent: #DBC16F;
-  --accent-foreground: #143009;
+  --accent: #3b82f6;
+  --accent-foreground: #ffffff;
 
   --destructive: #ef4444;
 
-  --border: #2d5a1d;
-  --input: #2d5a1d;
-  --ring: #DBC16F;
+  --border: #1e3a5f;
+  --input: #1e3a5f;
+  --ring: #3b82f6;
 
-  --chart-1: #DBC16F;
-  --chart-2: #4a7c3a;
-  --chart-3: #c4a855;
-  --chart-4: #6b9b5b;
-  --chart-5: #a89545;
+  --chart-1: #3b82f6;
+  --chart-2: #1e3a5f;
+  --chart-3: #60a5fa;
+  --chart-4: #2563eb;
+  --chart-5: #93c5fd;
 
-  --sidebar: #0a1a05;
-  --sidebar-foreground: #f8faf7;
-  --sidebar-primary: #DBC16F;
-  --sidebar-primary-foreground: #143009;
-  --sidebar-accent: #1e4a0f;
-  --sidebar-accent-foreground: #f8faf7;
-  --sidebar-border: #1e4a0f;
-  --sidebar-ring: #DBC16F;
+  --sidebar: #060e1a;
+  --sidebar-foreground: #f7f9fc;
+  --sidebar-primary: #3b82f6;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #1a2744;
+  --sidebar-accent-foreground: #f7f9fc;
+  --sidebar-border: #1a2744;
+  --sidebar-ring: #3b82f6;
 }
 
 @layer base {

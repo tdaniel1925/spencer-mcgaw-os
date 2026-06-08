@@ -7,14 +7,14 @@ export const size = {
 };
 export const contentType = "image/png";
 
-// Image generation - SM logo with brand colors
+// Image generation - AF logo with brand colors
 export default function Icon() {
   return new ImageResponse(
     (
       <div
         style={{
           fontSize: 16,
-          background: "#143009",
+          background: "#0a1628",
           width: "100%",
           height: "100%",
           display: "flex",
@@ -25,12 +25,12 @@ export default function Icon() {
       >
         <span
           style={{
-            color: "#DBC16F",
+            color: "#3b82f6",
             fontWeight: 700,
             letterSpacing: "-0.5px",
           }}
         >
-          SM
+          AF
         </span>
       </div>
     ),

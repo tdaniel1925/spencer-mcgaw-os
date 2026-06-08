@@ -102,7 +102,7 @@ Accounting Team`,
 
 // Sample call transcripts for test calls
 const sampleCallTranscripts = [
-  `[00:00] Agent: Thank you for calling Spencer McGaw. This is Sarah speaking. How can I help you today?
+  `[00:00] Agent: Thank you for calling American Fusion Energy. This is Sarah speaking. How can I help you today?
 
 [00:05] Caller: Hi Sarah, this is Mike from Peterson Industries. I need to discuss an urgent matter regarding our tax filing.
 
@@ -124,7 +124,7 @@ const sampleCallTranscripts = [
 
 [01:08] Agent: Have a great day!`,
 
-  `[00:00] Agent: Spencer McGaw, this is David. How may I assist you?
+  `[00:00] Agent: American Fusion Energy, this is David. How may I assist you?
 
 [00:04] Caller: Hi David, I'm calling about an IRS notice we received. It's regarding our 2022 tax return.
 
@@ -146,7 +146,7 @@ const sampleCallTranscripts = [
 
 [01:14] Agent: Of course. We'll get this sorted out for you.`,
 
-  `[00:00] Agent: Good afternoon, Spencer McGaw. This is Jennifer.
+  `[00:00] Agent: Good afternoon, American Fusion Energy. This is Jennifer.
 
 [00:03] Caller: Hi Jennifer, I'm calling to schedule our quarterly review meeting.
 

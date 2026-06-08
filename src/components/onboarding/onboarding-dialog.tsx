@@ -55,7 +55,7 @@ export function OnboardingDialog({
     {
       id: "welcome",
       title: `Welcome, ${firstName}!`,
-      description: "Let's get you set up with Spencer McGaw Hub",
+      description: "Let's get you set up with American Fusion Energy Hub",
       icon: <Sparkles className="h-8 w-8 text-primary" />,
       content: (
         <div className="space-y-4">
