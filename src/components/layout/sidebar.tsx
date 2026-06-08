@@ -31,6 +31,7 @@ import {
   MessagesSquare,
   Kanban,
   FileSpreadsheet,
+  Megaphone,
 } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -166,6 +167,44 @@ const navSections: NavSection[] = [
         href: "/files",
         icon: FolderOpen,
         permission: "documents:view",
+      },
+    ],
+  },
+  {
+    label: "Marketing",
+    items: [
+      {
+        title: "Marketing",
+        href: "/marketing",
+        icon: Megaphone,
+        permission: "dashboard:view",
+        children: [
+          {
+            title: "Dashboard",
+            href: "/marketing",
+            description: "KPIs, content output, competitive overview",
+          },
+          {
+            title: "Editorial Calendar",
+            href: "/marketing/calendar",
+            description: "90-day content publishing plan",
+          },
+          {
+            title: "Content Pipeline",
+            href: "/marketing/pipeline",
+            description: "Track content through approval stages",
+          },
+          {
+            title: "Brand Guidelines",
+            href: "/marketing/brand-guidelines",
+            description: "Voice, tone, colors, and do/don't language",
+          },
+          {
+            title: "Competitive Tracker",
+            href: "/marketing/competitive-tracker",
+            description: "AMFN vs industry benchmarks",
+          },
+        ],
       },
     ],
   },
