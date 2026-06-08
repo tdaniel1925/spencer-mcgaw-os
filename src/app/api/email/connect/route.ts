@@ -40,6 +40,10 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  // Check if admin consent is requested (for organizations requiring IT approval)
+  const searchParams = request.nextUrl.searchParams;
+  const adminConsent = searchParams.get("admin") === "true";
+
   // Generate state for CSRF protection
   const state = crypto.randomUUID();
 
@@ -51,7 +55,12 @@ export async function GET(request: NextRequest) {
   authUrl.searchParams.set("scope", SCOPES);
   authUrl.searchParams.set("response_mode", "query");
   authUrl.searchParams.set("state", state);
-  authUrl.searchParams.set("prompt", "consent");
+
+  // FIX: Use select_account instead of consent
+  // - select_account: Let user pick account, MS decides if consent needed
+  // - consent: Force consent every time (breaks work/school accounts with pre-consent)
+  // For admin consent flow, still use consent to ensure proper approval
+  authUrl.searchParams.set("prompt", adminConsent ? "admin_consent" : "select_account");
 
   // In production, store state in session/cookie for verification
   const response = NextResponse.redirect(authUrl.toString());

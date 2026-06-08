@@ -15,8 +15,31 @@ export async function GET(request: NextRequest) {
   // Check for OAuth errors
   if (error) {
     console.error("OAuth error:", error, errorDescription);
+
+    // Provide helpful error messages based on error type
+    let userMessage = errorDescription || error;
+
+    // Admin consent required
+    if (error === "admin_consent_required" || errorDescription?.includes("AADSTS65004")) {
+      userMessage =
+        "Your organization requires admin approval for this app. Please contact your IT administrator or try the admin consent link.";
+    }
+    // User cancelled consent
+    else if (error === "access_denied" && errorDescription?.includes("user cancelled")) {
+      userMessage = "You cancelled the sign-in process. Please try again if you want to connect your email.";
+    }
+    // Interaction required (MFA, conditional access, etc.)
+    else if (error === "interaction_required" || errorDescription?.includes("AADSTS50076")) {
+      userMessage =
+        "Additional authentication required. Please ensure multi-factor authentication is set up for your account.";
+    }
+    // Invalid client
+    else if (error === "invalid_client" || errorDescription?.includes("AADSTS700016")) {
+      userMessage = "App configuration error. Please contact support - the Microsoft app credentials may need to be updated.";
+    }
+
     return NextResponse.redirect(
-      new URL(`/settings?error=${encodeURIComponent(errorDescription || error)}`, request.url)
+      new URL(`/settings?error=${encodeURIComponent(userMessage)}`, request.url)
     );
   }
 
@@ -69,8 +92,25 @@ export async function GET(request: NextRequest) {
     if (!tokenResponse.ok) {
       const errorData = await tokenResponse.json();
       console.error("Token exchange error:", errorData);
+
+      // Provide specific error message based on the error
+      let userMessage = "Failed to exchange authorization code for token.";
+
+      if (errorData.error === "invalid_grant") {
+        userMessage =
+          "The authorization code has expired or was already used. Please try connecting your email again.";
+      } else if (errorData.error === "unauthorized_client" && errorData.error_description?.includes("AADSTS65001")) {
+        // Check for admin consent required FIRST (more specific check)
+        userMessage =
+          "Your organization requires admin consent. Please ask your IT administrator to approve this app, or use the admin consent option.";
+      } else if (errorData.error === "unauthorized_client") {
+        // Generic unauthorized_client error
+        userMessage =
+          "App configuration error. The app may not be authorized for this account type. Please contact support.";
+      }
+
       return NextResponse.redirect(
-        new URL("/settings?error=Failed%20to%20exchange%20token", request.url)
+        new URL(`/settings?error=${encodeURIComponent(userMessage)}`, request.url)
       );
     }
 
