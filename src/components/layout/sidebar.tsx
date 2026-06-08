@@ -454,14 +454,14 @@ export function Sidebar() {
       <div className="flex h-16 items-center border-b border-sidebar-border px-6 gap-2 flex-shrink-0">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-sidebar-primary flex items-center justify-center flex-shrink-0">
-            <span className="text-sidebar-primary-foreground font-bold text-sm">SM</span>
+            <span className="text-sidebar-primary-foreground font-bold text-sm">AF</span>
           </div>
           <div className="overflow-hidden">
             <span className="font-semibold text-lg text-sidebar-foreground whitespace-nowrap">
-              Spencer<span className="text-sidebar-primary">|</span>McGaw
+              American<span className="text-sidebar-primary">|</span>Fusion
             </span>
             <span className="text-xs text-sidebar-foreground/70 block -mt-1">
-              Business OS
+              Energy Hub
             </span>
           </div>
         </div>
