@@ -293,45 +293,45 @@ const noteTypes = [
   { value: "email", label: "Email", icon: MailOpen, color: "bg-purple-100 text-purple-700" },
   { value: "document", label: "Document", icon: FileText, color: "bg-amber-100 text-amber-700" },
   { value: "billing", label: "Billing", icon: Receipt, color: "bg-emerald-100 text-emerald-700" },
-  { value: "tax", label: "Tax", icon: DollarSign, color: "bg-red-100 text-red-700" },
+  { value: "tax", label: "Technical", icon: DollarSign, color: "bg-red-100 text-red-700" },
   { value: "compliance", label: "Compliance", icon: AlertCircle, color: "bg-orange-100 text-orange-700" },
 ];
 
 // Service types
 const serviceTypes = [
-  { value: "tax_prep_individual", label: "Individual Tax Preparation" },
-  { value: "tax_prep_business", label: "Business Tax Preparation" },
-  { value: "bookkeeping", label: "Bookkeeping" },
-  { value: "payroll", label: "Payroll Services" },
-  { value: "audit", label: "Audit & Assurance" },
-  { value: "consulting", label: "Tax Consulting" },
-  { value: "estate_planning", label: "Estate Planning" },
-  { value: "irs_representation", label: "IRS Representation" },
+  { value: "tax_prep_individual", label: "Defense Procurement" },
+  { value: "tax_prep_business", label: "Commercial Energy" },
+  { value: "bookkeeping", label: "Research Collaboration" },
+  { value: "payroll", label: "Supply Chain" },
+  { value: "audit", label: "Facility Operations" },
+  { value: "consulting", label: "Engineering Consulting" },
+  { value: "estate_planning", label: "Investor Relations" },
+  { value: "irs_representation", label: "Regulatory Compliance" },
   { value: "other", label: "Other" },
 ];
 
-// Filing types
+// Project/contract types
 const filingTypes = [
-  { value: "1040", label: "Form 1040 (Individual)" },
-  { value: "1120", label: "Form 1120 (C-Corp)" },
-  { value: "1120S", label: "Form 1120S (S-Corp)" },
-  { value: "1065", label: "Form 1065 (Partnership)" },
-  { value: "990", label: "Form 990 (Nonprofit)" },
-  { value: "941", label: "Form 941 (Payroll)" },
-  { value: "state", label: "State Return" },
-  { value: "local", label: "Local Return" },
+  { value: "1040", label: "Feasibility Study" },
+  { value: "1120", label: "Procurement Bid" },
+  { value: "1120S", label: "Engineering Contract" },
+  { value: "1065", label: "Research Agreement" },
+  { value: "990", label: "Supply Agreement" },
+  { value: "941", label: "Service Contract" },
+  { value: "state", label: "NDA / Legal" },
+  { value: "local", label: "MOU / LOI" },
 ];
 
-// Filing status pipeline
+// Contract status pipeline
 const filingStatuses = [
   { value: "not_started", label: "Not Started", color: "bg-slate-100 text-slate-700" },
   { value: "documents_requested", label: "Docs Requested", color: "bg-yellow-100 text-yellow-700" },
   { value: "in_progress", label: "In Progress", color: "bg-blue-100 text-blue-700" },
-  { value: "review", label: "Review", color: "bg-purple-100 text-purple-700" },
-  { value: "client_review", label: "Client Review", color: "bg-cyan-100 text-cyan-700" },
-  { value: "ready_to_file", label: "Ready to File", color: "bg-indigo-100 text-indigo-700" },
-  { value: "filed", label: "Filed", color: "bg-green-100 text-green-700" },
-  { value: "accepted", label: "Accepted", color: "bg-emerald-100 text-emerald-700" },
+  { value: "review", label: "Internal Review", color: "bg-purple-100 text-purple-700" },
+  { value: "client_review", label: "Partner Review", color: "bg-cyan-100 text-cyan-700" },
+  { value: "ready_to_file", label: "Ready to Execute", color: "bg-indigo-100 text-indigo-700" },
+  { value: "filed", label: "Executed", color: "bg-green-100 text-green-700" },
+  { value: "accepted", label: "Active", color: "bg-emerald-100 text-emerald-700" },
   { value: "rejected", label: "Rejected", color: "bg-red-100 text-red-700" },
 ];
 
@@ -808,10 +808,10 @@ export default function ClientDetailPage() {
         loadDeadlines();
         loadActivity();
       } else {
-        toast.error("Failed to add tax filing");
+        toast.error("Failed to add contract");
       }
     } catch (error) {
-      toast.error("Failed to add tax filing");
+      toast.error("Failed to add contract");
     } finally {
       setSubmittingFiling(false);
     }
@@ -1053,7 +1053,7 @@ export default function ClientDetailPage() {
 
   // Delete tax filing handler
   const handleDeleteFiling = async (filingId: string) => {
-    if (!confirm("Are you sure you want to delete this tax filing?")) return;
+    if (!confirm("Are you sure you want to delete this contract?")) return;
 
     try {
       const res = await fetch(`/api/crm/clients/${clientId}/tax-filings/${filingId}`, {
@@ -1311,7 +1311,7 @@ export default function ClientDetailPage() {
                   )}
                 </TabsTrigger>
                 <TabsTrigger value="services" className="data-[state=active]:bg-background">Services</TabsTrigger>
-                <TabsTrigger value="tax-history" className="data-[state=active]:bg-background">Tax History</TabsTrigger>
+                <TabsTrigger value="tax-history" className="data-[state=active]:bg-background">Contracts</TabsTrigger>
                 <TabsTrigger value="deadlines" className="data-[state=active]:bg-background">
                   Deadlines
                   {upcomingDeadlines.length > 0 && (
@@ -1919,7 +1919,7 @@ export default function ClientDetailPage() {
                                 <span>Started: {format(parseISO(service.start_date), "MMM d, yyyy")}</span>
                               )}
                               {service.tax_year && (
-                                <span>Tax Year: {service.tax_year}</span>
+                                <span>Year: {service.tax_year}</span>
                               )}
                             </div>
                           )}
@@ -1930,34 +1930,34 @@ export default function ClientDetailPage() {
                 )}
               </TabsContent>
 
-              {/* Tax History Tab */}
+              {/* Contracts & Agreements Tab */}
               <TabsContent value="tax-history" className="m-0 p-6">
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold">Tax Filing History</h2>
+                  <h2 className="text-lg font-semibold">Contracts & Agreements</h2>
                   <Button onClick={() => setShowAddFiling(true)}>
                     <Plus className="h-4 w-4 mr-1.5" />
-                    Add Filing
+                    Add Contract
                   </Button>
                 </div>
 
                 {taxFilings.length === 0 ? (
                   <Card className="p-8 text-center">
                     <Receipt className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                    <h3 className="font-medium mb-2">No tax filings yet</h3>
+                    <h3 className="font-medium mb-2">No contracts yet</h3>
                     <p className="text-sm text-muted-foreground mb-4">
-                      Track tax returns and their status for this client.
+                      Track contracts, agreements, and their status for this contact.
                     </p>
                     <Button onClick={() => setShowAddFiling(true)}>
                       <Plus className="h-4 w-4 mr-1.5" />
-                      Add First Filing
+                      Add First Contract
                     </Button>
                   </Card>
                 ) : (
                   <div className="space-y-4">
-                    {/* Group by tax year */}
+                    {/* Group by year */}
                     {Array.from(new Set(taxFilings.map(f => f.tax_year))).sort((a, b) => b - a).map(year => (
                       <div key={year}>
-                        <h3 className="text-sm font-medium text-muted-foreground mb-3">Tax Year {year}</h3>
+                        <h3 className="text-sm font-medium text-muted-foreground mb-3">Year {year}</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           {taxFilings.filter(f => f.tax_year === year).map(filing => {
                             const statusConfig = filingStatuses.find(s => s.value === filing.status);
@@ -2016,12 +2016,12 @@ export default function ClientDetailPage() {
                                     )}
                                     {filing.refund_amount && (
                                       <div className="text-green-600">
-                                        Refund: ${filing.refund_amount.toLocaleString()}
+                                        Value: ${filing.refund_amount.toLocaleString()}
                                       </div>
                                     )}
                                     {filing.amount_owed && (
                                       <div className="text-red-600">
-                                        Owed: ${filing.amount_owed.toLocaleString()}
+                                        Outstanding: ${filing.amount_owed.toLocaleString()}
                                       </div>
                                     )}
                                   </div>
@@ -2100,7 +2100,7 @@ export default function ClientDetailPage() {
                                   <h4 className="font-medium">{deadline.title}</h4>
                                   <p className="text-sm text-muted-foreground">
                                     {deadline.deadline_type}
-                                    {deadline.tax_year && ` • Tax Year ${deadline.tax_year}`}
+                                    {deadline.tax_year && ` • Year ${deadline.tax_year}`}
                                   </p>
                                 </div>
                               </div>
@@ -2907,15 +2907,15 @@ export default function ClientDetailPage() {
       <Dialog open={showAddFiling} onOpenChange={setShowAddFiling}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Add Tax Filing</DialogTitle>
+            <DialogTitle>Add Contract</DialogTitle>
             <DialogDescription>
-              Add a tax filing for {client.name}.
+              Add a contract or agreement for {client.name}.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="filing-tax-year">Tax Year *</Label>
+                <Label htmlFor="filing-tax-year">Year *</Label>
                 <Input
                   id="filing-tax-year"
                   type="number"
@@ -2925,7 +2925,7 @@ export default function ClientDetailPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="filing-type">Filing Type *</Label>
+                <Label htmlFor="filing-type">Contract Type *</Label>
                 <Select
                   value={filingForm.filing_type}
                   onValueChange={(value) => setFilingForm({ ...filingForm, filing_type: value })}
@@ -3003,7 +3003,7 @@ export default function ClientDetailPage() {
               onClick={handleAddFiling}
               disabled={submittingFiling || !filingForm.filing_type}
             >
-              {submittingFiling ? "Adding..." : "Add Tax Filing"}
+              {submittingFiling ? "Adding..." : "Add Contract"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -3029,11 +3029,11 @@ export default function ClientDetailPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="tax_filing">Tax Filing</SelectItem>
+                  <SelectItem value="tax_filing">Contract Deadline</SelectItem>
                   <SelectItem value="document_request">Document Request</SelectItem>
                   <SelectItem value="payment">Payment Due</SelectItem>
-                  <SelectItem value="extension">Extension</SelectItem>
-                  <SelectItem value="estimated_payment">Estimated Payment</SelectItem>
+                  <SelectItem value="extension">Milestone</SelectItem>
+                  <SelectItem value="estimated_payment">Deliverable</SelectItem>
                   <SelectItem value="meeting">Meeting/Appointment</SelectItem>
                   <SelectItem value="other">Other</SelectItem>
                 </SelectContent>

@@ -23,12 +23,12 @@ import { FormProgress, useFormProgress } from "@/components/ui/form-progress";
 import { toast } from "sonner";
 
 const serviceTypes = [
-  { id: "tax-prep", label: "Tax Preparation" },
-  { id: "bookkeeping", label: "Bookkeeping" },
-  { id: "payroll", label: "Payroll Services" },
-  { id: "consulting", label: "Consulting" },
-  { id: "audit", label: "Audit & Assurance" },
-  { id: "planning", label: "Tax Planning" },
+  { id: "defense", label: "Defense & Procurement" },
+  { id: "commercial", label: "Commercial Energy" },
+  { id: "research", label: "Research Collaboration" },
+  { id: "consulting", label: "Engineering Consulting" },
+  { id: "investor", label: "Investor Relations" },
+  { id: "supply-chain", label: "Supply Chain" },
 ];
 
 const formSteps = [

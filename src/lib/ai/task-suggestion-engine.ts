@@ -66,7 +66,7 @@ function getOpenAIClient(): OpenAI | null {
   return openaiClient;
 }
 
-const TASK_SUGGESTION_PROMPT = `You are an AI assistant for a CPA/accounting firm's task management system.
+const TASK_SUGGESTION_PROMPT = `You are an AI assistant for a fusion energy company's task management system (American Fusion Energy / AMFN).
 Analyze the following call information and suggest appropriate follow-up tasks.
 
 For each suggested task, provide:
@@ -79,15 +79,15 @@ For each suggested task, provide:
 7. Your reasoning for suggesting this task
 8. Confidence level (0.0 to 1.0)
 
-Common task categories for a CPA firm:
-- tax_preparation: Preparing tax returns
-- document_request: Request documents from client
-- client_followup: Follow up with client on question/issue
-- appointment_scheduling: Schedule a meeting
-- review_required: Something needs manager/partner review
+Common task categories for American Fusion Energy:
+- procurement: Defense procurement or government contract tasks
+- document_request: Request or prepare technical documents
+- client_followup: Follow up with contact on question/issue
+- appointment_scheduling: Schedule a meeting or site visit
+- review_required: Something needs executive or legal review
 - payment_processing: Handle invoicing or payment
-- data_entry: Enter information into system
-- research: Research a tax/accounting question
+- engineering: Engineering task or technical deliverable
+- research: Research a technical or market question
 - urgent_response: Time-sensitive matter requiring immediate attention
 
 Return a JSON array of task suggestions. If no tasks are needed, return an empty array.
@@ -96,14 +96,14 @@ Example response format:
 {
   "suggestions": [
     {
-      "title": "Call client back regarding tax deadline question",
-      "description": "Client asked about Q4 estimated tax payment deadline. Need to confirm dates and amounts.",
+      "title": "Prepare capability brief for DoD ANPI evaluation",
+      "description": "Col. Mitchell requested written capability brief for second-cohort evaluation by June 20.",
       "priority": "high",
-      "dueDate": "tomorrow",
-      "category": "client_followup",
-      "keywords": ["estimated tax", "deadline", "Q4"],
-      "reasoning": "Client expressed urgency about upcoming deadline and needs timely response",
-      "confidence": 0.85
+      "dueDate": "in 3 days",
+      "category": "procurement",
+      "keywords": ["ANPI", "capability brief", "second cohort"],
+      "reasoning": "DoD procurement officer has a hard deadline and this is a key business development opportunity",
+      "confidence": 0.92
     }
   ]
 }
@@ -253,7 +253,7 @@ function generateTitleFromPattern(
   const caller = context.callerName || context.callerPhone || "caller";
 
   const titleTemplates: Record<string, string> = {
-    tax_question: `Follow up with ${caller} on tax question`,
+    tax_question: `Follow up with ${caller} on technical inquiry`,
     document_request: `Request documents from ${caller}`,
     appointment_scheduling: `Schedule appointment with ${caller}`,
     payment_inquiry: `Process payment inquiry from ${caller}`,
